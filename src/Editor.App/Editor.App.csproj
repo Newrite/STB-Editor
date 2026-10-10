@@ -4,7 +4,7 @@
     <RootNamespace>StbEditor.App</RootNamespace>
     <AssemblyName>STBEditor</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <!-- .NET 9 marks the exe CET-compatible; with hardware shadow stacks on, MO2's usvfs hooks
+    <!-- .NET 9+ marks the exe CET-compatible; with hardware shadow stacks on, MO2's usvfs hooks
          (and other injectors) crash the process at startup with 0xC0000005. -->
     <CETCompat>false</CETCompat>
   </PropertyGroup>

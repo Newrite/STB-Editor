@@ -39,7 +39,7 @@ internal sealed class HelpWindow
             ("L", "Gizmo axes: world or the object's own"),
             ("G", "Snap to the grid (step next to it in the toolbar); Angle: snap rotation"),
             ("F", "Drop to the ground"),
-            ("Delete", "Delete the selection"),
+            ("Del", "Delete the selection"),
             ("Ctrl+D", "Duplicate the selection"),
             ("Drag from the Object Window", "Place an object (also from Preview)"),
             ("Inspector: Placement", "Exact position, rotation in degrees and scale: drag the number, or double-click it and type"),
@@ -64,7 +64,7 @@ internal sealed class HelpWindow
             ("LMB", "Select a vertex or triangle; Ctrl adds"),
             ("LMB drag", "Move vertices; hold Z for height"),
             ("Shift + LMB on the ground", "New vertex; with two selected it also makes the triangle"),
-            ("Delete / F / Esc", "Delete, drop to the ground, clear the selection"),
+            ("Del / F / Esc", "Delete, drop to the ground, clear the selection"),
         ]),
         ("Files and editing",
         [

@@ -2,6 +2,7 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using StbEditor.App.Ui;
 using StbEditor.Data.Catalog;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -79,10 +80,10 @@ internal sealed class ObjectWindow : Panel
         }
 
         ImGui.SetNextItemWidth(-ImGui.GetFontSize() * 9);
-        if (ImGui.InputTextWithHint("##filter", "Filter: EditorID, name or FormID   (Ctrl+F)", ref _filter, 256)) _dirty = true;
+        if (ImGui.InputTextWithHint("##filter", T("Filter: EditorID, name or FormID   (Ctrl+F)"), ref _filter, 256)) _dirty = true;
         ImGui.SameLine();
-        if (ImGui.Checkbox("Overrides", ref _onlyOverrides)) _dirty = true;
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Only records that more than one plugin defines");
+        if (ImGui.Checkbox(T("Overrides"), ref _onlyOverrides)) _dirty = true;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Only records that more than one plugin defines"));
 
         if (app.Session!.Catalog.Version != _catalogVersion)
         {
@@ -94,8 +95,8 @@ internal sealed class ObjectWindow : Panel
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim, $"{_rows.Count:N0}");
         ImGui.SameLine();
-        if (ImGui.SmallButton(_tiles ? "List" : "Tiles")) _tiles ^= true;
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Thumbnails of placeable objects, or the record table");
+        if (ImGui.SmallButton(_tiles ? T("List") : T("Tiles"))) _tiles ^= true;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Thumbnails of placeable objects, or the record table"));
 
         var tileable = _type != AllTypes && RecordTypes.IsPlaceable(_type);
         if (_tiles && tileable && app.Thumbnails is not null) DrawTiles(app);
@@ -105,7 +106,7 @@ internal sealed class ObjectWindow : Panel
 
     private void DrawTypeTree(RecordCatalog catalog)
     {
-        if (ImGui.Selectable($"All types ({catalog.ByKey.Count:N0})", _type == AllTypes))
+        if (ImGui.Selectable(TF($"All types ({catalog.ByKey.Count:N0})"), _type == AllTypes))
         {
             _type = AllTypes;
             _dirty = true;
@@ -116,12 +117,12 @@ internal sealed class ObjectWindow : Panel
             if (!_categories.TryGetValue(category, out var types)) continue;
 
             var defaultOpen = category is "World Objects" ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-            if (!ImGui.TreeNodeEx(category, defaultOpen | ImGuiTreeNodeFlags.SpanAvailWidth)) continue;
+            if (!ImGui.TreeNodeEx(T(category) + "##" + category, defaultOpen | ImGuiTreeNodeFlags.SpanAvailWidth)) continue;
 
             foreach (var type in types)
             {
                 var count = catalog.BySignature.TryGetValue(type.Signature, out var list) ? list.Count : 0;
-                if (ImGui.Selectable($"{type.Name}  ##{type.Signature}", _type == type.Signature))
+                if (ImGui.Selectable($"{T(type.Name)}  ##{type.Signature}", _type == type.Signature))
                 {
                     _type = type.Signature;
                     _dirty = true;
@@ -221,7 +222,7 @@ internal sealed class ObjectWindow : Panel
                     {
                         FormDrag.Current = record.FormKey;
                         ImGui.SetDragDropPayload(FormDrag.PayloadType, null, 0);
-                        ImGui.Text($"Place {record.EditorId}");
+                        ImGui.Text(TF($"Place {record.EditorId}"));
                         ImGui.EndDragDropSource();
                     }
 
@@ -251,12 +252,12 @@ internal sealed class ObjectWindow : Panel
 
         ImGui.TableSetupScrollFreeze(0, 1);
         var em = ImGui.GetFontSize();
-        ImGui.TableSetupColumn("Editor ID", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultSort, 2.0f);
-        ImGui.TableSetupColumn("Form ID", ImGuiTableColumnFlags.WidthFixed, em * 4.6f);
-        ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1.4f);
+        ImGui.TableSetupColumn(T("Editor ID"), ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultSort, 2.0f);
+        ImGui.TableSetupColumn(T("Form ID"), ImGuiTableColumnFlags.WidthFixed, em * 4.6f);
+        ImGui.TableSetupColumn(T("Name"), ImGuiTableColumnFlags.WidthStretch, 1.4f);
         ImGui.TableSetupColumn("Type", ImGuiTableColumnFlags.WidthFixed | (_type == AllTypes ? ImGuiTableColumnFlags.None : ImGuiTableColumnFlags.DefaultHide), em * 2.8f);
-        ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed, em * 2.4f);
-        ImGui.TableSetupColumn("Last change", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 1.0f);
+        ImGui.TableSetupColumn(T("Count"), ImGuiTableColumnFlags.WidthFixed, em * 2.4f);
+        ImGui.TableSetupColumn(T("Last change"), ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 1.0f);
         ImGui.TableHeadersRow();
 
         var specs = ImGui.TableGetSortSpecs();
@@ -294,7 +295,7 @@ internal sealed class ObjectWindow : Panel
 
                 var selected = app.Selected == record.FormKey;
                 ImGui.PushID(i);
-                if (ImGui.Selectable(record.EditorId ?? "<no editor id>", selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
+                if (ImGui.Selectable(record.EditorId ?? T("<no editor id>"), selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
                 {
                     app.Select(record.FormKey);
                     _scrolledToSelection = app.SelectionVersion;
@@ -304,9 +305,9 @@ internal sealed class ObjectWindow : Panel
 
                 if (ImGui.BeginPopupContextItem("##ctx"))
                 {
-                    if (ImGui.MenuItem("Copy Form ID")) ImGui.SetClipboardText(ws.FormIdText(record.FormKey));
-                    if (ImGui.MenuItem("Copy Editor ID", (string?)null, false, record.EditorId is not null)) ImGui.SetClipboardText(record.EditorId!);
-                    if (ImGui.MenuItem("Copy FormKey")) ImGui.SetClipboardText(record.FormKey.ToString());
+                    if (ImGui.MenuItem(T("Copy Form ID"))) ImGui.SetClipboardText(ws.FormIdText(record.FormKey));
+                    if (ImGui.MenuItem(T("Copy Editor ID"), (string?)null, false, record.EditorId is not null)) ImGui.SetClipboardText(record.EditorId!);
+                    if (ImGui.MenuItem(T("Copy FormKey"))) ImGui.SetClipboardText(record.FormKey.ToString());
                     ImGui.EndPopup();
                 }
 

@@ -4,6 +4,7 @@ using Mutagen.Bethesda.Plugins;
 using StbEditor.App.Ui;
 using StbEditor.Data.Catalog;
 using StbEditor.Render;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -50,7 +51,7 @@ internal sealed class PreviewPanel : Panel
         var key = BaseToShow(app);
         if (key is null)
         {
-            ImGui.TextColored(Theme.TextDim, "Select a placeable object (static, furniture, light, item…) in the Object Window.");
+            ImGui.TextColored(Theme.TextDim, T("Select a placeable object (static, furniture, light, item…) in the Object Window."));
             return;
         }
 
@@ -69,9 +70,9 @@ internal sealed class PreviewPanel : Panel
         ImGui.Text(obj.BaseEditorId ?? session.Workspace.FormIdText(key.Value));
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim, $"[{obj.BaseSignature}] {session.Workspace.FormIdText(key.Value)}");
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X + ImGui.GetCursorPosX() - ImGui.CalcTextSize("Spin").X - ImGui.GetStyle().FramePadding.X * 2);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X + ImGui.GetCursorPosX() - ImGui.CalcTextSize(T("Spin")).X - ImGui.GetStyle().FramePadding.X * 2);
         if (_spin) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
-        if (ImGui.SmallButton("Spin")) _spin ^= true;
+        if (ImGui.SmallButton(T("Spin"))) _spin ^= true;
         if (_spin) ImGui.PopStyleColor();
 
         var size = ImGui.GetContentRegionAvail() - new Vector2(0, ImGui.GetTextLineHeightWithSpacing() * 2);
@@ -103,7 +104,7 @@ internal sealed class PreviewPanel : Panel
         {
             FormDrag.Current = key;
             ImGui.SetDragDropPayload(FormDrag.PayloadType, null, 0);
-            ImGui.Text($"Place {obj.BaseEditorId}");
+            ImGui.Text(TF($"Place {obj.BaseEditorId}"));
             ImGui.EndDragDropSource();
         }
 
@@ -121,11 +122,11 @@ internal sealed class PreviewPanel : Panel
             var extent = model.Shapes.Count > 0 ? model.GeometryMax - model.GeometryMin : model.BoundsMax - model.BoundsMin;
             var triangles = model.Shapes.Sum(s => s.IndexCount / 3);
             ImGui.TextColored(Theme.TextDim, $"{obj.ModelPath}");
-            ImGui.TextColored(Theme.TextDim, $"{extent.X:0} x {extent.Y:0} x {extent.Z:0} units · {triangles:N0} tris · {model.Shapes.Count} shapes{(model.Particles.Count > 0 ? $" · {model.Particles.Count} particle systems" : "")} · RMB drag to turn, LMB drag to place");
+            ImGui.TextColored(Theme.TextDim, TF($"{extent.X:0} x {extent.Y:0} x {extent.Z:0} units · {triangles:N0} tris · {model.Shapes.Count} shapes{(model.Particles.Count > 0 ? $" · {model.Particles.Count} particle systems" : "")} · RMB drag to turn, LMB drag to place"));
         }
         else
         {
-            ImGui.TextColored(Theme.TextDim, obj.ModelFailed ? $"model failed: {obj.ModelPath}" : obj.ModelPath is null ? "no model (marker)" : $"loading {obj.ModelPath}…");
+            ImGui.TextColored(Theme.TextDim, obj.ModelFailed ? TF($"model failed: {obj.ModelPath}") : obj.ModelPath is null ? T("no model (marker)") : $"loading {obj.ModelPath}…");
         }
     }
 

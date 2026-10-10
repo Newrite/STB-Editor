@@ -3,6 +3,7 @@ using Hexa.NET.ImGui;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Data;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -12,7 +13,7 @@ namespace StbEditor.App.Panels;
 /// </summary>
 internal sealed class DataDialog
 {
-    private const string PopupId = "Data###DataDialog";
+    private static string PopupId => T("Data") + "###DataDialog";
 
     private readonly EditorApp _app;
     private bool _visible;
@@ -112,29 +113,29 @@ internal sealed class DataDialog
         var loading = _app.Loader is not null;
         ImGui.BeginDisabled(loading);
 
-        ImGui.SeparatorText("Game");
+        ImGui.SeparatorText(T("Game"));
         ImGui.SetNextItemWidth(-130);
         if (ImGui.InputText("##game", ref _gameFolder, 512)) Detect();
         ImGui.SameLine();
-        if (ImGui.Button("Find installed")) { _gameFolder = GameInstall.FindInstalledGame() ?? _gameFolder; Detect(); }
+        if (ImGui.Button(T("Find installed"))) { _gameFolder = GameInstall.FindInstalledGame() ?? _gameFolder; Detect(); }
 
         if (_detected is { } game)
         {
             ImGui.TextColored(Theme.Good, game.DisplayName);
             ImGui.SameLine();
-            ImGui.TextColored(Theme.TextDim, $"· language {game.Language} · light plugins {(game.SupportsLightPlugins ? "yes" : "no")} · header {game.MaxHeaderVersion:0.00}{(game.HasBees ? " (BEES)" : "")}");
+            ImGui.TextColored(Theme.TextDim, TF($"· language {game.Language} · light plugins {(game.SupportsLightPlugins ? "yes" : "no")} · header {game.MaxHeaderVersion:0.00}{(game.HasBees ? " (BEES)" : "")}"));
         }
         else
         {
-            ImGui.TextColored(Theme.Error, _detectError ?? "Not a game folder");
+            ImGui.TextColored(Theme.Error, _detectError ?? T("Not a game folder"));
         }
 
-        ImGui.SeparatorText("Mod Organizer 2");
-        if (ImGui.RadioButton("Find next to the game", ref _mo2Mode, 0)) Detect();
+        ImGui.SeparatorText(T("Mod Organizer 2"));
+        if (ImGui.RadioButton(T("Find next to the game"), ref _mo2Mode, 0)) Detect();
         ImGui.SameLine();
-        if (ImGui.RadioButton("No MO2 (plain Data)", ref _mo2Mode, 1)) Detect();
+        if (ImGui.RadioButton(T("No MO2 (plain Data)"), ref _mo2Mode, 1)) Detect();
         ImGui.SameLine();
-        if (ImGui.RadioButton("Folder:", ref _mo2Mode, 2)) Detect();
+        if (ImGui.RadioButton(T("Folder:"), ref _mo2Mode, 2)) Detect();
 
         if (_mo2Mode == 2)
         {
@@ -146,7 +147,7 @@ internal sealed class DataDialog
         {
             ImGui.TextColored(Theme.TextDim, mo2.Folder);
             ImGui.SetNextItemWidth(260);
-            if (ImGui.BeginCombo("Profile", _profile ?? "(none)"))
+            if (ImGui.BeginCombo(T("Profile"), _profile ?? T("(none)")))
             {
                 foreach (var profile in mo2.Profiles)
                 {
@@ -163,7 +164,7 @@ internal sealed class DataDialog
         }
         else if (_mo2Mode != 1)
         {
-            ImGui.TextColored(Theme.Warning, "No MO2 instance found — plain Data folder will be used.");
+            ImGui.TextColored(Theme.Warning, T("No MO2 instance found — plain Data folder will be used."));
         }
 
         ImGui.EndDisabled();
@@ -175,19 +176,19 @@ internal sealed class DataDialog
         {
             ImGui.TextColored(Theme.Accent, _app.Loader!.Status + "...");
             ImGui.ProgressBar(-1f * (float)ImGui.GetTime(), new Vector2(-1, 0), "");
-            if (ImGui.Button("Cancel load")) _app.Loader.Cancel();
+            if (ImGui.Button(T("Cancel load"))) _app.Loader.Cancel();
         }
         else
         {
             var settings = _app.Settings;
             var startup = settings.OpenOnStartup;
-            if (ImGui.Checkbox("Open these data on startup", ref startup)) settings.OpenOnStartup = startup;
+            if (ImGui.Checkbox(T("Open these data on startup"), ref startup)) settings.OpenOnStartup = startup;
 
             ImGui.BeginDisabled(_detected is null);
-            if (ImGui.Button("Open", new Vector2(120, 0) * (ImGui.GetFontSize() / 16f))) Open();
+            if (ImGui.Button(T("Open"), new Vector2(120, 0) * (ImGui.GetFontSize() / 16f))) Open();
             ImGui.EndDisabled();
             ImGui.SameLine();
-            if (ImGui.Button("Close", new Vector2(120, 0) * (ImGui.GetFontSize() / 16f)))
+            if (ImGui.Button(T("Close"), new Vector2(120, 0) * (ImGui.GetFontSize() / 16f)))
             {
                 _visible = false;
                 ImGui.CloseCurrentPopup();

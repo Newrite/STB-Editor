@@ -7,6 +7,7 @@ using Noggog;
 using StbEditor.App.Services;
 using StbEditor.Core;
 using StbEditor.Render;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -128,7 +129,7 @@ internal sealed partial class RenderWindow
             if (_navDrag is not null && _navSelection is { } done)
             {
                 NavmeshTools.Rebuild(_navDrag);
-                CommitNavmesh("Move navmesh vertices", done.Mesh, _navDrag);
+                CommitNavmesh(T("Move navmesh vertices"), done.Mesh, _navDrag);
             }
             _navDrag = null;
             _navDragOrigin = null;
@@ -240,7 +241,7 @@ internal sealed partial class RenderWindow
             Log.Warn("navmesh: it has door triangles — the navmesh info map (NAVI) still counts the old triangle numbers until the CK finalizes it");
 
         var map = NavmeshTools.DeleteTriangles(copy, doomed);
-        CommitWithNeighbours($"Delete {doomed.Count} navmesh triangle(s)", selection.Mesh, copy, map);
+        CommitWithNeighbours(TF($"Delete {doomed.Count} navmesh triangle(s)"), selection.Mesh, copy, map);
         _navSelection = null;
     }
 
@@ -275,7 +276,7 @@ internal sealed partial class RenderWindow
     {
         if (_scene is null) return;
         var scene = _scene;
-        EditNavmesh("Drop navmesh vertices", (mesh, selection) =>
+        EditNavmesh(T("Drop navmesh vertices"), (mesh, selection) =>
         {
             foreach (var i in DragVertices(selection, mesh))
             {
@@ -304,7 +305,7 @@ internal sealed partial class RenderWindow
             if (v2.X == v2.Y || v2.Y == v2.Z || v2.X == v2.Z) doomed.Add(t);
         }
         var map = NavmeshTools.DeleteTriangles(mesh, doomed);
-        CommitWithNeighbours("Merge navmesh vertices", selection.Mesh, mesh, map);
+        CommitWithNeighbours(T("Merge navmesh vertices"), selection.Mesh, mesh, map);
         _navSelection = new NavmeshSelection { Mesh = selection.Mesh };
     }
 
@@ -313,7 +314,7 @@ internal sealed partial class RenderWindow
     {
         if (_navSelection is not { Vertices.Count: 3 } selection) return;
         var corners = selection.Vertices.ToArray();
-        EditNavmesh("Create navmesh triangle", (mesh, _) => AddTriangle(mesh, corners[0], corners[1], corners[2]));
+        EditNavmesh(T("Create navmesh triangle"), (mesh, _) => AddTriangle(mesh, corners[0], corners[1], corners[2]));
     }
 
     private static void AddTriangle(NavigationMesh mesh, int a, int b, int c)
@@ -389,7 +390,7 @@ internal sealed partial class RenderWindow
     {
         if (app.ActivePlugin is not { } active || app.Session is not { } session)
         {
-            app.ShowActiveFileDialog("A new navmesh goes into the active file — choose it first.");
+            app.ShowActiveFileDialog(T("A new navmesh goes into the active file — choose it first."));
             return;
         }
 
@@ -423,7 +424,7 @@ internal sealed partial class RenderWindow
         };
         mesh.Data.Vertices.Add(new P3Float(point.X, point.Y, point.Z));
         NavmeshTools.Rebuild(mesh);
-        _document!.CommitEdit("New navmesh", mesh, RecordPlace.Navmesh, cell: cell, world: _scene.IsInterior ? null : _scene.Worldspace);
+        _document!.CommitEdit(T("New navmesh"), mesh, RecordPlace.Navmesh, cell: cell, world: _scene.IsInterior ? null : _scene.Worldspace);
         _navSelection = new NavmeshSelection { Mesh = mesh.FormKey };
         _navSelection.Vertices.Add(0);
         Log.Warn("navmesh: new navmesh started — the navmesh info map (NAVI) is not updated yet; links to neighbouring navmeshes need the CK's finalize for now");

@@ -4,6 +4,7 @@ using Mutagen.Bethesda.Plugins;
 using StbEditor.App.Ui;
 using StbEditor.Core;
 using StbEditor.Data.Catalog;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -36,7 +37,7 @@ internal sealed class CellViewPanel : Panel
             .GroupBy(c => c.Winner.Cell!.Worldspace!.Value)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        _worlds = [new WorldItem(null, "Interiors", interiorCount)];
+        _worlds = [new WorldItem(null, T("Interiors"), interiorCount)];
         foreach (var world in (catalog.BySignature.GetValueOrDefault("WRLD") ?? []).OrderBy(w => w.EditorId))
         {
             var count = byWorld.GetValueOrDefault(world.FormKey);
@@ -105,7 +106,7 @@ internal sealed class CellViewPanel : Panel
         var catalog = app.Session!.Catalog;
         if (scene is null)
         {
-            ImGui.TextColored(Theme.TextDim, "Double-click a cell to load it; its objects show here.");
+            ImGui.TextColored(Theme.TextDim, T("Double-click a cell to load it; its objects show here."));
             return;
         }
 
@@ -134,18 +135,18 @@ internal sealed class CellViewPanel : Panel
         }
 
         var title = scene.IsInterior ? cellRecord?.EditorId ?? scene.Title : $"{cellRecord?.EditorId ?? "(wilderness)"} [{grid.Item1}, {grid.Item2}]";
-        ImGui.TextColored(Theme.TextDim, $"{title}: {_objects.Count:N0} objects");
+        ImGui.TextColored(Theme.TextDim, TF($"{title}: {_objects.Count:N0} objects"));
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##objectfilter", "Filter objects (EditorID, type, FormID)", ref _objectFilter, 256);
+        ImGui.InputTextWithHint("##objectfilter", T("Filter objects (EditorID, type, FormID)"), ref _objectFilter, 256);
 
         var flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV
             | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.Hideable;
         if (!ImGui.BeginTable("##objects", 4, flags)) return;
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Base", ImGuiTableColumnFlags.WidthStretch, 1.4f);
-        ImGui.TableSetupColumn("Type");
-        ImGui.TableSetupColumn("Ref ID");
-        ImGui.TableSetupColumn("Plugin", ImGuiTableColumnFlags.WidthStretch, 0.8f);
+        ImGui.TableSetupColumn(T("Base"), ImGuiTableColumnFlags.WidthStretch, 1.4f);
+        ImGui.TableSetupColumn(T("Type"));
+        ImGui.TableSetupColumn(T("Ref ID"));
+        ImGui.TableSetupColumn(T("Plugin"), ImGuiTableColumnFlags.WidthStretch, 0.8f);
         ImGui.TableHeadersRow();
 
         var ws = app.Session.Workspace;
@@ -162,7 +163,7 @@ internal sealed class CellViewPanel : Panel
                 var label = obj.BaseEditorId ?? ws.FormIdText(obj.Base);
                 if (obj.IsModified) label += "  *";
                 if (ImGui.Selectable(label, window.IsSelected(obj), ImGuiSelectableFlags.SpanAllColumns)) app.Select(obj.Reference);
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip(obj.ModelPath ?? "no model");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(obj.ModelPath ?? T("no model"));
                 ImGui.PopID();
                 ImGui.TableNextColumn();
                 ImGui.TextColored(Theme.TextDim, obj.BaseSignature);
@@ -197,7 +198,7 @@ internal sealed class CellViewPanel : Panel
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##cellfilter", "Filter cells", ref _filter, 256)) _dirty = true;
+        if (ImGui.InputTextWithHint("##cellfilter", T("Filter cells"), ref _filter, 256)) _dirty = true;
 
         if (_dirty) Rebuild(app);
 
@@ -207,11 +208,11 @@ internal sealed class CellViewPanel : Panel
 
         var interiors = current.Key is null;
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Editor ID", ImGuiTableColumnFlags.WidthStretch, 1.2f);
-        ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1f);
-        ImGui.TableSetupColumn("Grid", interiors ? ImGuiTableColumnFlags.DefaultHide : ImGuiTableColumnFlags.None);
-        ImGui.TableSetupColumn("Form ID");
-        ImGui.TableSetupColumn("Last change", ImGuiTableColumnFlags.WidthStretch, 0.8f);
+        ImGui.TableSetupColumn(T("Editor ID"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableSetupColumn(T("Name"), ImGuiTableColumnFlags.WidthStretch, 1f);
+        ImGui.TableSetupColumn(T("Grid"), interiors ? ImGuiTableColumnFlags.DefaultHide : ImGuiTableColumnFlags.None);
+        ImGui.TableSetupColumn(T("Form ID"));
+        ImGui.TableSetupColumn(T("Last change"), ImGuiTableColumnFlags.WidthStretch, 0.8f);
         ImGui.TableHeadersRow();
 
         // Cells created in this session (not saved yet).
@@ -225,7 +226,7 @@ internal sealed class CellViewPanel : Panel
             {
                 if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) app.RenderWindow.OpenCell(app, draft.Key);
             }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("New in this session — saved with Ctrl+S. Double-click to load.");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("New in this session — saved with Ctrl+S. Double-click to load."));
             ImGui.PopID();
             ImGui.TableNextColumn();
             ImGui.Text(draft.Cell.Name?.String ?? string.Empty);
@@ -249,13 +250,13 @@ internal sealed class CellViewPanel : Panel
                 ImGui.TableNextColumn();
 
                 ImGui.PushID(i);
-                var label = placement.IsPersistentCell ? "<persistent>" : cell.EditorId ?? "(wilderness)";
+                var label = placement.IsPersistentCell ? "<persistent>" : cell.EditorId ?? T("(wilderness)");
                 if (ImGui.Selectable(label, app.Selected == cell.FormKey, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
                 {
                     app.Select(cell.FormKey);
                     if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !placement.IsPersistentCell) app.RenderWindow.OpenCell(app, cell.FormKey);
                 }
-                if (ImGui.IsItemHovered() && !placement.IsPersistentCell) ImGui.SetTooltip("Double-click to load in the Render Window");
+                if (ImGui.IsItemHovered() && !placement.IsPersistentCell) ImGui.SetTooltip(T("Double-click to load in the Render Window"));
                 ImGui.PopID();
 
                 ImGui.TableNextColumn();

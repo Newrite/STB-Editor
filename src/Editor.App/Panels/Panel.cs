@@ -2,6 +2,7 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -17,7 +18,7 @@ internal abstract class Panel
     {
         var open = IsOpen;
         ImGui.SetNextWindowSize(new Vector2(500, 400), ImGuiCond.FirstUseEver);
-        if (ImGui.Begin(Name, ref open, WindowFlags))
+        if (ImGui.Begin(Title(Name), ref open, WindowFlags))
             DrawContent(app);
         ImGui.End();
         IsOpen = open;
@@ -34,7 +35,7 @@ internal abstract class Panel
     {
         if (app.Session is not null) return true;
 
-        var text = app.Loader is { } loader ? loader.Status + "..." : "No data loaded. File → Data...";
+        var text = app.Loader is { } loader ? loader.Status + "..." : T("No data loaded. File → Data...");
         var size = ImGui.CalcTextSize(text);
         var avail = ImGui.GetContentRegionAvail();
         ImGui.SetCursorPos(ImGui.GetCursorPos() + new Vector2(Math.Max(0, (avail.X - size.X) / 2), Math.Max(0, avail.Y / 2 - size.Y)));
@@ -61,20 +62,20 @@ internal static class StatusBar
                 }
                 else if (app.Session is { } session)
                 {
-                    ImGui.TextColored(Theme.Good, "Ready");
+                    ImGui.TextColored(Theme.Good, T("Ready"));
                     ImGui.TextColored(Theme.TextDim,
-                        $"{session.Catalog.ByKey.Count:N0} records · {session.Assets.ArchivedCount + session.Assets.LooseCount:N0} assets · loaded in {session.LoadTime.TotalSeconds:0.0} s");
-                    if (app.Saver.IsBusy) ImGui.TextColored(Theme.Warning, "· saving…");
+                        TF($"{session.Catalog.ByKey.Count:N0} records · {session.Assets.ArchivedCount + session.Assets.LooseCount:N0} assets · loaded in {session.LoadTime.TotalSeconds:0.0} s"));
+                    if (app.Saver.IsBusy) ImGui.TextColored(Theme.Warning, T("· saving…"));
                     else if (app.ActivePlugin is { } active)
-                        ImGui.TextColored(Theme.Text, $"· Active file: {active.Name}{(active.IsNew ? " (new)" : "")}");
+                        ImGui.TextColored(Theme.Text, TF($"· Active file: {active.Name}{(active.IsNew ? " (new)" : "")}"));
                     else
-                        ImGui.TextColored(Theme.TextDim, "· Active file: none (Ctrl+S asks)");
+                        ImGui.TextColored(Theme.TextDim, T("· Active file: none (Ctrl+S asks)"));
                     if (app.Document.PendingCount > 0)
-                        ImGui.TextColored(Theme.Warning, $"· {app.Document.PendingCount} unsaved");
+                        ImGui.TextColored(Theme.Warning, TF($"· {app.Document.PendingCount} unsaved"));
                 }
                 else
                 {
-                    ImGui.TextColored(Theme.TextDim, "No data loaded");
+                    ImGui.TextColored(Theme.TextDim, T("No data loaded"));
                 }
 
                 var last = Log.Lines.LastOrDefault(l => l.Level != LogLevel.Info);
@@ -106,8 +107,8 @@ internal static class DefaultLayout
 
     public static void BuildIfMissing(uint dockId, string iniFile)
     {
-        // Layouts saved before the newest panel (Landscape) existed get the new default once.
-        if (File.Exists(iniFile) && !_reset && File.ReadAllText(iniFile).Contains("[Window][Navmesh]")) return;
+        // Layouts saved before the newest change (language-independent window IDs, 0.4) get the new default once.
+        if (File.Exists(iniFile) && !_reset && File.ReadAllText(iniFile).Contains("###Navmesh]")) return;
         Build(dockId);
     }
 
@@ -132,17 +133,17 @@ internal static class DefaultLayout
         ImGuiP.DockBuilderSplitNode(center, ImGuiDir.Down, 0.25f, &bottom, &center);
         ImGuiP.DockBuilderSplitNode(left, ImGuiDir.Down, 0.40f, &leftBottom, &left);
 
-        ImGuiP.DockBuilderDockWindow("Object Window", left);
-        ImGuiP.DockBuilderDockWindow("Cell View", leftBottom);
+        ImGuiP.DockBuilderDockWindow("###Object Window", left);
+        ImGuiP.DockBuilderDockWindow("###Cell View", leftBottom);
         uint rightBottom = 0;
         ImGuiP.DockBuilderSplitNode(right, ImGuiDir.Down, 0.42f, &rightBottom, &right);
-        ImGuiP.DockBuilderDockWindow("Inspector", right);
-        ImGuiP.DockBuilderDockWindow("Preview", rightBottom);
-        ImGuiP.DockBuilderDockWindow("Landscape", rightBottom);
-        ImGuiP.DockBuilderDockWindow("Navmesh", rightBottom);
-        ImGuiP.DockBuilderDockWindow("Render Window", center);
-        ImGuiP.DockBuilderDockWindow("Log", bottom);
-        ImGuiP.DockBuilderDockWindow("Load Order", bottom);
+        ImGuiP.DockBuilderDockWindow("###Inspector", right);
+        ImGuiP.DockBuilderDockWindow("###Preview", rightBottom);
+        ImGuiP.DockBuilderDockWindow("###Landscape", rightBottom);
+        ImGuiP.DockBuilderDockWindow("###Navmesh", rightBottom);
+        ImGuiP.DockBuilderDockWindow("###Render Window", center);
+        ImGuiP.DockBuilderDockWindow("###Log", bottom);
+        ImGuiP.DockBuilderDockWindow("###Load Order", bottom);
         ImGuiP.DockBuilderFinish(dockId);
     }
 }
@@ -157,11 +158,11 @@ internal sealed class LogPanel : Panel
 
     protected override void DrawContent(EditorApp app)
     {
-        ImGui.Checkbox("Info", ref _showInfo);
+        ImGui.Checkbox(T("Info"), ref _showInfo);
         ImGui.SameLine();
-        ImGui.Checkbox("Auto-scroll", ref _autoScroll);
+        ImGui.Checkbox(T("Auto-scroll"), ref _autoScroll);
         ImGui.SameLine();
-        if (ImGui.SmallButton("Open log file"))
+        if (ImGui.SmallButton(T("Open log file")))
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.LogFile) { UseShellExecute = true });
 
         ImGui.BeginChild("##log", new Vector2(0, 0), ImGuiChildFlags.Borders, ImGuiWindowFlags.HorizontalScrollbar);

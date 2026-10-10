@@ -5,13 +5,15 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.3.0, 2026-10-10) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.4.0, 2026-10-10) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
 `App/Services/SaveController`), drag & drop placement, thumbnails; ref properties, field editor for
 any record, Duplicate, scripts + properties; new interior cells / worldspaces / exterior cells
-(`Core/NewRecords.cs`), landscape sculpt + paint; manual navmesh editing.
+(`Core/NewRecords.cs`), landscape sculpt + paint; manual navmesh editing; going through doors
+(`Data/DoorIndex.cs`, `Panels/RenderWindow.Doors.cs`), Cell View object list, Help window (F1),
+Russian / English UI (`Ui/Loc.cs`, `Ui/LangRu.cs`). .NET 10 (`global.json`).
 Next: condition editor (CTDA) + Use Info, properties of existing cells, navmesh finalize (NAVI).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,
@@ -29,11 +31,11 @@ are not committed.
 
 ```powershell
 dotnet build STB-Editor.sln -c Debug
-src\Editor.App\bin\Debug\net9.0-windows\win-x64\STBEditor.exe --game C:\Skyrim --open
+src\Editor.App\bin\Debug\net10.0-windows\win-x64\STBEditor.exe --game C:\Skyrim --open
 ```
 
 `C:\Skyrim` here and below is the example game folder (the original author's: MO2 portable instance
-`[STB] Mod Organizer`, profile `STB`); use your own. .NET SDK 9 usually lives in `C:\Program Files\dotnet`
+`[STB] Mod Organizer`, profile `STB`); use your own. .NET SDK 10 usually lives in `C:\Program Files\dotnet`
 (not always on PATH).
 
 **Never write test output into the game or the mod folders.** Tests copy plugins into a temp folder;
@@ -82,7 +84,9 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   so drag-back removes the change), `UndoStack`. Scenes re-apply it after every (re)load.
 - `src/Editor.App` — Win32 window, D3D11 (Vortice), Dear ImGui docking (Hexa.NET.ImGui +
   official Win32/D3D11 backends). `Panels/` one class per dock window, `Ui/PropertyTree` —
-  generic field tree over Mutagen getter interfaces.
+  generic field tree over Mutagen getter interfaces. **Every visible string goes through
+  `T("…")` / `TF($"…")` / `Title("…")` (`Ui/Loc.cs`) and gets a Russian entry in `Ui/LangRu.cs`;
+  `python tools/loc.py missing` must print nothing** (see DEVELOPING.md, «Перевод интерфейса»).
 - `src/Editor.Cli` — diagnostics.
 
 ## Rules learned the hard way
@@ -106,7 +110,7 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   draw them only with Markers on.
 - NiAlphaProperty blend factors: *_COLOR factors are illegal for the D3D11 alpha channel —
   map them to alpha equivalents (else E_INVALIDARG).
-- **`<CETCompat>false</CETCompat>` must stay** in Editor.App.csproj: .NET 9 marks exes
+- **`<CETCompat>false</CETCompat>` must stay** in Editor.App.csproj: .NET 9+ marks exes
   CET-compatible, and under MO2 the usvfs hooks then crash the process at startup (0xC0000005,
   before any managed code — no log, no crash report). Portable build: `package.ps1` → `dist\`.
 - UI look follows the STB build's in-game settings menu (STB SettingsMenu, `Mcm*.cpp`, not in this repo):
@@ -159,5 +163,16 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   multi-partition meshes). Skinned vertices go to the bind pose via the file's own bone nodes × NiSkinData
   bone transforms, blended per vertex (one bone is not enough: facegen bones disagree by a few units).
   Skin parts hide when their main slot (body, else lowest) is worn. `stbedit-cli npc <id>` / `npcscan`.
+- **Memory: walk a plugin's groups once.** Mutagen's stream overlay reads a group's bytes on every walk
+  and each record taken from it keeps that copy alive. Looking cells up by walking the worldspace per cell
+  kept one copy of Skyrim.esm's Tamriel group per loaded cell — 5 GB for a 5×5 grid, and 16 GB PCs froze.
+  Cells come from `RecordLookup.ModCells` (one index per plugin). Check with `stbedit-cli memprobe <cell>`
+  and `--autotest-fly <n>` (memory must stay flat).
+- Mesh/texture caches trim what was not drawn for 20 s beyond their share of the DXGI video budget
+  (`RenderWindow.TrimCaches`); holders of a `GpuModel` check `IsDisposed`. Frame limit 60 FPS (15 in background).
+- ImGuizmo: it will not start a drag while any ImGui item is hovered — over a gizmo handle the viewport
+  button is replaced by a Dummy. Its rotation is incremental on the matrix it is given: during a drag feed
+  back its own last output. `ImGuizmo.SetImGuiContext(null)` before `DestroyContext` (else AV on exit).
+  Gizmo changes are tested with `--autotest-gizmo [move]` (fake mouse via `ImGuiLayer.TestMouse`).
 - Logs: `%LOCALAPPDATA%\STBEditor\logs\editor.log`, crash reports in `crashes\`, layout in
   `layout.ini` (delete it to get the default layout back).

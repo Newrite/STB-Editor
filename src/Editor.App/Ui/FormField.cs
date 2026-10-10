@@ -1,6 +1,7 @@
 using System.Numerics;
 using Hexa.NET.ImGui;
 using Mutagen.Bethesda.Plugins;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Ui;
 
@@ -28,7 +29,7 @@ internal static class FormField
 
         var shown = value is { } v ? Describe(app, v) : string.Empty;
         var text = Typing.TryGetValue(id, out var typing) ? typing : shown;
-        if (ImGui.InputTextWithHint("##text", references ? "FormID, or + then click in the Render Window" : "FormID or EditorID", ref text, 256))
+        if (ImGui.InputTextWithHint("##text", references ? T("FormID, or + then click in the Render Window") : T("FormID or EditorID"), ref text, 256))
             Typing[id] = text;
         if (ImGui.IsItemDeactivated() && Typing.Remove(id, out var entered))
         {
@@ -68,7 +69,7 @@ internal static class FormField
             if (picking) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
             if (ImGui.Button("+", new Vector2(ImGui.GetFrameHeight(), 0))) app.RenderWindow.RequestPick(id);
             if (picking) ImGui.PopStyleColor();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Pick: click a reference in the Render Window");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Pick: click a reference in the Render Window"));
             if (app.RenderWindow.TakePick(id) is { } picked)
             {
                 value = picked.Reference;
@@ -82,7 +83,7 @@ internal static class FormField
             value = null;
             changed = true;
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Clear"));
 
         ImGui.PopID();
         return changed;

@@ -8,13 +8,14 @@ using StbEditor.App.Ui;
 using StbEditor.Core;
 using StbEditor.Data;
 using StbEditor.Data.Catalog;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
 /// <summary>World → New Interior Cell / New Worldspace: fills a draft record and opens it.</summary>
 internal sealed class NewRecordDialog(EditorApp app)
 {
-    private const string PopupId = "New record##newrecord";
+    private static string PopupId => T("New record") + "###newrecord";
 
     private enum Kind { InteriorCell, Worldspace }
 
@@ -46,7 +47,7 @@ internal sealed class NewRecordDialog(EditorApp app)
         if (app.Session is not { } session) return;
         if (app.ActivePlugin is null)
         {
-            app.ShowActiveFileDialog("New records go into the active file — choose it first.");
+            app.ShowActiveFileDialog(T("New records go into the active file — choose it first."));
             return;
         }
 
@@ -98,14 +99,14 @@ internal sealed class NewRecordDialog(EditorApp app)
         }
 
         ImGui.Text(_kind == Kind.InteriorCell ? "New interior cell" : "New worldspace");
-        ImGui.TextColored(Theme.TextDim, $"Created in {active.Name} when you save (Ctrl+S); Ctrl+Z removes it.");
+        ImGui.TextColored(Theme.TextDim, TF($"Created in {active.Name} when you save (Ctrl+S); Ctrl+Z removes it."));
         ImGui.Separator();
 
         var labelWidth = ImGui.GetFontSize() * 9;
-        Field("Editor ID", labelWidth);
+        Field(T("Editor ID"), labelWidth);
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##eid", ref _editorId, 200);
-        Field("Name (shown in game)", labelWidth);
+        Field(T("Name (shown in game)"), labelWidth);
         ImGui.SetNextItemWidth(-1);
         ImGui.InputText("##name", ref _name, 200);
 
@@ -116,9 +117,9 @@ internal sealed class NewRecordDialog(EditorApp app)
         ImGui.Spacing();
 
         var width = ImGui.GetFontSize() * 8;
-        if (ImGui.Button("Create", new Vector2(width, 0))) Create(session, active);
+        if (ImGui.Button(T("Create"), new Vector2(width, 0))) Create(session, active);
         ImGui.SameLine();
-        if (ImGui.Button("Cancel", new Vector2(width, 0)) || !open) Close();
+        if (ImGui.Button(T("Cancel"), new Vector2(width, 0)) || !open) Close();
 
         if (!_open) ImGui.CloseCurrentPopup();
         ImGui.EndPopup();
@@ -133,7 +134,7 @@ internal sealed class NewRecordDialog(EditorApp app)
 
     private void DrawInterior(float labelWidth)
     {
-        Field("Lighting template", labelWidth);
+        Field(T("Lighting template"), labelWidth);
         ImGui.SetNextItemWidth(-1);
         var current = _template == 0 ? "None — values below" : _templates[_template - 1].EditorId ?? "?";
         if (ImGui.BeginCombo("##lgtm", current, ImGuiComboFlags.HeightLarge))
@@ -146,17 +147,17 @@ internal sealed class NewRecordDialog(EditorApp app)
 
         if (_template != 0)
         {
-            ImGui.TextColored(Theme.TextDim, "The cell inherits everything from the template.");
+            ImGui.TextColored(Theme.TextDim, T("The cell inherits everything from the template."));
             return;
         }
 
-        Field("Ambient", labelWidth);
+        Field(T("Ambient"), labelWidth);
         ImGui.ColorEdit3("##amb", ref _ambient);
-        Field("Directional", labelWidth);
+        Field(T("Directional"), labelWidth);
         ImGui.ColorEdit3("##dir", ref _directional);
-        Field("Fog colour", labelWidth);
+        Field(T("Fog colour"), labelWidth);
         ImGui.ColorEdit3("##fog", ref _fog);
-        Field("Fog near / far", labelWidth);
+        Field(T("Fog near / far"), labelWidth);
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 6);
         ImGui.DragFloat("##fn", ref _fogNear, 8f, 0f, 100000f, "%.0f");
         ImGui.SameLine();
@@ -166,25 +167,25 @@ internal sealed class NewRecordDialog(EditorApp app)
 
     private void DrawWorldspace(float labelWidth)
     {
-        Field("Climate", labelWidth);
+        Field(T("Climate"), labelWidth);
         Combo("##clmt", _climates, ref _climate);
-        ImGui.Checkbox("Water", ref _hasWater);
+        ImGui.Checkbox(T("Water"), ref _hasWater);
         if (_hasWater)
         {
             ImGui.SameLine(labelWidth);
             Combo("##watr", _waters, ref _water);
-            Field("Water height", labelWidth);
+            Field(T("Water height"), labelWidth);
             ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);
             ImGui.DragFloat("##wh", ref _waterHeight, 8f, -100000f, 100000f, "%.0f");
         }
-        Field("Default land height", labelWidth);
+        Field(T("Default land height"), labelWidth);
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);
         ImGui.DragFloat("##lh", ref _landHeight, 8f, -100000f, 100000f, "%.0f");
-        ImGui.Checkbox("Small world (no LOD, like an interior-sized exterior)", ref _smallWorld);
-        Field("Starting cells", labelWidth);
+        ImGui.Checkbox(T("Small world (no LOD, like an interior-sized exterior)"), ref _smallWorld);
+        Field(T("Starting cells"), labelWidth);
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);
-        ImGui.SliderInt("##cells", ref _cells, 1, 9, "%d per side");
-        ImGui.TextColored(Theme.TextDim, "Cells around (0, 0); more are made wherever you place objects.");
+        ImGui.SliderInt("##cells", ref _cells, 1, 9, T("%d per side"));
+        ImGui.TextColored(Theme.TextDim, T("Cells around (0, 0); more are made wherever you place objects."));
     }
 
     private static void Combo(string id, List<CatalogRecord> items, ref int index)
@@ -192,7 +193,7 @@ internal sealed class NewRecordDialog(EditorApp app)
         ImGui.SetNextItemWidth(-1);
         if (items.Count == 0)
         {
-            ImGui.TextColored(Theme.TextDim, "(none in the load order)");
+            ImGui.TextColored(Theme.TextDim, T("(none in the load order)"));
             return;
         }
         index = Math.Clamp(index, 0, items.Count - 1);
@@ -220,7 +221,7 @@ internal sealed class NewRecordDialog(EditorApp app)
                 var template = _template == 0 ? null : lookup.Resolve<ILightingTemplateGetter>(_templates[_template - 1].FormKey);
                 var spec = new LightingSpec(ToColor(_ambient), ToColor(_directional), ToColor(_fog), _fogNear, _fogFar, 45, 45);
                 var draft = NewRecords.InteriorCell(active.Allocate(), release, id, name, spec, template);
-                app.Document.AddDraft($"New cell {id}", draft);
+                app.Document.AddDraft(TF($"New cell {id}"), draft);
                 Log.Info($"new interior cell {id} {draft.Key}");
                 Close();
                 app.RenderWindow.OpenCell(app, draft.Key);
@@ -238,7 +239,7 @@ internal sealed class NewRecordDialog(EditorApp app)
                     for (var x = -half; x < _cells - half; x++)
                         drafts.Add(NewRecords.ExteriorCell(active.Allocate(), release, world.Key, x, y));
 
-                app.Document.Execute($"New worldspace {id}", [], drafts);
+                app.Document.Execute(TF($"New worldspace {id}"), [], drafts);
                 Log.Info($"new worldspace {id} {world.Key} with {drafts.Count - 1} cell(s)");
                 Close();
                 app.RenderWindow.OpenExterior(app, world.Key, 0, 0);

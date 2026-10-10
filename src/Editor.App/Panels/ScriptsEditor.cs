@@ -7,6 +7,7 @@ using Mutagen.Bethesda.Skyrim;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Assets;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -73,7 +74,7 @@ internal static class ScriptsEditor
         var vmad = VmadOf(current);
         var scripts = vmad?.Scripts ?? [];
 
-        if (!ImGui.TreeNodeEx($"Scripts ({scripts.Count})###scripts", scripts.Count > 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)) return;
+        if (!ImGui.TreeNodeEx(TF($"Scripts ({scripts.Count})###scripts"), scripts.Count > 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)) return;
 
         for (var s = 0; s < scripts.Count; s++)
         {
@@ -81,30 +82,30 @@ internal static class ScriptsEditor
             var scriptIndex = s;
             ImGui.PushID(s);
             var pex = library.Get(entry.Name);
-            ImGui.SeparatorText(entry.Name + (pex is null ? "  (no .pex found)" : ""));
+            ImGui.SeparatorText(entry.Name + (pex is null ? T("  (no .pex found)") : ""));
             if (pex?.Documentation is { Length: > 0 } doc) ImGui.TextColored(Theme.TextDim, doc);
 
             var declared = pex is null ? [] : library.AllProperties(entry.Name);
             DrawProperties(app, entry, declared, scriptIndex, edit);
 
-            if (ImGui.SmallButton("Auto-fill")) AutoFill(app, entry, declared, scriptIndex, edit);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Fill empty object properties whose name matches an EditorID (as the CK does)");
+            if (ImGui.SmallButton(T("Auto-fill"))) AutoFill(app, entry, declared, scriptIndex, edit);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Fill empty object properties whose name matches an EditorID (as the CK does)"));
             ImGui.SameLine();
-            if (ImGui.SmallButton("Remove script"))
-                edit($"Remove script {entry.Name}", copy => VmadOf(copy, false).Scripts.RemoveAt(scriptIndex));
+            if (ImGui.SmallButton(T("Remove script")))
+                edit(TF($"Remove script {entry.Name}"), copy => VmadOf(copy, false).Scripts.RemoveAt(scriptIndex));
             ImGui.PopID();
         }
 
         ImGui.Separator();
         ImGui.SetNextItemWidth(-ImGui.GetFontSize() * 4);
-        ImGui.InputTextWithHint("##addscript", "Script name to attach", ref _addFilter, 128);
+        ImGui.InputTextWithHint("##addscript", T("Script name to attach"), ref _addFilter, 128);
         ImGui.SameLine();
         var exact = library.Names.FirstOrDefault(n => string.Equals(n, _addFilter.Trim(), StringComparison.OrdinalIgnoreCase));
         ImGui.BeginDisabled(exact is null || scripts.Any(x => string.Equals(x.Name, exact, StringComparison.OrdinalIgnoreCase)));
-        if (ImGui.SmallButton("Add") && exact is not null)
+        if (ImGui.SmallButton(T("Add")) && exact is not null)
         {
             var name = exact;
-            edit($"Add script {name}", copy => VmadOf(copy, true).Scripts.Add(new ScriptEntry { Name = name }));
+            edit(TF($"Add script {name}"), copy => VmadOf(copy, true).Scripts.Add(new ScriptEntry { Name = name }));
             _addFilter = string.Empty;
         }
         ImGui.EndDisabled();
@@ -123,8 +124,8 @@ internal static class ScriptsEditor
         Action<string, Action<IMajorRecord>> edit)
     {
         if (!ImGui.BeginTable("##props", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp)) return;
-        ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthStretch, 0.38f);
-        ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch, 0.62f);
+        ImGui.TableSetupColumn(T("Property"), ImGuiTableColumnFlags.WidthStretch, 0.38f);
+        ImGui.TableSetupColumn(T("Value"), ImGuiTableColumnFlags.WidthStretch, 0.62f);
         ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
 
         var names = declared.Select(d => d.Property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -142,7 +143,7 @@ internal static class ScriptsEditor
             ImGui.TableNextColumn();
             if (value is not null && ImGui.SmallButton("x"))
                 edit($"Clear {property.Name}", copy => Entry(copy, scriptIndex).Properties.RemoveAll(p => string.Equals(p.Name, property.Name, StringComparison.OrdinalIgnoreCase)));
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Back to the script's default");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Back to the script's default"));
             ImGui.PopID();
         }
 
@@ -153,7 +154,7 @@ internal static class ScriptsEditor
             ImGui.TableNextColumn();
             ImGui.PushID("stale" + stale.Name);
             ImGui.TextColored(Theme.Error, stale.Name);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Set in the plugin but not declared by the script (renamed or removed property)");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Set in the plugin but not declared by the script (renamed or removed property)"));
             ImGui.TableNextColumn();
             ImGui.TextColored(Theme.TextDim, Describe(app, stale));
             ImGui.TableNextColumn();
@@ -193,27 +194,27 @@ internal static class ScriptsEditor
             case "int":
             {
                 if (Fields.Int("##v", (value as IScriptIntPropertyGetter)?.Data ?? 0, out var v))
-                    edit($"Set {name}", copy => Property<ScriptIntProperty>(copy, scriptIndex, name).Data = v);
+                    edit(TF($"Set {name}"), copy => Property<ScriptIntProperty>(copy, scriptIndex, name).Data = v);
                 break;
             }
             case "float":
             {
                 if (Fields.Float("##v", (value as IScriptFloatPropertyGetter)?.Data ?? 0f, out var v))
-                    edit($"Set {name}", copy => Property<ScriptFloatProperty>(copy, scriptIndex, name).Data = v);
+                    edit(TF($"Set {name}"), copy => Property<ScriptFloatProperty>(copy, scriptIndex, name).Data = v);
                 break;
             }
             case "bool":
             {
                 var v = (value as IScriptBoolPropertyGetter)?.Data ?? false;
                 if (ImGui.Checkbox("##v", ref v))
-                    edit($"Set {name}", copy => Property<ScriptBoolProperty>(copy, scriptIndex, name).Data = v);
-                if (value is null) { ImGui.SameLine(); ImGui.TextColored(Theme.TextDim, "(default)"); }
+                    edit(TF($"Set {name}"), copy => Property<ScriptBoolProperty>(copy, scriptIndex, name).Data = v);
+                if (value is null) { ImGui.SameLine(); ImGui.TextColored(Theme.TextDim, T("(default)")); }
                 break;
             }
             case "string":
             {
                 if (Fields.Text("##v", (value as IScriptStringPropertyGetter)?.Data ?? string.Empty, out var v))
-                    edit($"Set {name}", copy => Property<ScriptStringProperty>(copy, scriptIndex, name).Data = v);
+                    edit(TF($"Set {name}"), copy => Property<ScriptStringProperty>(copy, scriptIndex, name).Data = v);
                 break;
             }
             default:
@@ -225,7 +226,7 @@ internal static class ScriptsEditor
                     if (v is null)
                         edit($"Clear {name}", copy => Entry(copy, scriptIndex).Properties.RemoveAll(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)));
                     else
-                        edit($"Set {name}", copy =>
+                        edit(TF($"Set {name}"), copy =>
                         {
                             var p = Property<ScriptObjectProperty>(copy, scriptIndex, name);
                             p.Object.SetTo(v.Value);
@@ -295,7 +296,7 @@ internal static class ScriptsEditor
             }
             ImGui.SameLine();
             if (ImGui.SmallButton("−"))
-                edit($"Remove {name}[{index}]", copy =>
+                edit(TF($"Remove {name}[{index}]"), copy =>
                 {
                     switch (Entry(copy, scriptIndex).Properties.First(p => p.Name == name))
                     {
@@ -309,9 +310,9 @@ internal static class ScriptsEditor
             ImGui.PopID();
         }
 
-        if (ImGui.SmallButton("+ item"))
+        if (ImGui.SmallButton(T("+ item")))
         {
-            edit($"Add {name}[]", copy =>
+            edit(TF($"Add {name}[]"), copy =>
             {
                 switch (element)
                 {
@@ -368,7 +369,7 @@ internal static class ScriptsEditor
             return;
         }
 
-        edit($"Auto-fill {entry.Name} ({fills.Count})", copy =>
+        edit(TF($"Auto-fill {entry.Name} ({fills.Count})"), copy =>
         {
             foreach (var (name, key) in fills)
             {

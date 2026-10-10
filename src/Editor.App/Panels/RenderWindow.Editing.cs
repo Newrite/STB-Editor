@@ -5,6 +5,7 @@ using Mutagen.Bethesda.Plugins;
 using StbEditor.App.Services;
 using StbEditor.Core;
 using StbEditor.Render;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -99,15 +100,15 @@ internal sealed partial class RenderWindow
 
     private void DrawEditToolbar()
     {
-        ToolButton("Select", EditTool.Select, "Q — select only");
-        ToolButton("Move", EditTool.Move, "W — move gizmo (LMB drag on the object works with any tool)");
-        ToolButton("Rotate", EditTool.Rotate, "E — rotate gizmo");
-        ToolButton("Scale", EditTool.Scale, "R — uniform scale gizmo");
-        ToolButton("Navmesh", EditTool.Navmesh, "N — navmesh editing: click vertex/triangle (Ctrl adds), drag moves (Z height), Shift+click adds a vertex (with 2 selected: a triangle), Del deletes, F drops to ground; more in the Navmesh panel");
-        ToolButton("Land", EditTool.Land, "H — landscape editing: brush settings and textures in the Landscape panel; LMB drag sculpts/paints, Shift inverts raise/lower");
+        ToolButton(T("Select"), EditTool.Select, T("Q — select only"));
+        ToolButton(T("Move"), EditTool.Move, T("W — move gizmo (LMB drag on the object works with any tool)"));
+        ToolButton(T("Rotate"), EditTool.Rotate, T("E — rotate gizmo"));
+        ToolButton(T("Scale"), EditTool.Scale, T("R — uniform scale gizmo"));
+        ToolButton(T("Navmesh"), EditTool.Navmesh, T("N — navmesh editing: click vertex/triangle (Ctrl adds), drag moves (Z height), Shift+click adds a vertex (with 2 selected: a triangle), Del deletes, F drops to ground; more in the Navmesh panel"));
+        ToolButton(T("Land"), EditTool.Land, T("H — landscape editing: brush settings and textures in the Landscape panel; LMB drag sculpts/paints, Shift inverts raise/lower"));
 
-        Toggle(_localSpace ? "Local" : "World", () => _localSpace, v => _localSpace = v, "L — gizmo axes: world or the object's own");
-        Toggle("Grid", () => _gridSnap, v => _gridSnap = v, "G — snap positions to the grid step");
+        Toggle(_localSpace ? T("Local") : T("World"), () => _localSpace, v => _localSpace = v, T("L — gizmo axes: world or the object's own"));
+        Toggle(T("Grid"), () => _gridSnap, v => _gridSnap = v, T("G — snap positions to the grid step"));
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 3.2f);
         if (ImGui.BeginCombo("##gridstep", $"{_gridStep:0}", ImGuiComboFlags.NoArrowButton))
         {
@@ -116,7 +117,7 @@ internal sealed partial class RenderWindow
             ImGui.EndCombo();
         }
         ImGui.SameLine();
-        Toggle("Angle", () => _angleSnap, v => _angleSnap = v, "Snap rotation to the angle step");
+        Toggle(T("Angle"), () => _angleSnap, v => _angleSnap = v, T("Snap rotation to the angle step"));
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 3.2f);
         if (ImGui.BeginCombo("##anglestep", $"{_angleStep:0}°", ImGuiComboFlags.NoArrowButton))
         {
@@ -548,7 +549,7 @@ internal sealed partial class RenderWindow
 
         if (!usingNow && _gizmoWasUsing)
         {
-            Commit(_tool switch { EditTool.Rotate => "Rotate", EditTool.Scale => "Scale", _ => "Move" }, _dragBefore);
+            Commit(_tool switch { EditTool.Rotate => T("Rotate"), EditTool.Scale => T("Scale"), _ => T("Move") }, _dragBefore);
             _dragBefore.Clear();
         }
 
@@ -657,7 +658,7 @@ internal sealed partial class RenderWindow
             obj.Apply(obj.State with { Position = obj.Position + new Vector3(0, 0, groundZ - bottom) });
         }
 
-        Commit("Drop to ground", before);
+        Commit(T("Drop to ground"), before);
     }
 
     /// <summary>Lowest and highest world Z of an object's model.</summary>
@@ -685,7 +686,7 @@ internal sealed partial class RenderWindow
         if (_selection.Count == 0) return;
         var before = _selection.ToDictionary(o => o, o => o.State);
         foreach (var obj in _selection) obj.Apply(obj.State with { Deleted = true });
-        Commit("Delete", before);
+        Commit(T("Delete"), before);
         _selection.Clear();
     }
 
@@ -712,7 +713,7 @@ internal sealed partial class RenderWindow
 
         if (app.ActivePlugin is null)
         {
-            app.ShowActiveFileDialog("New objects need an active file for their FormIDs. Choose one, then drop again.");
+            app.ShowActiveFileDialog(T("New objects need an active file for their FormIDs. Choose one, then drop again."));
             return;
         }
 
@@ -736,7 +737,7 @@ internal sealed partial class RenderWindow
         if (_selection.Count == 0) return;
         if (app.ActivePlugin is null)
         {
-            app.ShowActiveFileDialog("Duplicates need an active file for their FormIDs.");
+            app.ShowActiveFileDialog(T("Duplicates need an active file for their FormIDs."));
             return;
         }
 
@@ -820,7 +821,7 @@ internal sealed partial class RenderWindow
         _scene.Objects.Add(obj);
         _document!.RegisterContext(key, new RefContext(cell, _scene.Worldspace, persistent, _scene.IsInterior, null, baseKey, signature));
 
-        if (record) CommitCreation($"Place {obj.BaseEditorId}", [obj]);
+        if (record) CommitCreation(TF($"Place {obj.BaseEditorId}"), [obj]);
         return obj;
     }
 
@@ -910,7 +911,7 @@ internal sealed partial class RenderWindow
 
     private readonly Dictionary<SceneObject, RefState> _fieldEditBefore = new();
 
-    private static readonly string HelpLine =
-        "LMB select / drag move (Z height, X/Y lock) · RMB drag on selection rotate · S+drag scale · " +
-        "Shift+mouse orbit · Space+mouse pan · wheel zoom · RMB+WASD fly · W/E/R gizmo · F drop · C focus · T top · Del delete · Ctrl+Z undo";
+    private static string HelpLine =>
+        T("LMB select / drag move (Z height, X/Y lock) · RMB drag on selection rotate · S+drag scale · ") +
+        T("Shift+mouse orbit · Space+mouse pan · wheel zoom · RMB+WASD fly · W/E/R gizmo · F drop · C focus · T top · Del delete · Ctrl+Z undo · F1 help");
 }

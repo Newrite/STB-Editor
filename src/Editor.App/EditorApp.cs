@@ -8,6 +8,7 @@ using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Render;
 using StbEditor.Data;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App;
 
@@ -87,6 +88,11 @@ internal sealed class EditorApp : IDisposable
         ];
         foreach (var panel in _panels) panel.IsOpen = !settings.ClosedPanels.Contains(panel.Name);
         Loc.Russian = settings.Language == "ru";
+        // --lang en|ru: this run only (screenshots); --show-help opens the keys window.
+        var cliArgs0 = Environment.GetCommandLineArgs();
+        var lang = Array.IndexOf(cliArgs0, "--lang");
+        if (lang >= 0 && lang + 1 < cliArgs0.Length) Loc.Russian = cliArgs0[lang + 1] == "ru";
+        if (cliArgs0.Contains("--show-help")) _help.Show();
 
         if (options.Game is not null) settings.GameFolder = options.Game;
         if (options.Mo2 is not null) settings.Mo2Folder = options.Mo2;
@@ -143,7 +149,7 @@ internal sealed class EditorApp : IDisposable
         if (Session is null || Saver.IsBusy) return;
         if (ActivePlugin is null)
         {
-            _activeDialog.Show(saveAfter: true, "Choose where to save.");
+            _activeDialog.Show(saveAfter: true, T("Choose where to save."));
             return;
         }
         if (Document.PendingCount == 0)
@@ -447,7 +453,7 @@ internal sealed class EditorApp : IDisposable
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         var (used, budget) = _graphics.VideoMemory;
         Log.Info($"autotest-fly: step {_flySteps}/{total} cell {RenderWindow.Scene?.CenterCell}: private {process.PrivateMemorySize64 >> 20} MB, " +
-            $"managed {GC.GetTotalMemory(false) >> 20} MB, video {used >> 20}/{budget >> 20} MB, meshes {RenderWindow.Meshes?.Count} ({RenderWindow.Meshes?.Bytes >> 20} MB), textures {RenderWindow.Textures?.Count} ({RenderWindow.Textures?.Bytes >> 20} MB), " +
+            $"managed {GC.GetTotalMemory(false) >> 20} MB (GC committed {GC.GetGCMemoryInfo().TotalCommittedBytes >> 20} MB), video {used >> 20}/{budget >> 20} MB, meshes {RenderWindow.Meshes?.Count} ({RenderWindow.Meshes?.Bytes >> 20} MB), textures {RenderWindow.Textures?.Count} ({RenderWindow.Textures?.Bytes >> 20} MB), " +
             $"objects {RenderWindow.Scene?.Objects.Count}");
         if (_flySteps >= total) _flyDone = true;
     }
@@ -537,7 +543,7 @@ internal sealed class EditorApp : IDisposable
                 var record = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve(source.FormKey)!;
                 var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)record.Duplicate(ActivePlugin!.Allocate());
                 copy.EditorID = source.EditorId + "STBDup";
-                StbEditor.Core.OverrideEditing.CommitEdit(Document, "Duplicate", copy, StbEditor.Core.RecordPlace.TopLevel);
+                StbEditor.Core.OverrideEditing.CommitEdit(Document, T("Duplicate"), copy, StbEditor.Core.RecordPlace.TopLevel);
                 _dupKey = copy.FormKey;
                 Log.Info($"autotest-dup: {copy.EditorID} {copy.FormKey} in catalog: {session.Catalog.Get(copy.FormKey) is not null}");
                 RenderWindow.PlaceForTest(this, copy.FormKey, scene.Focus);
@@ -573,7 +579,7 @@ internal sealed class EditorApp : IDisposable
             {
                 SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorLandView.esp"), true, false, session.Game, session.Workspace.DefaultEncoding));
                 var world = StbEditor.Core.NewRecords.Worldspace(ActivePlugin!.Allocate(), ActivePlugin.Allocate(), session.Game.Release, "STBLandView", null, null, null, -1e5f, 0f, true);
-                Document.Execute("New worldspace", [], [world]);
+                Document.Execute(T("New worldspace"), [], [world]);
                 _landViewWorld = world.Key;
                 RenderWindow.OpenExterior(this, world.Key, 0, 0);
                 _landViewStage = 1;
@@ -698,7 +704,7 @@ internal sealed class EditorApp : IDisposable
             {
                 SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorNewAutotest.esp"), true, false, session.Game, session.Workspace.DefaultEncoding));
                 var cell = StbEditor.Core.NewRecords.InteriorCell(ActivePlugin!.Allocate(), session.Game.Release, "STBAutotestRoom", "Комната", StbEditor.Core.LightingSpec.Default, null);
-                Document.AddDraft("New cell", cell);
+                Document.AddDraft(T("New cell"), cell);
                 _newTestCell = cell.Key;
                 RenderWindow.OpenCell(this, cell.Key);
                 _newTestStage = 1;
@@ -771,78 +777,78 @@ internal sealed class EditorApp : IDisposable
     {
         if (!ImGui.BeginMainMenuBar()) return;
 
-        if (ImGui.BeginMenu("File"))
+        if (ImGui.BeginMenu(T("File")))
         {
-            if (ImGui.MenuItem("Data...", "Ctrl+O")) _dataDialog.Show();
+            if (ImGui.MenuItem(T("Data..."), T("Ctrl+O"))) _dataDialog.Show();
             ImGui.Separator();
-            if (ImGui.MenuItem("Active File...", (string?)null, false, Session is not null)) ShowActiveFileDialog();
-            var saveLabel = ActivePlugin is { } ap ? $"Save into {ap.Name}" : "Save...";
-            if (ImGui.MenuItem(saveLabel, "Ctrl+S", false, Session is not null && !Saver.IsBusy)) Save();
+            if (ImGui.MenuItem(T("Active File..."), (string?)null, false, Session is not null)) ShowActiveFileDialog();
+            var saveLabel = ActivePlugin is { } ap ? TF($"Save into {ap.Name}") : T("Save...");
+            if (ImGui.MenuItem(saveLabel, T("Ctrl+S"), false, Session is not null && !Saver.IsBusy)) Save();
             ImGui.Separator();
             if (ImGui.MenuItem("Exit")) Environment.Exit(0);
             ImGui.EndMenu();
         }
 
-        if (ImGui.BeginMenu("Edit"))
+        if (ImGui.BeginMenu(T("Edit")))
         {
             var history = Document.History;
-            if (ImGui.MenuItem(history.UndoName is { } u ? $"Undo {u}" : "Undo", "Ctrl+Z", false, history.CanUndo)) Document.Undo();
-            if (ImGui.MenuItem(history.RedoName is { } r ? $"Redo {r}" : "Redo", "Ctrl+Y", false, history.CanRedo)) Document.Redo();
+            if (ImGui.MenuItem(history.UndoName is { } u ? TF($"Undo {u}") : T("Undo"), T("Ctrl+Z"), false, history.CanUndo)) Document.Undo();
+            if (ImGui.MenuItem(history.RedoName is { } r ? TF($"Redo {r}") : T("Redo"), T("Ctrl+Y"), false, history.CanRedo)) Document.Redo();
             ImGui.Separator();
-            ImGui.TextColored(Theme.TextDim, $"{Document.ChangedCount} changed reference(s), {Document.Drafts.Count} new record(s), not saved");
+            ImGui.TextColored(Theme.TextDim, TF($"{Document.ChangedCount} changed reference(s), {Document.Drafts.Count} new record(s), not saved"));
             ImGui.EndMenu();
         }
 
-        if (ImGui.BeginMenu("World"))
+        if (ImGui.BeginMenu(T("World")))
         {
             var ready = Session is not null;
-            if (ImGui.MenuItem("New Interior Cell...", (string?)null, false, ready)) _newRecordDialog.ShowInteriorCell();
-            if (ImGui.MenuItem("New Worldspace...", (string?)null, false, ready)) _newRecordDialog.ShowWorldspace();
+            if (ImGui.MenuItem(T("New Interior Cell..."), (string?)null, false, ready)) _newRecordDialog.ShowInteriorCell();
+            if (ImGui.MenuItem(T("New Worldspace..."), (string?)null, false, ready)) _newRecordDialog.ShowWorldspace();
             ImGui.Separator();
-            ImGui.TextColored(Theme.TextDim, "Placing an object where no exterior cell exists creates the cell.");
+            ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();
         }
 
-        if (ImGui.BeginMenu("Navigate"))
+        if (ImGui.BeginMenu(T("Navigate")))
         {
-            if (ImGui.MenuItem("Back", "Alt+Left", false, _historyIndex > 0)) Back();
-            if (ImGui.MenuItem("Forward", "Alt+Right", false, _historyIndex < _history.Count - 1)) Forward();
+            if (ImGui.MenuItem(T("Back"), T("Alt+Left"), false, _historyIndex > 0)) Back();
+            if (ImGui.MenuItem(T("Forward"), T("Alt+Right"), false, _historyIndex < _history.Count - 1)) Forward();
             ImGui.EndMenu();
         }
 
-        if (ImGui.BeginMenu("View"))
+        if (ImGui.BeginMenu(T("View")))
         {
             foreach (var panel in _panels)
             {
                 var open = panel.IsOpen;
-                if (ImGui.MenuItem(panel.Name, (string?)null, open)) panel.IsOpen = !open;
+                if (ImGui.MenuItem(T(panel.Name), (string?)null, open)) panel.IsOpen = !open;
             }
             ImGui.Separator();
-            if (ImGui.BeginMenu("Frame limit"))
+            if (ImGui.BeginMenu(T("Frame limit")))
             {
-                foreach (var (label, fps) in new[] { ("30 FPS", 30), ("60 FPS", 60), ("120 FPS", 120), ("Monitor refresh (vsync)", 0) })
+                foreach (var (label, fps) in new[] { ("30 FPS", 30), ("60 FPS", 60), ("120 FPS", 120), (T("Monitor refresh (vsync)"), 0) })
                     if (ImGui.MenuItem(label, (string?)null, _settings.FpsLimit == fps)) _settings.FpsLimit = fps;
                 ImGui.Separator();
-                ImGui.TextColored(Theme.TextDim, "Lower = cooler GPU; 15 FPS while in the background.");
+                ImGui.TextColored(Theme.TextDim, T("Lower = cooler GPU; 15 FPS while in the background."));
                 ImGui.EndMenu();
             }
-            if (ImGui.BeginMenu("Language / Язык"))
+            if (ImGui.BeginMenu(T("Language / Язык")))
             {
-                if (ImGui.MenuItem("English", (string?)null, !Loc.Russian)) SetLanguage("en");
+                if (ImGui.MenuItem(T("English"), (string?)null, !Loc.Russian)) SetLanguage("en");
                 if (ImGui.MenuItem("Русский", (string?)null, Loc.Russian)) SetLanguage("ru");
                 ImGui.EndMenu();
             }
             ImGui.Separator();
-            if (ImGui.MenuItem("Reset layout")) DefaultLayout.RequestReset();
+            if (ImGui.MenuItem(T("Reset layout"))) DefaultLayout.RequestReset();
             ImGui.EndMenu();
         }
 
-        if (ImGui.BeginMenu("Help"))
+        if (ImGui.BeginMenu(T("Help")))
         {
-            if (ImGui.MenuItem("Keys and features", "F1")) _help.Show();
-            if (ImGui.MenuItem("Project page (GitHub)"))
+            if (ImGui.MenuItem(T("Keys and features"), "F1")) _help.Show();
+            if (ImGui.MenuItem(T("Project page (GitHub)")))
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/STB-Team/STB-Editor") { UseShellExecute = true });
-            if (ImGui.MenuItem("Open log file"))
+            if (ImGui.MenuItem(T("Open log file")))
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.LogFile) { UseShellExecute = true });
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, $"STB Editor {typeof(EditorApp).Assembly.GetName().Version?.ToString(3)}");
@@ -851,8 +857,8 @@ internal sealed class EditorApp : IDisposable
 
         if (Session is { } session)
         {
-            ImGui.SameLine(ImGui.GetWindowWidth() - ImGui.CalcTextSize($"{session.Game.DisplayName}  ·  {session.Game.Mo2?.ProfileName ?? "Data"}  ·  {session.Workspace.Active.Count} plugins").X - 16);
-            ImGui.TextColored(Theme.TextDim, $"{session.Game.DisplayName}  ·  {session.Game.Mo2?.ProfileName ?? "Data"}  ·  {session.Workspace.Active.Count} plugins");
+            ImGui.SameLine(ImGui.GetWindowWidth() - ImGui.CalcTextSize(TF($"{session.Game.DisplayName}  ·  {session.Game.Mo2?.ProfileName ?? "Data"}  ·  {session.Workspace.Active.Count} plugins")).X - 16);
+            ImGui.TextColored(Theme.TextDim, TF($"{session.Game.DisplayName}  ·  {session.Game.Mo2?.ProfileName ?? "Data"}  ·  {session.Workspace.Active.Count} plugins"));
         }
 
         ImGui.EndMainMenuBar();

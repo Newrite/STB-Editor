@@ -7,6 +7,7 @@ using Loqui;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Strings;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Ui;
 
@@ -51,8 +52,8 @@ internal static class PropertyTree
         if (!ImGui.BeginTable("##props", 2, flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Field", ImGuiTableColumnFlags.WidthStretch, 0.42f);
-        ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch, 0.58f);
+        ImGui.TableSetupColumn(T("Field"), ImGuiTableColumnFlags.WidthStretch, 0.42f);
+        ImGui.TableSetupColumn(T("Value"), ImGuiTableColumnFlags.WidthStretch, 0.58f);
         ImGui.TableHeadersRow();
 
         DrawMembers(app, root, 0);
@@ -92,7 +93,7 @@ internal static class PropertyTree
         {
             Leaf(label);
             ImGui.TableNextColumn();
-            ImGui.TextColored(Theme.Error, "read error: " + error);
+            ImGui.TextColored(Theme.Error, T("read error: ") + error);
             return;
         }
 
@@ -138,7 +139,7 @@ internal static class PropertyTree
             {
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
-                ImGui.TextColored(Theme.TextDim, $"… more than {ListPageSize} items, use the cell or record views");
+                ImGui.TextColored(Theme.TextDim, TF($"… more than {ListPageSize} items, use the cell or record views"));
                 return;
             }
 
@@ -158,7 +159,7 @@ internal static class PropertyTree
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
-            ImGui.TextColored(Theme.TextDim, "(empty)");
+            ImGui.TextColored(Theme.TextDim, T("(empty)"));
         }
     }
 
@@ -198,17 +199,17 @@ internal static class PropertyTree
                 FormKey? current = link.FormKeyNullable;
                 var signatures = SignaturesFor(link);
                 if (FormField.Draw(app, key, ref current, signatures, references: signatures is null && IsReferenceLink(link)))
-                    Apply($"Set {label}", key, target => SetLink(target, current));
+                    Apply(TF($"Set {label}"), key, target => SetLink(target, current));
                 return true;
             }
             case bool b:
-                if (ImGui.Checkbox("##v", ref b)) Apply($"Set {label}", key, Setter(b));
+                if (ImGui.Checkbox("##v", ref b)) Apply(TF($"Set {label}"), key, Setter(b));
                 return true;
             case string text:
             {
                 var buffer = Pending.TryGetValue(key, out var p) ? (string)p : text;
                 if (ImGui.InputText("##v", ref buffer, 1024)) Pending[key] = buffer;
-                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply($"Set {label}", key, Setter((string)done));
+                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply(TF($"Set {label}"), key, Setter((string)done));
                 return true;
             }
             case ITranslatedStringGetter translated:
@@ -216,21 +217,21 @@ internal static class PropertyTree
                 var buffer = Pending.TryGetValue(key, out var p) ? (string)p : translated.String ?? string.Empty;
                 if (ImGui.InputText("##v", ref buffer, 1024)) Pending[key] = buffer;
                 if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done))
-                    Apply($"Set {label}", key, Setter(new TranslatedString(TranslatedString.DefaultLanguage, (string)done)));
+                    Apply(TF($"Set {label}"), key, Setter(new TranslatedString(TranslatedString.DefaultLanguage, (string)done)));
                 return true;
             }
             case float f:
             {
                 var v = Pending.TryGetValue(key, out var p) ? (float)p : f;
                 if (ImGui.DragFloat("##v", ref v, Math.Max(Math.Abs(f) * 0.01f, 0.01f), 0, 0, "%.4g")) Pending[key] = v;
-                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply($"Set {label}", key, Setter((float)done));
+                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply(TF($"Set {label}"), key, Setter((float)done));
                 return true;
             }
             case double d:
             {
                 var v = (float)(Pending.TryGetValue(key, out var p) ? (double)p : d);
                 if (ImGui.DragFloat("##v", ref v, 0.01f)) Pending[key] = (double)v;
-                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply($"Set {label}", key, Setter((double)done));
+                if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done)) Apply(TF($"Set {label}"), key, Setter((double)done));
                 return true;
             }
             case int or uint or short or ushort or byte or sbyte or long:
@@ -242,7 +243,7 @@ internal static class PropertyTree
                 if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done))
                 {
                     var typed = Convert.ChangeType((long)done, value!.GetType());
-                    Apply($"Set {label}", key, Setter(typed));
+                    Apply(TF($"Set {label}"), key, Setter(typed));
                 }
                 return true;
             }
@@ -256,7 +257,7 @@ internal static class PropertyTree
                 if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done))
                 {
                     var r = (Vector3)done;
-                    Apply($"Set {label}", key, Setter(new Noggog.P3Float(r.X, r.Y, r.Z)));
+                    Apply(TF($"Set {label}"), key, Setter(new Noggog.P3Float(r.X, r.Y, r.Z)));
                 }
                 return true;
             }
@@ -267,7 +268,7 @@ internal static class PropertyTree
                 if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done))
                 {
                     var r = (Vector2)done;
-                    Apply($"Set {label}", key, Setter(new Noggog.P2Float(r.X, r.Y)));
+                    Apply(TF($"Set {label}"), key, Setter(new Noggog.P2Float(r.X, r.Y)));
                 }
                 return true;
             }
@@ -278,7 +279,7 @@ internal static class PropertyTree
                 if (ImGui.IsItemDeactivatedAfterEdit() && Pending.Remove(key, out var done))
                 {
                     var c = (Vector4)done * 255f;
-                    Apply($"Set {label}", key, Setter(System.Drawing.Color.FromArgb((int)Math.Round(c.W), (int)Math.Round(c.X), (int)Math.Round(c.Y), (int)Math.Round(c.Z))));
+                    Apply(TF($"Set {label}"), key, Setter(System.Drawing.Color.FromArgb((int)Math.Round(c.W), (int)Math.Round(c.X), (int)Math.Round(c.Y), (int)Math.Round(c.Z))));
                 }
                 return true;
             }
@@ -303,7 +304,7 @@ internal static class PropertyTree
                     if (ImGui.Checkbox(flag.ToString(), ref on))
                     {
                         var next = on ? raw | bit : raw & ~bit;
-                        Apply($"Set {label}", key, Setter(Enum.ToObject(type, next)));
+                        Apply(TF($"Set {label}"), key, Setter(Enum.ToObject(type, next)));
                     }
                 }
                 ImGui.EndCombo();
@@ -314,7 +315,7 @@ internal static class PropertyTree
         if (!ImGui.BeginCombo("##v", e.ToString())) return;
         foreach (var option in values)
             if (ImGui.Selectable(option.ToString(), Equals(option, e)))
-                Apply($"Set {label}", key, Setter(option));
+                Apply(TF($"Set {label}"), key, Setter(option));
         ImGui.EndCombo();
     }
 
@@ -360,7 +361,7 @@ internal static class PropertyTree
             }
             if (value is null)
             {
-                link.GetType().GetMethod("Clear")?.Invoke(link, null);
+                link.GetType().GetMethod(T("Clear"))?.Invoke(link, null);
                 return;
             }
         }
@@ -394,9 +395,9 @@ internal static class PropertyTree
         ImGui.TableNextColumn();
         var key = PathKey();
         ImGui.PushID("add" + key);
-        if (ImGui.SmallButton("+ add"))
+        if (ImGui.SmallButton(T("+ add")))
         {
-            Apply("Add item", key, target =>
+            Apply(T("Add item"), key, target =>
             {
                 var t = (SetTarget)target;
                 if (t.Get() is not IList items) throw new InvalidOperationException("not a list");
@@ -407,9 +408,9 @@ internal static class PropertyTree
             });
         }
         ImGui.SameLine();
-        if (ImGui.SmallButton("− last"))
+        if (ImGui.SmallButton(T("− last")))
         {
-            Apply("Remove item", key, target =>
+            Apply(T("Remove item"), key, target =>
             {
                 if (((SetTarget)target).Get() is IList { Count: > 0 } items) items.RemoveAt(items.Count - 1);
             });
@@ -486,7 +487,7 @@ internal static class PropertyTree
             case Enum e:
                 ImGui.Text(e.ToString());
                 ImGui.SameLine();
-                ImGui.TextColored(Theme.TextDim, $"(0x{Convert.ToUInt64(e):X})");
+                ImGui.TextColored(Theme.TextDim, TF($"(0x{Convert.ToUInt64(e):X})"));
                 break;
 
             case string s:
@@ -519,13 +520,13 @@ internal static class PropertyTree
         var session = app.Session!;
         var record = session.Catalog.Get(k);
         var text = record is null
-            ? $"{session.Workspace.FormIdText(k)}  (not in catalog)"
+            ? TF($"{session.Workspace.FormIdText(k)}  (not in catalog)")
             : $"{record.EditorId ?? record.Name ?? "?"}  [{record.Signature}:{session.Workspace.FormIdText(k)}]";
 
         ImGui.PushStyleColor(ImGuiCol.Text, record is null ? Theme.TextDim : Theme.Accent);
         if (ImGui.Selectable(text, false)) app.Select(k);
         ImGui.PopStyleColor();
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{k}\nClick to open");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(TF($"{k}\nClick to open"));
     }
 
     private static bool IsComposite(object? value) => value switch
@@ -589,7 +590,7 @@ internal static class PropertyTree
         foreach (var iface in value.GetType().GetInterfaces())
         {
             if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>))
-                return (int)iface.GetProperty("Count")!.GetValue(value)!;
+                return (int)iface.GetProperty(T("Count"))!.GetValue(value)!;
         }
         return -1;
     }
@@ -618,7 +619,7 @@ internal static class PropertyTree
         const int max = 64;
         var text = Convert.ToHexString(bytes.Length > max ? bytes[..max] : bytes);
         var spaced = string.Join(' ', Enumerable.Range(0, text.Length / 2).Select(i => text.Substring(i * 2, 2)));
-        return bytes.Length > max ? $"{spaced} … ({bytes.Length} bytes)" : $"{spaced}  ({bytes.Length} bytes)";
+        return bytes.Length > max ? TF($"{spaced} … ({bytes.Length} bytes)") : TF($"{spaced}  ({bytes.Length} bytes)");
     }
 
     /// <summary>

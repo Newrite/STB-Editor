@@ -1,6 +1,7 @@
 using Hexa.NET.ImGui;
 using Mutagen.Bethesda.Skyrim;
 using StbEditor.App.Ui;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -9,10 +10,10 @@ internal sealed class NavmeshPanel : Panel
 {
     private static readonly (string Label, NavmeshTriangle.Flag Flag, string Tip)[] Flags =
     [
-        ("Water", NavmeshTriangle.Flag.Water, "Actors swim here"),
-        ("Preferred", NavmeshTriangle.Flag.Preferred, "Pathing prefers these triangles (roads, paths)"),
-        ("No large creatures", NavmeshTriangle.Flag.NoLargeCreatures, "Too tight for giants, dragons, mammoths"),
-        ("Overlapping", NavmeshTriangle.Flag.Overlapping, "Lies over another triangle (bridges, stairs over floors)"),
+        (T("Water"), NavmeshTriangle.Flag.Water, T("Actors swim here")),
+        (T("Preferred"), NavmeshTriangle.Flag.Preferred, T("Pathing prefers these triangles (roads, paths)")),
+        (T("No large creatures"), NavmeshTriangle.Flag.NoLargeCreatures, T("Too tight for giants, dragons, mammoths")),
+        (T("Overlapping"), NavmeshTriangle.Flag.Overlapping, T("Lies over another triangle (bridges, stairs over floors)")),
     ];
 
     public override string Name => "Navmesh";
@@ -24,29 +25,29 @@ internal sealed class NavmeshPanel : Panel
 
         var editing = window.NavmeshMode;
         if (editing) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
-        if (ImGui.Button(editing ? "Editing navmesh (N)" : "Edit navmesh (N)")) window.SetNavmeshMode(!editing);
+        if (ImGui.Button(editing ? T("Editing navmesh (N)") : T("Edit navmesh (N)"))) window.SetNavmeshMode(!editing);
         if (editing) ImGui.PopStyleColor();
 
         var scene = window.Scene;
         if (scene is null)
         {
-            ImGui.TextColored(Theme.TextDim, "Load a cell first.");
+            ImGui.TextColored(Theme.TextDim, T("Load a cell first."));
             return;
         }
 
-        ImGui.TextColored(Theme.TextDim, $"{scene.Navmeshes.Count} navmesh(es) loaded, {scene.Navmeshes.Sum(n => n.Record.Data?.Triangles.Count ?? 0):N0} triangles");
-        ImGui.TextWrapped("Click: vertex or triangle (Ctrl adds). Drag: move (hold Z for height). Shift+click on the ground: new vertex — with 2 selected it also makes the triangle. Del deletes, F drops to the ground.");
+        ImGui.TextColored(Theme.TextDim, TF($"{scene.Navmeshes.Count} navmesh(es) loaded, {scene.Navmeshes.Sum(n => n.Record.Data?.Triangles.Count ?? 0):N0} triangles"));
+        ImGui.TextWrapped(T("Click: vertex or triangle (Ctrl adds). Drag: move (hold Z for height). Shift+click on the ground: new vertex — with 2 selected it also makes the triangle. Del deletes, F drops to the ground."));
         ImGui.Separator();
 
         if (window.NavSelection is not { } selection || selection.IsEmpty)
         {
-            ImGui.TextColored(Theme.TextDim, "Nothing selected.");
+            ImGui.TextColored(Theme.TextDim, T("Nothing selected."));
             DrawLegend();
             return;
         }
 
         var view = scene.Navmeshes.FirstOrDefault(n => n.Key == selection.Mesh);
-        ImGui.Text($"{app.Session!.Workspace.FormIdText(selection.Mesh)}: {selection.Vertices.Count} vertex(es), {selection.Triangles.Count} triangle(s)");
+        ImGui.Text(TF($"{app.Session!.Workspace.FormIdText(selection.Mesh)}: {selection.Vertices.Count} vertex(es), {selection.Triangles.Count} triangle(s)"));
 
         if (selection.Triangles.Count > 0 && view?.Record.Data is { } data)
         {
@@ -56,7 +57,7 @@ internal sealed class NavmeshPanel : Panel
                 var on = states.Count > 0 && states.All(s => s);
                 var mixed = states.Distinct().Count() > 1;
                 if (mixed) ImGui.PushStyleColor(ImGuiCol.Text, Theme.TextDim);
-                if (ImGui.Checkbox(label + (mixed ? " (mixed)" : ""), ref on))
+                if (ImGui.Checkbox(T(label) + (mixed ? T(" (mixed)") : ""), ref on))
                 {
                     var set = on;
                     window.EditNavmesh($"{(set ? "Set" : "Clear")} {label}", (mesh, sel) =>
@@ -67,19 +68,19 @@ internal sealed class NavmeshPanel : Panel
                     });
                 }
                 if (mixed) ImGui.PopStyleColor();
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip(tip);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(T(tip));
             }
         }
 
-        if (ImGui.Button("Delete (Del)")) window.DeleteNavmeshSelection();
+        if (ImGui.Button(T("Delete (Del)"))) window.DeleteNavmeshSelection();
         ImGui.SameLine();
-        if (ImGui.Button("Drop to ground (F)")) window.DropNavmeshVertices();
+        if (ImGui.Button(T("Drop to ground (F)"))) window.DropNavmeshVertices();
         ImGui.BeginDisabled(selection.Vertices.Count != 3);
-        if (ImGui.Button("Triangle from 3 vertices")) window.CreateNavmeshTriangle();
+        if (ImGui.Button(T("Triangle from 3 vertices"))) window.CreateNavmeshTriangle();
         ImGui.EndDisabled();
         ImGui.SameLine();
         ImGui.BeginDisabled(selection.Vertices.Count < 2);
-        if (ImGui.Button("Merge vertices")) window.MergeNavmeshVertices();
+        if (ImGui.Button(T("Merge vertices"))) window.MergeNavmeshVertices();
         ImGui.EndDisabled();
         DrawLegend();
     }
@@ -87,8 +88,8 @@ internal sealed class NavmeshPanel : Panel
     private static void DrawLegend()
     {
         ImGui.Separator();
-        ImGui.TextColored(Theme.TextDim, "Colours: green walkable · yellow preferred · blue water · orange door · purple no large creatures.");
-        ImGui.TextColored(Theme.TextDim, "Edges: red = open border, light blue = linked to the next navmesh.");
-        ImGui.TextColored(Theme.TextDim, "Generation and finalize (NAVI, door links) are not done here yet.");
+        ImGui.TextColored(Theme.TextDim, T("Colours: green walkable · yellow preferred · blue water · orange door · purple no large creatures."));
+        ImGui.TextColored(Theme.TextDim, T("Edges: red = open border, light blue = linked to the next navmesh."));
+        ImGui.TextColored(Theme.TextDim, T("Generation and finalize (NAVI, door links) are not done here yet."));
     }
 }

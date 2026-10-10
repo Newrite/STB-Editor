@@ -7,6 +7,7 @@ using StbEditor.App.Ui;
 using StbEditor.Data.Catalog;
 using StbEditor.Core;
 using StbEditor.Render;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -197,7 +198,7 @@ internal sealed partial class RenderWindow : Panel
 
         var builder = Builder(session);
         var radius = _gridRadius;
-        _loadingTitle = $"cells around {cx}, {cy}";
+        _loadingTitle = TF($"cells around {cx}, {cy}");
         _streaming = true;
         _loading = Task.Run(() => builder.BuildExterior(world, cx, cy, radius));
     }
@@ -207,7 +208,7 @@ internal sealed partial class RenderWindow : Panel
 
     /// <summary>
     /// Every couple of seconds: meshes and textures not drawn for 20 s go once the caches pass their
-    /// share of the video memory the OS gives us (on a 6 GB card ~1.5 GB textures, ~0.8 GB meshes).
+    /// share of the video memory the OS gives us (on a 6 GB card ~1.3 GB textures, ~0.5 GB meshes).
     /// Without this an exterior flight kept every cell it passed — on 16 GB machines Windows started
     /// paging and the whole PC froze.
     /// </summary>
@@ -223,8 +224,8 @@ internal sealed partial class RenderWindow : Panel
         var cli = Environment.GetCommandLineArgs();
         var forced = Array.IndexOf(cli, "--video-budget");
         if (forced >= 0 && forced + 1 < cli.Length && long.TryParse(cli[forced + 1], out var mb)) budget = (ulong)mb << 20;
-        var textureBudget = Math.Clamp((long)(budget * 0.30), 128L << 20, 2048L << 20);
-        var meshBudget = Math.Clamp((long)(budget * 0.15), 64L << 20, 1024L << 20);
+        var textureBudget = Math.Clamp((long)(budget * 0.25), 128L << 20, 2048L << 20);
+        var meshBudget = Math.Clamp((long)(budget * 0.10), 64L << 20, 1024L << 20);
         var textures = _renderer.Textures.Trim(textureBudget, 20_000);
         var meshes = _renderer.Meshes.Trim(meshBudget, 20_000);
         if (textures + meshes > 0)
@@ -416,20 +417,20 @@ internal sealed partial class RenderWindow : Panel
 
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);
         var shading = (int)options.Shading;
-        if (ImGui.Combo("##shading", ref shading, "Lit\0Unlit\0Normals\0Untextured\0")) options.Shading = (ShadingMode)shading;
+        if (ImGui.Combo("##shading", ref shading, T("Lit\0Unlit\0Normals\0Untextured\0"))) options.Shading = (ShadingMode)shading;
         ImGui.SameLine();
 
-        Toggle("Wire", () => options.Wireframe, v => options.Wireframe = v, "Wireframe (CK: W)");
-        Toggle("Markers", () => options.ShowMarkers, v => options.ShowMarkers = v, "Editor markers, model-less lights, actors (CK: M)");
-        Toggle("Disabled", () => options.ShowInitiallyDisabled, v => options.ShowInitiallyDisabled = v, "Initially disabled references (tinted purple)");
-        Toggle("Water", () => options.ShowWater, v => options.ShowWater = v, null);
-        Toggle("Land", () => options.ShowTerrain, v => options.ShowTerrain = v, null);
-        Toggle("Fog", () => options.Fog, v => options.Fog = v, null);
-        Toggle("Borders", () => options.CellBorders, v => options.CellBorders = v, "Cell borders (CK: B)");
-        Toggle("Navmesh", () => options.ShowNavmesh, v => options.ShowNavmesh = v, "Show navmeshes (N edits them)");
-        Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, "Particles: fire, smoke, dust, sparks");
-        Toggle("Anim", () => options.Animate, v => options.Animate = v, "Play flames, scrolling water and particles (off: frozen frame, idle CPU)");
-        Toggle("NPC", () => options.HighlightActors, v => options.HighlightActors = app.Settings.HighlightActors = v, "Tint NPCs and creatures so they are easy to spot in dark places");
+        Toggle(T("Wire"), () => options.Wireframe, v => options.Wireframe = v, T("Wireframe (CK: W)"));
+        Toggle(T("Markers"), () => options.ShowMarkers, v => options.ShowMarkers = v, T("Editor markers, model-less lights, actors (CK: M)"));
+        Toggle(T("Disabled"), () => options.ShowInitiallyDisabled, v => options.ShowInitiallyDisabled = v, T("Initially disabled references (tinted purple)"));
+        Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
+        Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
+        Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
+        Toggle(T("Borders"), () => options.CellBorders, v => options.CellBorders = v, T("Cell borders (CK: B)"));
+        Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes (N edits them)"));
+        Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, T("Particles: fire, smoke, dust, sparks"));
+        Toggle(T("Anim"), () => options.Animate, v => options.Animate = v, T("Play flames, scrolling water and particles (off: frozen frame, idle CPU)"));
+        Toggle("NPC", () => options.HighlightActors, v => options.HighlightActors = app.Settings.HighlightActors = v, T("Tint NPCs and creatures so they are easy to spot in dark places"));
 
         if (_world is not null)
         {
@@ -440,14 +441,14 @@ internal sealed partial class RenderWindow : Panel
                 // Applied on the next load; reload now for convenience.
                 if (_cell is { } cell) OpenCell(app, cell);
             }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Cells loaded around the centre cell");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Cells loaded around the centre cell"));
         }
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 6.5f);
         var brightness = options.Brightness;
         if (ImGui.SliderFloat("##bright", ref brightness, 0.3f, 4f, "light %.1f")) options.Brightness = brightness;
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Ambient and directional light multiplier");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Ambient and directional light multiplier"));
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 6);
@@ -501,31 +502,31 @@ internal sealed partial class RenderWindow : Panel
         var stats = _renderer!.Stats;
         var lines = new List<string>();
 
-        if (_loading is not null) lines.Add($"Loading {_loadingTitle}…");
-        else if (_scene is null) lines.Add("Double-click a cell in Cell View to load it");
+        if (_loading is not null) lines.Add(TF($"Loading {_loadingTitle}…"));
+        else if (_scene is null) lines.Add(T("Double-click a cell in Cell View to load it"));
         else
         {
             lines.Add($"{_scene.Title}");
-            lines.Add($"{stats.Visible:N0}/{stats.Objects:N0} objects · {stats.DrawCalls:N0} draws · {stats.Triangles / 1000:N0}k tris · {stats.Lights} lights · {_fps:0} fps");
+            lines.Add(TF($"{stats.Visible:N0}/{stats.Objects:N0} objects · {stats.DrawCalls:N0} draws · {stats.Triangles / 1000:N0}k tris · {stats.Lights} lights · {_fps:0} fps"));
             var pendingMeshes = _renderer.Meshes.Pending;
             var pendingTextures = _renderer.Textures.Pending;
-            if (pendingMeshes + pendingTextures > 0) lines.Add($"streaming: {pendingMeshes} meshes, {pendingTextures} textures");
+            if (pendingMeshes + pendingTextures > 0) lines.Add(TF($"streaming: {pendingMeshes} meshes, {pendingTextures} textures"));
             var p = _camera.Position;
-            lines.Add($"camera {p.X:0} {p.Y:0} {p.Z:0}" + (_scene.IsInterior ? "" : $"  cell {(int)MathF.Floor(p.X / 4096)}, {(int)MathF.Floor(p.Y / 4096)}"));
+            lines.Add(TF($"camera {p.X:0} {p.Y:0} {p.Z:0}") + (_scene.IsInterior ? "" : TF($"  cell {(int)MathF.Floor(p.X / 4096)}, {(int)MathF.Floor(p.Y / 4096)}")));
         }
 
         if (_selection.Count == 1)
         {
             var o = _selection.First();
-            lines.Add($"selected: {o.BaseEditorId ?? "?"} [{o.BaseSignature}] {o.ModelPath ?? ""}");
+            lines.Add(TF($"selected: {o.BaseEditorId ?? "?"} [{o.BaseSignature}] {o.ModelPath ?? ""}"));
         }
         else if (_selection.Count > 1)
         {
-            lines.Add($"selected: {_selection.Count} objects");
+            lines.Add(TF($"selected: {_selection.Count} objects"));
         }
 
         if (_document is { PendingCount: > 0 } doc)
-            lines.Add($"{doc.PendingCount} unsaved change(s) — Ctrl+S saves into the active file");
+            lines.Add(TF($"{doc.PendingCount} unsaved change(s) — Ctrl+S saves into the active file"));
 
         var help = HelpLine;
         var helpSize = ImGui.CalcTextSize(help);

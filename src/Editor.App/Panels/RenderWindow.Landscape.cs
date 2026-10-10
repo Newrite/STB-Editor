@@ -4,6 +4,7 @@ using Mutagen.Bethesda.Plugins;
 using StbEditor.App.Services;
 using StbEditor.Core;
 using StbEditor.Render;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -222,10 +223,10 @@ internal sealed partial class RenderWindow
     {
         var name = Brush.Mode switch
         {
-            LandBrushMode.Paint => "Paint landscape",
-            LandBrushMode.Flatten => "Flatten landscape",
-            LandBrushMode.Smooth => "Smooth landscape",
-            _ => "Sculpt landscape",
+            LandBrushMode.Paint => T("Paint landscape"),
+            LandBrushMode.Flatten => T("Flatten landscape"),
+            LandBrushMode.Smooth => T("Smooth landscape"),
+            _ => T("Sculpt landscape"),
         };
         var cells = _stroke.Values.Select(e => (e.Draft, e.Before, e.Draft.Data.Clone())).ToList();
         _stroke.Clear();
@@ -281,7 +282,7 @@ internal sealed partial class RenderWindow
         if (_scene is not { IsInterior: false, Worldspace: { } world } scene || app.Session is not { } session || _document is null) return 0;
         if (app.ActivePlugin is not { } active)
         {
-            app.ShowActiveFileDialog("New land goes into the active file — choose it first.");
+            app.ShowActiveFileDialog(T("New land goes into the active file — choose it first."));
             return 0;
         }
 
@@ -305,7 +306,7 @@ internal sealed partial class RenderWindow
         }
 
         if (drafts.Count == 0) return 0;
-        _document.Execute("Create flat land", [], drafts);
+        _document.Execute(T("Create flat land"), [], drafts);
         return drafts.OfType<LandDraft>().Count();
     }
 

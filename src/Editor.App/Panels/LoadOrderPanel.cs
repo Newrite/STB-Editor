@@ -2,6 +2,7 @@ using Hexa.NET.ImGui;
 using StbEditor.App.Ui;
 using StbEditor.Data;
 using StbEditor.Data.Raw;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -19,12 +20,12 @@ internal sealed class LoadOrderPanel : Panel
         var ws = app.Session!.Workspace;
 
         ImGui.SetNextItemWidth(260);
-        ImGui.InputTextWithHint("##filter", "Filter plugins", ref _filter, 256);
+        ImGui.InputTextWithHint("##filter", T("Filter plugins"), ref _filter, 256);
         ImGui.SameLine();
-        ImGui.Checkbox("Show inactive", ref _showInactive);
+        ImGui.Checkbox(T("Show inactive"), ref _showInactive);
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim,
-            $"{ws.Active.Count} active · {ws.Active.Count(p => !p.IsLight)} full · {ws.Active.Count(p => p.IsLight)} light · header up to {ws.Game.MaxHeaderVersion:0.00}{(ws.Game.HasBees ? " (BEES)" : "")}");
+            TF($"{ws.Active.Count} active · {ws.Active.Count(p => !p.IsLight)} full · {ws.Active.Count(p => p.IsLight)} light · header up to {ws.Game.MaxHeaderVersion:0.00}{(ws.Game.HasBees ? " (BEES)" : "")}"));
 
         var flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable
             | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.Hideable | ImGuiTableFlags.Reorderable;
@@ -32,14 +33,14 @@ internal sealed class LoadOrderPanel : Panel
         if (!ImGui.BeginTable("##plugins", 8, flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Index");
-        ImGui.TableSetupColumn("Plugin", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Flags");
-        ImGui.TableSetupColumn("Header");
-        ImGui.TableSetupColumn("Records");
-        ImGui.TableSetupColumn("Text");
-        ImGui.TableSetupColumn("Masters");
-        ImGui.TableSetupColumn("Source");
+        ImGui.TableSetupColumn(T("Index"));
+        ImGui.TableSetupColumn(T("Plugin"), ImGuiTableColumnFlags.WidthStretch);
+        ImGui.TableSetupColumn(T("Flags"));
+        ImGui.TableSetupColumn(T("Header"));
+        ImGui.TableSetupColumn(T("Records"));
+        ImGui.TableSetupColumn(T("Text"));
+        ImGui.TableSetupColumn(T("Masters"));
+        ImGui.TableSetupColumn(T("Source"));
         ImGui.TableHeadersRow();
 
         IEnumerable<PluginInfo> rows = _showInactive ? ws.Plugins : ws.Active;
@@ -67,7 +68,7 @@ internal sealed class LoadOrderPanel : Panel
                 var tooHigh = header.Version > ws.Game.MaxHeaderVersion + 0.001f;
                 if (tooHigh) ImGui.TextColored(Theme.Warning, $"{header.Version:0.00}");
                 else ImGui.Text($"{header.Version:0.00}");
-                if (tooHigh && ImGui.IsItemHovered()) ImGui.SetTooltip("Header newer than this game reads without Backported Extended ESL Support");
+                if (tooHigh && ImGui.IsItemHovered()) ImGui.SetTooltip(T("Header newer than this game reads without Backported Extended ESL Support"));
             }
 
             ImGui.TableNextColumn();

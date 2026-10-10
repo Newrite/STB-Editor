@@ -15,7 +15,7 @@
 ## 2. Архитектура
 
 ```
-┌──────────────────────── STB Editor (.NET 9, один процесс) ───────────────────────┐
+┌──────────────────────── STB Editor (.NET 10, один процесс) ───────────────────────┐
 │ UI (❓ Avalonia / WPF / ImGui)                                                    │
 │  Object Window · Cell View · Render Window · Property Grid · Script/Conditions   │
 │  Landscape tools · Navmesh tools · NIF Editor · Conflicts · Log                  │

@@ -4,6 +4,7 @@ using Mutagen.Bethesda.Plugins.Records;
 using StbEditor.App.Ui;
 using StbEditor.Core;
 using StbEditor.Data.Catalog;
+using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
@@ -31,7 +32,7 @@ internal sealed class InspectorPanel : Panel
 
         if (app.Selected is not { } key)
         {
-            ImGui.TextColored(Theme.TextDim, "Select a record in the Object Window or Cell View.");
+            ImGui.TextColored(Theme.TextDim, T("Select a record in the Object Window or Cell View."));
             return;
         }
 
@@ -43,32 +44,32 @@ internal sealed class InspectorPanel : Panel
             : placedObject is not null ? new RecordTypeInfo(placedObject.Kind == StbEditor.Render.SceneObjectKind.Actor ? "ACHR" : "REFR", "Reference", "") : null;
 
         ImGui.PushFont(app.Ui.HeaderFont, 0);
-        ImGui.Text(catalog?.EditorId ?? placedObject?.Record?.EditorID ?? (placedObject is not null ? $"→ {placedObject.BaseEditorId}" : "(no editor id)"));
+        ImGui.Text(catalog?.EditorId ?? placedObject?.Record?.EditorID ?? (placedObject is not null ? placedObject.BaseEditorId ?? "" : T("(no editor id)")));
         ImGui.PopFont();
         ImGui.SameLine();
-        ImGui.TextColored(Theme.TextDim, $"{type?.Name ?? "?"} [{type?.Signature}]  {session.Workspace.FormIdText(key)}");
+        ImGui.TextColored(Theme.TextDim, $"{T(type?.Name ?? "?")} [{type?.Signature}]  {session.Workspace.FormIdText(key)}");
         if (placedObject is not null)
         {
-            ImGui.TextColored(Theme.TextDim, $"base {placedObject.BaseEditorId} [{placedObject.BaseSignature}]");
+            ImGui.TextColored(Theme.TextDim, TF($"base {placedObject.BaseEditorId} [{placedObject.BaseSignature}]"));
             ImGui.SameLine();
-            if (ImGui.SmallButton("Open base")) app.Select(placedObject.Base);
+            if (ImGui.SmallButton(T("Open base"))) app.Select(placedObject.Base);
         }
         if (catalog?.Name is { Length: > 0 } name) ImGui.TextColored(Theme.Accent, name);
 
         var editable = placedObject is not null || (catalog is not null && !NotFieldEditable.Contains(catalog.Signature));
         ImGui.BeginDisabled(!editable);
         if (_editMode) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
-        if (ImGui.SmallButton(_editMode ? "Editing fields" : "Edit fields")) _editMode = !_editMode;
+        if (ImGui.SmallButton(_editMode ? T("Editing fields") : T("Edit fields"))) _editMode = !_editMode;
         if (_editMode) ImGui.PopStyleColor();
         ImGui.EndDisabled();
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip(editable ? "Edit any field; each change is one Ctrl+Z, saved into the active file" : "Cells, worldspaces, dialogue and navmesh have their own tools");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(editable ? T("Edit any field; each change is one Ctrl+Z, saved into the active file") : T("Cells, worldspaces, dialogue and navmesh have their own tools"));
         ImGui.SameLine();
-        if (ImGui.SmallButton("Copy FormKey")) ImGui.SetClipboardText(key.ToString());
+        if (ImGui.SmallButton(T("Copy FormKey"))) ImGui.SetClipboardText(key.ToString());
         if (placedObject is null && editable && _versions.Count > 0)
         {
             ImGui.SameLine();
-            if (ImGui.SmallButton("Duplicate")) Duplicate(app, key);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("New record in the active file: a copy with a new FormID and EditorID (as the CK's Duplicate)");
+            if (ImGui.SmallButton(T("Duplicate"))) Duplicate(app, key);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("New record in the active file: a copy with a new FormID and EditorID (as the CK's Duplicate)"));
         }
 
         if (placedObject is not null && app.RenderWindow.SingleSelection == placedObject)
@@ -138,7 +139,7 @@ internal sealed class InspectorPanel : Panel
     /// <summary>Editable position / rotation (degrees, as the Creation Kit shows them) / scale.</summary>
     private static void DrawPlacement(EditorApp app, StbEditor.Render.SceneObject obj)
     {
-        ImGui.SeparatorText(obj.IsModified ? "Placement  (changed)" : "Placement");
+        ImGui.SeparatorText(obj.IsModified ? T("Placement  (changed)") : T("Placement"));
 
         var state = obj.State;
         var position = state.Position;
@@ -150,12 +151,12 @@ internal sealed class InspectorPanel : Panel
         var width = ImGui.GetContentRegionAvail().X - ImGui.GetFontSize() * 5;
 
         ImGui.SetNextItemWidth(width);
-        if (ImGui.DragFloat3("Position", ref position, 1f, 0, 0, "%.2f"))
+        if (ImGui.DragFloat3(T("Position"), ref position, 1f, 0, 0, "%.2f"))
             app.RenderWindow.PreviewFieldEdit(obj, state with { Position = position });
-        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit("Position");
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Position"));
 
         ImGui.SetNextItemWidth(width);
-        if (ImGui.DragFloat3("Rotation", ref degrees, 0.5f, 0, 0, "%.2f°"))
+        if (ImGui.DragFloat3(T("Rotation"), ref degrees, 0.5f, 0, 0, "%.2f°"))
         {
             var radians = new System.Numerics.Vector3(
                 StbEditor.Render.TransformMath.Radians(degrees.X),
@@ -163,12 +164,12 @@ internal sealed class InspectorPanel : Panel
                 StbEditor.Render.TransformMath.Radians(degrees.Z));
             app.RenderWindow.PreviewFieldEdit(obj, state with { Rotation = radians });
         }
-        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit("Rotation");
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Rotation"));
 
         ImGui.SetNextItemWidth(width);
-        if (ImGui.DragFloat("Scale", ref scale, 0.005f, 0.01f, 10f, "%.3f"))
+        if (ImGui.DragFloat(T("Scale"), ref scale, 0.005f, 0.01f, 10f, "%.3f"))
             app.RenderWindow.PreviewFieldEdit(obj, state with { Scale = Math.Clamp(scale, 0.01f, 10f) });
-        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit("Scale");
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Scale"));
 
         ImGui.Spacing();
     }
@@ -177,18 +178,18 @@ internal sealed class InspectorPanel : Panel
     {
         if (app.ActivePlugin is not { } active)
         {
-            app.ShowActiveFileDialog("A duplicate is a new record of the active file — choose it first.");
+            app.ShowActiveFileDialog(T("A duplicate is a new record of the active file — choose it first."));
             return;
         }
 
         var source = (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)app.Document.Override(key)?.Record ?? _versions[0].Record;
         var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)source.Duplicate(active.Allocate());
         var catalog = app.Session!.Catalog;
-        var baseId = (source.EditorID ?? "Record") + "Copy";
+        var baseId = (source.EditorID ?? T("Record")) + T("Copy");
         var id = baseId;
         for (var n = 2; catalog.ByKey.Values.Any(r => string.Equals(r.EditorId, id, StringComparison.OrdinalIgnoreCase)); n++) id = baseId + n;
         copy.EditorID = id;
-        app.Document.CommitEdit($"Duplicate {source.EditorID} as {id}", copy, RecordPlace.TopLevel);
+        app.Document.CommitEdit(TF($"Duplicate {source.EditorID} as {id}"), copy, RecordPlace.TopLevel);
         app.Select(copy.FormKey);
         _editMode = true;
         StbEditor.App.Services.Log.Info($"duplicate: {source.EditorID} -> {id} {copy.FormKey}");
@@ -215,7 +216,7 @@ internal sealed class InspectorPanel : Panel
             else if (app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) is { Record: { } placed })
             {
                 // Placed references are not in the catalog; the loaded scene holds the winner.
-                _versions.Add(("winning version", placed));
+                _versions.Add((T("winning version"), placed));
             }
 
             if (_versions.Count == 0 && app.Document.Override(key) is { Place: RecordPlace.TopLevel } created)
@@ -225,7 +226,7 @@ internal sealed class InspectorPanel : Panel
         }
         catch (Exception ex)
         {
-            _error = $"Cannot read record: {ex.Message}";
+            _error = TF($"Cannot read record: {ex.Message}");
         }
     }
 }

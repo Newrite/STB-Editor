@@ -1,0 +1,163 @@
+# CLAUDE.md
+
+## What this is
+
+STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
+navmesh, record editing, script properties without compiling). Plan and reasoning:
+`docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
+Status (v0.3.0, 2026-10-10) — the table in `README.md` is the source of truth. Done: data, NIF,
+D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
+ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
+lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
+`App/Services/SaveController`), drag & drop placement, thumbnails; ref properties, field editor for
+any record, Duplicate, scripts + properties; new interior cells / worldspaces / exterior cells
+(`Core/NewRecords.cs`), landscape sculpt + paint; manual navmesh editing.
+Next: condition editor (CTDA) + Use Info, properties of existing cells, navmesh finalize (NAVI).
+Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
+**keep them, README and this file current with every feature** (several people work on this repo,
+most of them with Claude Code).
+
+## Repository and releases
+
+GitHub: https://github.com/STB-Team/STB-Editor (branch `main`). Releases are built by GitHub Actions
+(`.github/workflows/release.yml`): add a `## <version>` section to `CHANGELOG.md`, commit, then
+`git tag v<version>` and `git push origin v<version>` — the workflow runs `package.ps1 -Version <version>`
+and publishes `STBEditor-<version>.zip` with that changelog section as the notes. `dist/` and `build/`
+are not committed.
+
+## Build / run
+
+```powershell
+dotnet build STB-Editor.sln -c Debug
+src\Editor.App\bin\Debug\net9.0-windows\win-x64\STBEditor.exe --game C:\Skyrim --open
+```
+
+`C:\Skyrim` here and below is the example game folder (the original author's: MO2 portable instance
+`[STB] Mod Organizer`, profile `STB`); use your own. .NET SDK 9 usually lives in `C:\Program Files\dotnet`
+(not always on PATH).
+
+**Never write test output into the game or the mod folders.** Tests copy plugins into a temp folder;
+in-app autotests change `%LOCALAPPDATA%\STBEditor\settings.json` (active file) — restore it afterwards
+(`ActivePluginPath` back to null).
+
+Self-check without a person at the screen:
+`STBEditor.exe --game C:\Skyrim --open [--search X] [--select 0E01A348] --screenshot out.bmp`
+loads, renders a few frames, writes the frame as BMP and exits. Convert to PNG with
+System.Drawing to look at it. Render checks: `--cell <EditorID|FormID>` waits until every mesh
+and texture of the cell has streamed in; `--camera dx,dy,dz,yawDeg,pitchDeg` (relative to the
+scene focus), `--pick fx,fy` (select under that viewport fraction, logged as `pick:`),
+`--no-markers`, `--render opaque=0,blended=0,markers=0,shading=N,logblended=1` to isolate
+passes. In screenshot mode crashes never show a message box (they would land on the user's
+screen). Good test cells: `RiverwoodSleepingGiantInn`, `BleakFallsBarrow01`, `WhiterunExterior10`.
+
+Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, then
+`build\cli\stbedit-cli.exe <command> C:\Skyrim …` with `plugins`, `catalog`, `find <text> [--plugin]`,
+`assets <paths…>`, `extract <asset> <file>`, `nif [prefix]` (parse every NIF: 33k files, ~10 s),
+`nifdump <mesh>`, `scene <cell EditorID> [--shaders]`, `sweep [n]` (build n random cells).
+
+## Layout
+
+- `src/Editor.Data` — no UI. `GameInstall` (SE/AE/VR/GOG, version from the exe *string*
+  version — SkyrimSE 1.5.97 has 1.0.0.0 in the numeric fields, BEES detection → ESL limits),
+  `Mo2Instance` + `LoadOrderReader` (MO2 profile or plain AppData plugins.txt), `Workspace`
+  (Mutagen overlays, masters-first sort, FormID↔FormKey incl. FE slots), `Raw/` (TES4 header
+  and record walker without Mutagen), `Catalog/` (merged record index with per-plugin disk cache,
+  CK Object Window categories).
+- `src/Editor.Assets` — `AssetFileSystem`: loose files by MO2 priority over all BSAs; BSAs in
+  INI order then `<plugin>.bsa` / `<plugin> - Textures.bsa` per plugin.
+- `src/Editor.Nif` — render-only NIF reader (20.2.0.7, BS 83 LE / 100 SSE): node tree, BSTriShape,
+  NiTriShape/NiTriStrips, lighting/effect shaders, texture sets, alpha. Unknown blocks skipped by
+  header block sizes. Skinned SSE shapes take their vertices from NiSkinPartition (bind pose, see
+  Actors below); particle systems and controllers in `NifFile.Effects.cs`. Pre-Skyrim meshes (BS < 83)
+  are reported, not drawn.
+- `src/Editor.Render` — `Dds` (BC1–7, legacy RGB/L8), `MeshCache`/`TextureCache` (async; D3D11
+  creation is free-threaded), `SceneBuilder` (merges each cell's refs over every plugin version,
+  persistent world refs by position, LAND → `TerrainCell`, water, XCLL/LGTM lighting),
+  `SceneRenderer` (instanced opaque, sorted blended, terrain base + alpha layers, overlays),
+  `Picking` (CPU ray), `Camera` (reversed-Z infinite).
+- `src/Editor.Data/RecordLookup` — typed record/cell access. **Never call untyped
+  `LinkCache.TryResolve(key)` / `ResolveAllSimpleContexts(key)`**: it indexes every type incl. a
+  million REFRs (19 s for one cell). Use the catalog signature → getter type.
+- `src/Editor.Core` — `EditDocument` (pending ref states keyed by FormKey, original state kept
+  so drag-back removes the change), `UndoStack`. Scenes re-apply it after every (re)load.
+- `src/Editor.App` — Win32 window, D3D11 (Vortice), Dear ImGui docking (Hexa.NET.ImGui +
+  official Win32/D3D11 backends). `Panels/` one class per dock window, `Ui/PropertyTree` —
+  generic field tree over Mutagen getter interfaces.
+- `src/Editor.Cli` — diagnostics.
+
+## Rules learned the hard way
+
+- **Text encoding is per string.** The build has UTF-8 plugins (STB.esp), cp1251 ones and
+  plugins mixing both (Valtheim.esp). Reading uses strict UTF-8 with cp1251 fallback per string
+  (`StringEncodingDetector.ReadEncoding`); writing uses the plugin's dominant encoding. Never
+  read non-localized strings with one fixed encoding.
+- FormID prefixes come from the list of *active* plugins, not of those Mutagen opened — a broken
+  plugin must not shift everyone below it.
+- MO2 `plugins.txt` and `loadorder.txt` can be in different encodings — `TextFiles.ReadLines`
+  decodes line by line.
+- Catalog skips placed refs/navmesh/land (most of Skyrim.esm); cells are catalogued down to the
+  CELL record only. Cell contents are the cell loader's job.
+- Hexa.NET.ImGui: `MenuItem(label, null, …)` is ambiguous — cast `(string?)null`; DockBuilder
+  split takes `uint*`.
+- Reference rotation = engine `NiMatrix3::SetEulerAnglesXYZ(x, y, z)` rows applied to column
+  vectors (Z = heading, clockwise). NIF/terrain triangles are CCW-front → rasterizer
+  `FrontCounterClockwise = true`.
+- NIF "EditorMarker" nodes are culled by the game by name (their hidden flag is often unset):
+  draw them only with Markers on.
+- NiAlphaProperty blend factors: *_COLOR factors are illegal for the D3D11 alpha channel —
+  map them to alpha equivalents (else E_INVALIDARG).
+- **`<CETCompat>false</CETCompat>` must stay** in Editor.App.csproj: .NET 9 marks exes
+  CET-compatible, and under MO2 the usvfs hooks then crash the process at startup (0xC0000005,
+  before any managed code — no log, no crash report). Portable build: `package.ps1` → `dist\`.
+- UI look follows the STB build's in-game settings menu (STB SettingsMenu, `Mcm*.cpp`, not in this repo):
+  monochrome, white-alpha highlights, STB_FuturaCondensed/Light from the build (`Ui/Theme.cs`
+  finds them; never ship the fonts). Russian culture's U+202F digit separator is not in Futura —
+  Program sets a plain space.
+- Texture/mesh paths in NIFs may carry the author's build path (`skyrimhd\build\pc\data\textures\...`);
+  `AssetFileSystem.TexturePath` cuts at `data\` / `\textures\` like the engine.
+- **Saving:** Mutagen alone normalises untouched records (50+ diffs in STB.esp) and drops
+  unused masters (renumbering own FormIDs). The writer keeps every original master in place,
+  appends needed ones, writes with `MastersListContent/Ordering = NoCheck`, then `RawSplice`
+  restores original bytes of every untouched record; `CompareUntouched` must report 0. Only when
+  a new master is needed is the splice skipped (own index shifts) and the user asked.
+  Test: `stbedit-cli savetest C:\Skyrim <interior EditorID> <out dir> [existing plugin]` (copies the
+  plugin, never writes into the build), and in-app `--autotest-save <dir>` (restore settings.json after:
+  it sets the active file).
+- Refraction (heat-haze) shapes are not drawn: their diffuse slot holds a normal map.
+- Game shader behaviour is checked against Community Shaders' HLSL in the build
+  (`C:\Skyrim\[STB] Mod Organizer\mods\Community Shaders\Shaders\Effect.hlsl` etc.). Effect palettes are 2D:
+  alpha = palette(tex.a, alpha), colour = emissiveMult × palette(tex.g, baseColour.r × vertex.r).
+  Guessing these cost three rounds — read the HLSL first.
+- NIF field layouts: niftools nif.xml (develop branch). Particle aspect/sub-texture data live in NiPSysData.
+- Effect checks: `--object-shot <FormID> out.bmp [size yaw pitch zoom]` and `--psys <name>` (see DEVELOPING.md).
+- New records are drafts: mutable Mutagen `Cell`/`Worldspace` held by `EditDocument` (`CellDraft`,
+  `WorldDraft`, created by `Core/NewRecords.cs`), shown by `SceneBuilder { Document = … }`, written by
+  `PluginWriter` before references. A reference landing where no exterior cell exists gets one (draft
+  in the editor, auto cell in the writer). `PendingCount` (refs + drafts) is "unsaved", not `ChangedCount`.
+  Tests: `stbedit-cli newtest <dir> [plugin]`, in-app `--autotest-new <dir>` (restore settings.json).
+- Landscape: `Core/LandscapeData.cs` (heights in world units; VHGT = offset + sbyte steps ×8, clamped;
+  normals recomputed only when heights were edited; ATXT layers ≤ 6 per quadrant, paint always blends
+  as a layer), `LandDraft` + `LandStrokeCommand`, brush in `Panels/RenderWindow.Landscape.cs`. Scene
+  terrain is rebuilt from drafts on `DraftsChanged`; during a stroke from the stroke's draft data (not the
+  TerrainCell's original data — that bug made strokes invisible). Tests: `stbedit-cli landtest`,
+  `--autotest-land <dir>` with `--cell`, `--autotest-landview <dir>`.
+- Record edits: `Core/Overrides.cs` (`OverrideDraft`, `WorkingCopy` → mutate → `CommitEdit`). Writer puts
+  top-level ones into their group with the group's `Set` (AddUntyped throws on an existing key), references
+  replace their cell entry. Editable field tree: `Ui/PropertyTree.cs` with an `EditTarget` (path of
+  property names / list indices applied to a fresh copy). Ref dialog: `Panels/ReferenceProperties.cs`;
+  scripts: `Panels/ScriptsEditor.cs` + `Assets/PexScript.cs` (big-endian .pex, walks functions to skip them).
+  New base records (Duplicate) are catalog transients (`RecordCatalog.AddTransient`, synced from drafts).
+- Navmesh: `Core/NavmeshTools.cs` (neighbour links from shared edges, bounds, lookup grid = per cell
+  uint count + ushort triangle indices; ours is a safe superset of the game's — navtest checks it),
+  editing in `Panels/RenderWindow.Navmesh.cs` + `Panels/NavmeshPanel.cs`, NAVM drafts with
+  `RecordPlace.Navmesh` (writer replaces the cell's NAVM). Deleting triangles renumbers: loaded neighbours'
+  edge links are remapped in the same undo step; NAVI/door links are not (no finalize yet).
+- ImGui: numeric inputs assert on `EnterReturnsTrue` (native abort 0xC0000409, no crash report) — use
+  `Ui/Fields.cs` (commit on deactivate). Futura has no "×"/"⊕"/"↔": use x, +, <->.
+- Actors: `Render/ActorAppearance.cs` builds `actor:a.nif|b.nif?fallback,…` composite models (MeshCache).
+  SSE skin partitions index the shared vertex buffer **directly** (mapping through the vertex map shreds
+  multi-partition meshes). Skinned vertices go to the bind pose via the file's own bone nodes × NiSkinData
+  bone transforms, blended per vertex (one bone is not enough: facegen bones disagree by a few units).
+  Skin parts hide when their main slot (body, else lowest) is worn. `stbedit-cli npc <id>` / `npcscan`.
+- Logs: `%LOCALAPPDATA%\STBEditor\logs\editor.log`, crash reports in `crashes\`, layout in
+  `layout.ini` (delete it to get the default layout back).

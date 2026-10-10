@@ -1,0 +1,16 @@
+bin/
+obj/
+build/
+dist/
+*.user
+.vs/
+.vscode/
+.idea/
+
+# Screenshots and dumps from local checks
+*.bmp
+*.dds
+/out/
+
+# Personal Claude Code settings (shared instructions are CLAUDE.md)
+.claude/settings.local.json

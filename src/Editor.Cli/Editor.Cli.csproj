@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>StbEditor.Cli</RootNamespace>
+    <AssemblyName>stbedit-cli</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Editor.Data\Editor.Data.csproj" />
+    <ProjectReference Include="..\Editor.Assets\Editor.Assets.csproj" />
+    <ProjectReference Include="..\Editor.Nif\Editor.Nif.csproj" />
+    <ProjectReference Include="..\Editor.Render\Editor.Render.csproj" />
+  </ItemGroup>
+</Project>

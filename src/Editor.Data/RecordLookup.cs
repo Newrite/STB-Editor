@@ -107,8 +107,7 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
             if (plugin.Mod is not { } mod) continue;
             try
             {
-                foreach (var world in mod.Worldspaces)
-                    if (world.FormKey == worldKey && world.TopCell is { } top) result.Add(top);
+                if (ModCells.Of(mod).World(worldKey)?.TopCell is { } top) result.Add(top);
             }
             catch
             {
@@ -118,48 +117,75 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
         return result;
     }
 
-    private static ICellGetter? FindInterior(ISkyrimModGetter mod, FormKey key)
-    {
-        foreach (var block in mod.Cells.Records)
-            foreach (var subBlock in block.SubBlocks)
-                foreach (var cell in subBlock.Cells)
-                    if (cell.FormKey == key) return cell;
-        return null;
-    }
+    private static ICellGetter? FindInterior(ISkyrimModGetter mod, FormKey key) => ModCells.Of(mod).Interior(key);
 
-    private static ICellGetter? FindExterior(ISkyrimModGetter mod, FormKey key, CellPlacement placement)
-    {
-        // Blocks are 32×32 cells, sub-blocks 8×8 (floor division).
-        var blockX = FloorDiv(placement.GridX, 32);
-        var blockY = FloorDiv(placement.GridY, 32);
-        var subX = FloorDiv(placement.GridX, 8);
-        var subY = FloorDiv(placement.GridY, 8);
+    private static ICellGetter? FindExterior(ISkyrimModGetter mod, FormKey key, CellPlacement placement) =>
+        ModCells.Of(mod).Exterior(placement.Worldspace!.Value, key);
 
-        foreach (var world in mod.Worldspaces)
+    /// <summary>
+    /// Cells of one plugin, indexed once. A stream overlay reads a group's bytes into memory each
+    /// time the group is walked, and every record taken from it keeps that copy alive: walking the
+    /// worldspace for each exterior cell kept one copy of Skyrim.esm's whole Tamriel group
+    /// (~200 MB) per loaded cell — 5 GB for a 5×5 grid. Here each group is walked once per plugin.
+    /// </summary>
+    private sealed class ModCells
+    {
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ISkyrimModGetter, ModCells> All = new();
+
+        public static ModCells Of(ISkyrimModGetter mod) => All.GetValue(mod, m => new ModCells(m));
+
+        private readonly ISkyrimModGetter _mod;
+        private readonly Lazy<Dictionary<FormKey, ICellGetter>> _interiors;
+        private readonly Dictionary<FormKey, (IWorldspaceGetter? World, Dictionary<FormKey, ICellGetter>? Cells)> _worlds = new();
+
+        private ModCells(ISkyrimModGetter mod)
         {
-            if (world.FormKey != placement.Worldspace) continue;
-
-            ICellGetter? Scan(bool exact)
+            _mod = mod;
+            _interiors = new(() =>
             {
-                foreach (var block in world.SubCells)
-                {
-                    if (exact && (block.BlockNumberX != blockX || block.BlockNumberY != blockY)) continue;
-                    foreach (var subBlock in block.Items)
-                    {
-                        if (exact && (subBlock.BlockNumberX != subX || subBlock.BlockNumberY != subY)) continue;
-                        foreach (var cell in subBlock.Items)
-                            if (cell.FormKey == key) return cell;
-                    }
-                }
-                return null;
-            }
-
-            // Hand-made plugins sometimes file cells under the wrong block: fall back to a full scan.
-            return Scan(exact: true) ?? Scan(exact: false);
+                var map = new Dictionary<FormKey, ICellGetter>();
+                foreach (var block in mod.Cells.Records)
+                    foreach (var subBlock in block.SubBlocks)
+                        foreach (var cell in subBlock.Cells)
+                            map.TryAdd(cell.FormKey, cell);
+                return map;
+            }, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
-        return null;
-    }
+        public ICellGetter? Interior(FormKey key) => _interiors.Value.GetValueOrDefault(key);
 
-    private static int FloorDiv(int value, int divisor) => (int)Math.Floor(value / (double)divisor);
+        public IWorldspaceGetter? World(FormKey worldKey)
+        {
+            lock (_worlds)
+            {
+                if (_worlds.TryGetValue(worldKey, out var known)) return known.World;
+                IWorldspaceGetter? found = null;
+                foreach (var world in _mod.Worldspaces)
+                    if (world.FormKey == worldKey) { found = world; break; }
+                _worlds[worldKey] = (found, null);
+                return found;
+            }
+        }
+
+        public ICellGetter? Exterior(FormKey worldKey, FormKey cellKey)
+        {
+            var world = World(worldKey);
+            if (world is null) return null;
+            lock (_worlds)
+            {
+                var entry = _worlds[worldKey];
+                if (entry.Cells is null)
+                {
+                    // Hand-made plugins sometimes file cells under the wrong block: index them all.
+                    var cells = new Dictionary<FormKey, ICellGetter>();
+                    foreach (var block in world.SubCells)
+                        foreach (var subBlock in block.Items)
+                            foreach (var cell in subBlock.Items)
+                                cells.TryAdd(cell.FormKey, cell);
+                    _worlds[worldKey] = entry = (world, cells);
+                }
+                return entry.Cells!.GetValueOrDefault(cellKey);
+            }
+        }
+    }
 }

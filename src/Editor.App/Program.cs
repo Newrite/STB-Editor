@@ -66,6 +66,7 @@ internal static class Program
         window.Closing += editor.ConfirmClose;
         window.Show(maximized: options.Screenshot is null);
 
+        Win32.timeBeginPeriod(1);
         var frames = 0;
         var clock = Stopwatch.StartNew();
         var last = clock.Elapsed;
@@ -97,6 +98,7 @@ internal static class Program
             }
 
             graphics.Present(vsync: true);
+            LimitFrameRate(clock, now, settings.FpsLimit, window.IsForeground);
 
             if (window.CloseRequested)
             {
@@ -113,5 +115,17 @@ internal static class Program
         settings.Save();
         Log.Info("exit");
         return 0;
+    }
+
+    /// <summary>
+    /// Vsync alone renders at the monitor's rate (144 on many screens) while anything moves; cap it,
+    /// and to 15 FPS when another window has focus — nobody looks at the editor then.
+    /// </summary>
+    private static void LimitFrameRate(Stopwatch clock, TimeSpan frameStart, int limit, bool foreground)
+    {
+        if (!foreground) limit = limit is > 0 and < 15 ? limit : 15;
+        if (limit <= 0) return;
+        var wait = 1.0 / limit - (clock.Elapsed - frameStart).TotalSeconds;
+        if (wait > 0.001) Thread.Sleep(TimeSpan.FromSeconds(wait));
     }
 }

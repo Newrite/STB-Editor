@@ -70,14 +70,25 @@ public sealed class GpuModel : IDisposable
     public Vector3 Center => (BoundsMin + BoundsMax) * 0.5f;
     public float Radius => IsEmpty ? 0 : Vector3.Distance(BoundsMin, BoundsMax) * 0.5f;
 
+    /// <summary>GPU buffers plus the CPU copy kept for picking (estimate, for the cache budget).</summary>
+    public long Bytes { get; init; }
+
+    /// <summary>
+    /// Evicted from the cache: GPU buffers are gone. Holders (scene objects) drop it and ask the
+    /// cache again; the CPU shapes stay readable, so picking on a stale model is still safe.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
     public void Dispose()
     {
+        IsDisposed = true;
         foreach (var shape in Shapes) shape.Dispose();
     }
 
     public static GpuModel Create(ID3D11Device device, string path, IEnumerable<NifShape> shapes, IReadOnlyList<NifParticleSystem>? particles = null)
     {
         var list = new List<GpuShape>();
+        long bytes = 0;
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
 
@@ -101,6 +112,7 @@ public sealed class GpuModel : IDisposable
             var vb = device.CreateBuffer(vertices, BindFlags.VertexBuffer, ResourceUsage.Immutable);
             var ib = device.CreateBuffer(shape.Indices, BindFlags.IndexBuffer, ResourceUsage.Immutable);
             list.Add(new GpuShape { VertexBuffer = vb, IndexBuffer = ib, IndexCount = shape.Indices.Length, Source = shape });
+            bytes += (long)vertices.Length * MeshVertex.Size * 2 + (long)shape.Indices.Length * sizeof(ushort) * 2;
 
             min = Vector3.Min(min, shape.BoundsMin);
             max = Vector3.Max(max, shape.BoundsMax);
@@ -130,7 +142,7 @@ public sealed class GpuModel : IDisposable
         }
 
         return new GpuModel { Path = path, Shapes = list, BoundsMin = min, BoundsMax = max, Particles = particles ?? [],
-            GeometryMin = geometryMin, GeometryMax = geometryMax };
+            GeometryMin = geometryMin, GeometryMax = geometryMax, Bytes = bytes + 4096 };
     }
 }
 
@@ -138,7 +150,9 @@ public enum LoadState { Pending, Ready, Failed }
 
 /// <summary>
 /// Path → resource, loaded on worker threads. <see cref="Get"/> never blocks: it returns the
-/// resource once ready and queues the load the first time it is asked for.
+/// resource once ready and queues the load the first time it is asked for. Every Get marks the
+/// entry used; <see cref="Trim"/> drops the longest-unused ones once the cache is over budget, so
+/// flying across a worldspace does not keep everything it ever saw.
 /// </summary>
 public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
 {
@@ -147,12 +161,18 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
         public volatile T? Value;
         public volatile LoadState State;
         public string? Error;
+        public long Bytes;
+        public long LastUsed;
     }
 
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _workers;
     private int _pending;
     private int _version;
+    private long _bytes;
+
+    /// <summary>Estimated size of everything loaded.</summary>
+    public long Bytes => Interlocked.Read(ref _bytes);
 
     protected AsyncCache(int workers) => _workers = new SemaphoreSlim(workers);
 
@@ -175,6 +195,7 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
             return e;
         }, this);
 
+        entry.LastUsed = Environment.TickCount64;
         state = entry.State;
         return entry.Value;
     }
@@ -186,7 +207,9 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
         await _workers.WaitAsync().ConfigureAwait(false);
         try
         {
-            entry.Value = Create(path);
+            entry.Value = Create(path, out var bytes);
+            entry.Bytes = bytes;
+            Interlocked.Add(ref _bytes, bytes);
             entry.State = LoadState.Ready;
         }
         catch (Exception ex)
@@ -202,19 +225,51 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
         }
     }
 
-    protected abstract T Create(string path);
+    protected abstract T Create(string path, out long bytes);
+
+    /// <summary>
+    /// Over <paramref name="budget"/> bytes: disposes ready entries not asked for in the last
+    /// <paramref name="idleMilliseconds"/>, oldest first, until under budget. What is in view is
+    /// asked for every frame, so it is never dropped — a scene bigger than the budget just keeps it.
+    /// Returns how many were dropped. UI thread only (holders must check for disposal).
+    /// </summary>
+    public int Trim(long budget, long idleMilliseconds)
+    {
+        if (Bytes <= budget) return 0;
+        var cutoff = Environment.TickCount64 - idleMilliseconds;
+        var dropped = 0;
+        foreach (var (path, entry) in _entries.Where(e => e.Value.State == LoadState.Ready && e.Value.LastUsed < cutoff)
+                     .OrderBy(e => e.Value.LastUsed).ToList())
+        {
+            if (Bytes <= budget * 9 / 10) break;
+            if (!_entries.TryRemove(path, out _)) continue;
+            Interlocked.Add(ref _bytes, -entry.Bytes);
+            entry.Value?.Dispose();
+            dropped++;
+        }
+        if (dropped > 0) Interlocked.Increment(ref _version);
+        return dropped;
+    }
 
     public virtual void Dispose()
     {
         foreach (var entry in _entries.Values) entry.Value?.Dispose();
         _entries.Clear();
+        Interlocked.Exchange(ref _bytes, 0);
     }
 }
 
 public sealed class MeshCache(ID3D11Device device, AssetFileSystem assets)
     : AsyncCache<GpuModel>(Math.Max(2, Environment.ProcessorCount / 2))
 {
-    protected override GpuModel Create(string path)
+    protected override GpuModel Create(string path, out long bytes)
+    {
+        var model = CreateModel(path);
+        bytes = model.Bytes;
+        return model;
+    }
+
+    private GpuModel CreateModel(string path)
     {
         // "actor:a.nif|b.nif|…": an NPC put together from body, outfit and head meshes.
         if (path.StartsWith(ActorAppearance.CompositePrefix, StringComparison.Ordinal))
@@ -292,9 +347,11 @@ public sealed class TextureCache : AsyncCache<ID3D11ShaderResourceView>
         FlatNormal = Solid(0x00FF8080);
     }
 
-    protected override ID3D11ShaderResourceView Create(string path)
+    protected override ID3D11ShaderResourceView Create(string path, out long size)
     {
         var bytes = _assets.ReadAllBytes(path) ?? throw new FileNotFoundException(path);
+        // The DDS file holds the same mip chain the GPU gets: a good size estimate.
+        size = bytes.Length;
         return Dds.CreateTexture(_device, bytes).View;
     }
 

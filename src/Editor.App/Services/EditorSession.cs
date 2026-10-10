@@ -14,6 +14,17 @@ internal sealed class EditorSession : IDisposable
     public required AssetFileSystem Assets { get; init; }
     public required TimeSpan LoadTime { get; init; }
 
+    private Task<DoorIndex>? _doors;
+
+    /// <summary>Teleport door → its cell; built in the background the first time it is asked for.</summary>
+    public Task<DoorIndex> Doors => _doors ??= System.Threading.Tasks.Task.Run(() =>
+    {
+        var clock = Stopwatch.StartNew();
+        var index = DoorIndex.Build(Workspace);
+        Log.Info($"door index: {index.Count:N0} teleport doors in {clock.Elapsed.TotalSeconds:0.0} s");
+        return index;
+    });
+
     public void Dispose() => Workspace.Dispose();
 }
 
@@ -53,7 +64,7 @@ internal sealed class SessionLoader
 
             var catalog = RecordCatalog.Build(workspace, AppPaths.CatalogCache, progress, cancel);
             foreach (var error in catalog.Errors) Log.Warn($"catalog: {error}");
-            Log.Info($"catalog: {catalog.ByKey.Count} records in {catalog.BuildTime.TotalSeconds:0.0} s ({catalog.CachedPlugins} plugins cached)");
+            Log.Info($"catalog: {catalog.ByKey.Count} records in {catalog.BuildTime.TotalSeconds:0.0} s ({catalog.CachedPlugins} plugins cached), {Log.Memory()}");
 
             var assets = AssetFileSystem.Build(workspace, progress, cancel);
             foreach (var error in assets.Errors) Log.Warn($"assets: {error}");

@@ -17,6 +17,19 @@ internal sealed class GraphicsDevice : IDisposable
     public int Height { get; private set; }
     public string AdapterName { get; }
 
+    private readonly IDXGIAdapter3? _adapter3;
+
+    /// <summary>Video memory this process uses and the budget the OS gives it (bytes; 0 if unknown).</summary>
+    public (ulong Used, ulong Budget) VideoMemory
+    {
+        get
+        {
+            if (_adapter3 is null) return (0, 0);
+            var info = _adapter3.QueryVideoMemoryInfo(0, MemorySegmentGroup.Local);
+            return (info.CurrentUsage, info.Budget);
+        }
+    }
+
     public ID3D11RenderTargetView BackBufferView => _backBufferView!;
 
     public GraphicsDevice(nint hwnd, int width, int height)
@@ -40,6 +53,7 @@ internal sealed class GraphicsDevice : IDisposable
         using var dxgiDevice = Device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgiDevice.GetAdapter();
         AdapterName = adapter.Description.Description;
+        _adapter3 = adapter.QueryInterfaceOrNull<IDXGIAdapter3>();
         using var factory = adapter.GetParent<IDXGIFactory2>();
 
         var description = new SwapChainDescription1
@@ -159,6 +173,7 @@ internal sealed class GraphicsDevice : IDisposable
     {
         _backBufferView?.Dispose();
         _swapChain.Dispose();
+        _adapter3?.Dispose();
         Context.ClearState();
         Context.Flush();
         Context.Dispose();

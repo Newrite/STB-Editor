@@ -15,6 +15,9 @@ internal sealed unsafe class MainWindow
     public int ClientWidth { get; private set; }
     public int ClientHeight { get; private set; }
     public bool IsMinimized { get; private set; }
+
+    /// <summary>This window has keyboard focus (another app is not in front).</summary>
+    public bool IsForeground => GetForegroundWindow() == Handle;
     public bool CloseRequested { get; set; }
 
     /// <summary>Raised from the window procedure; return true to swallow the message.</summary>

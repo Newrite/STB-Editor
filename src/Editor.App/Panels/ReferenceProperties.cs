@@ -257,6 +257,9 @@ internal static class ReferenceProperties
         if (teleport is null) ImGui.TextColored(Theme.TextDim, "Not a load door.");
         else
         {
+            if (ImGui.Button(app.RenderWindow.IsFindingDoor ? "Finding the door…" : "Go to linked door") && !teleport.Door.IsNull)
+                app.RenderWindow.GoToLinkedDoor(app, obj);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Opens the cell of the destination door, camera at its marker (or double-click the door)");
             ImGui.Text("Destination door");
             FormKey? door = teleport.Door.FormKeyNullable;
             if (FormField.Draw(app, "teleportdoor", ref door, null, references: true) && door is { } d)

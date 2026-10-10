@@ -321,8 +321,12 @@ public sealed class UndoStack
     public string? RedoName => _redo.Count > 0 ? _redo[^1].Name : null;
     public IReadOnlyList<IEditCommand> Entries => _undo;
 
+    /// <summary>Bumped on every push, undo, redo and clear (lists that show edited state refresh on it).</summary>
+    public int Version { get; private set; }
+
     public void Push(IEditCommand command)
     {
+        Version++;
         _undo.Add(command);
         if (_undo.Count > Limit) _undo.RemoveAt(0);
         _redo.Clear();
@@ -331,6 +335,7 @@ public sealed class UndoStack
     internal IEditCommand? TakeUndo()
     {
         if (_undo.Count == 0) return null;
+        Version++;
         var command = _undo[^1];
         _undo.RemoveAt(_undo.Count - 1);
         _redo.Add(command);
@@ -340,6 +345,7 @@ public sealed class UndoStack
     internal IEditCommand? TakeRedo()
     {
         if (_redo.Count == 0) return null;
+        Version++;
         var command = _redo[^1];
         _redo.RemoveAt(_redo.Count - 1);
         _undo.Add(command);
@@ -348,6 +354,7 @@ public sealed class UndoStack
 
     public void Clear()
     {
+        Version++;
         _undo.Clear();
         _redo.Clear();
     }

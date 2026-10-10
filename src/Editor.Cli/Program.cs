@@ -373,6 +373,42 @@ switch (command)
         Console.WriteLine($"{args[2]} <- {vfs.Find(args[2])} -> {args[3]}");
         break;
     }
+    case "memprobe":
+    {
+        // memprobe <exterior cell EditorID>: GC heap after each step of loading an exterior grid.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        long Mb() => GC.GetTotalMemory(true) >> 20;
+        Console.WriteLine($"after catalog: {Mb()} MB");
+        var cell = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var p = cell.Winner.Cell!;
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var world = catalog.Get(p.Worldspace!.Value)!;
+        Console.WriteLine($"world in {world.Plugins.Count} plugins");
+        var persistent = lookup.PersistentCellVersions(p.Worldspace!.Value);
+        Console.WriteLine($"persistent cell versions {persistent.Count}: {Mb()} MB");
+        var refs = persistent.Sum(c => c.Persistent.Count + c.Temporary.Count);
+        Console.WriteLine($"persistent refs {refs}: {Mb()} MB");
+        var versions = lookup.CellVersions(cell.FormKey);
+        Console.WriteLine($"one cell, {versions.Count} versions: {Mb()} MB");
+        var n = versions.Sum(c => c.Temporary.Count + c.Persistent.Count);
+        Console.WriteLine($"its refs {n}: {Mb()} MB");
+        var again = lookup.CellVersions(cell.FormKey);
+        Console.WriteLine($"same cell again (both kept): {Mb()} MB");
+        GC.KeepAlive(again); GC.KeepAlive(versions);
+        var builder = new SceneBuilder(ws, catalog);
+        var scene = builder.BuildExterior(p.Worldspace!.Value, p.GridX, p.GridY, 2);
+        Console.WriteLine($"BuildExterior r2 {scene.Objects.Count} objects: {Mb()} MB");
+        scene.Navmeshes.Clear();
+        Console.WriteLine($"navmeshes cleared: {Mb()} MB");
+        scene.Terrain.Clear();
+        Console.WriteLine($"terrain cleared: {Mb()} MB");
+        scene.Objects.Clear();
+        Console.WriteLine($"objects cleared: {Mb()} MB");
+        scene = null;
+        Console.WriteLine($"scene dropped: {Mb()} MB");
+        break;
+    }
     case "scene":
     {
         var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");

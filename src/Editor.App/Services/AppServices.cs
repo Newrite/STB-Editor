@@ -44,6 +44,13 @@ internal static class Log
     public static IEnumerable<LogLine> Lines => Tail;
 
     public static void Info(string text) => Write(LogLevel.Info, text);
+
+    /// <summary>"memory 1234 MB (managed 900 MB)" — process private bytes and the GC heap, for load lines.</summary>
+    public static string Memory()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        return $"memory {process.PrivateMemorySize64 >> 20} MB (managed {GC.GetTotalMemory(false) >> 20} MB)";
+    }
     public static void Warn(string text) => Write(LogLevel.Warning, text);
     public static void Error(string text) => Write(LogLevel.Error, text);
 
@@ -92,6 +99,18 @@ internal sealed class Settings
     /// <summary>Path of the active file (restored on the next start).</summary>
     public string? ActivePluginPath { get; set; }
     public List<string> RecentActivePlugins { get; set; } = [];
+
+    /// <summary>Frames per second at most (0 = monitor refresh). In the background: 15.</summary>
+    public int FpsLimit { get; set; } = 60;
+
+    /// <summary>Panels the user closed (by their English name). Log and Load Order start closed: View opens them.</summary>
+    public List<string> ClosedPanels { get; set; } = ["Log", "Load Order"];
+
+    /// <summary>Tint actors in Flat / unlit shading so they stand out in dark interiors.</summary>
+    public bool HighlightActors { get; set; } = true;
+
+    /// <summary>Interface language: "en" or "ru".</summary>
+    public string Language { get; set; } = "en";
 
     private static readonly JsonSerializerOptions Options = new()
     {

@@ -135,6 +135,13 @@ internal static unsafe partial class Win32
     public static partial uint GetDpiForWindow(nint hwnd);
 
     [LibraryImport("user32.dll")]
+    public static partial nint GetForegroundWindow();
+
+    /// <summary>1 ms timer resolution so Sleep-based frame limiting is accurate (default 15.6 ms).</summary>
+    [LibraryImport("winmm.dll")]
+    public static partial uint timeBeginPeriod(uint milliseconds);
+
+    [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetProcessDpiAwarenessContext(nint value);
 

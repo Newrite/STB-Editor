@@ -56,6 +56,11 @@ internal sealed partial class RenderWindow : Panel
 
     public Scene? Scene => _scene;
 
+    /// <summary>The cell the view was opened on (interior, or the exterior centre cell).</summary>
+    public FormKey? LoadedCell => _cell;
+
+    public bool IsSelected(SceneObject obj) => _selection.Contains(obj);
+
     public MeshCache? Meshes => _renderer?.Meshes;
     public TextureCache? Textures => _renderer?.Textures;
 
@@ -106,6 +111,7 @@ internal sealed partial class RenderWindow : Panel
         var device = app.Graphics.Device;
         var assets = app.Session!.Assets;
         _renderer = new SceneRenderer(device, app.Graphics.Context, new MeshCache(device, assets), new TextureCache(device, assets));
+        _renderer.Options.HighlightActors = app.Settings.HighlightActors;
         _target ??= new ViewportTarget(device);
     }
 
@@ -197,6 +203,41 @@ internal sealed partial class RenderWindow : Panel
     }
 
     private bool _streaming;
+    private double _lastTrim;
+
+    /// <summary>
+    /// Every couple of seconds: meshes and textures not drawn for 20 s go once the caches pass their
+    /// share of the video memory the OS gives us (on a 6 GB card ~1.5 GB textures, ~0.8 GB meshes).
+    /// Without this an exterior flight kept every cell it passed — on 16 GB machines Windows started
+    /// paging and the whole PC froze.
+    /// </summary>
+    private void TrimCaches(EditorApp app)
+    {
+        var now = _clock.Elapsed.TotalSeconds;
+        if (now - _lastTrim < 2 || _renderer is null) return;
+        _lastTrim = now;
+
+        var (_, budget) = app.Graphics.VideoMemory;
+        if (budget == 0) budget = 2048L << 20;
+        // --video-budget <MB>: pretend the card has this much (checks eviction on a big card).
+        var cli = Environment.GetCommandLineArgs();
+        var forced = Array.IndexOf(cli, "--video-budget");
+        if (forced >= 0 && forced + 1 < cli.Length && long.TryParse(cli[forced + 1], out var mb)) budget = (ulong)mb << 20;
+        var textureBudget = Math.Clamp((long)(budget * 0.30), 128L << 20, 2048L << 20);
+        var meshBudget = Math.Clamp((long)(budget * 0.15), 64L << 20, 1024L << 20);
+        var textures = _renderer.Textures.Trim(textureBudget, 20_000);
+        var meshes = _renderer.Meshes.Trim(meshBudget, 20_000);
+        if (textures + meshes > 0)
+            Log.Info($"cache trim: {meshes} meshes, {textures} textures released; now {_renderer.Meshes.Bytes >> 20} MB meshes, {_renderer.Textures.Bytes >> 20} MB textures");
+    }
+
+    /// <summary>--autotest-fly: once everything around has streamed in, move the camera one cell east. False while still loading.</summary>
+    public bool FlyStepForTest()
+    {
+        if (!IsSettled || _scene is { IsInterior: true }) return false;
+        _camera.Position += new Vector3(TerrainCell.CellSize, 0, 0);
+        return true;
+    }
     private readonly HashSet<string> _reportedFailures = new(StringComparer.OrdinalIgnoreCase);
     private int _failureVersion = -1;
 
@@ -216,6 +257,7 @@ internal sealed partial class RenderWindow : Panel
         if (!RequireSession(app) || _renderer is null || _target is null) return;
 
         PollLoading(app);
+        PollDoor(app);
         if (_terrainDirty && _loading is null)
         {
             _terrainDirty = false;
@@ -223,6 +265,7 @@ internal sealed partial class RenderWindow : Panel
             RefreshNavmeshes(app);
         }
         StreamExterior(app);
+        TrimCaches(app);
         ReportAssetFailures();
         SyncSelectionFromApp(app);
         DrawToolbar(app);
@@ -238,10 +281,16 @@ internal sealed partial class RenderWindow : Panel
         if (delta > 0) _fps = _fps * 0.9f + 0.1f / delta;
 
         var origin = ImGui.GetCursorScreenPos();
-        ImGui.InvisibleButton("##viewport", size,
-            ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
-        var hovered = ImGui.IsItemHovered();
-        var active = ImGui.IsItemActive();
+        // ImGuizmo only starts a drag when no ImGui item is hovered (this frame or the last), and the
+        // viewport button covers the whole view: while the mouse is on a gizmo handle leave it out.
+        var gizmoHot = _gizmoOver || _gizmoWasUsing;
+        if (gizmoHot)
+            ImGui.Dummy(size);
+        else
+            ImGui.InvisibleButton("##viewport", size,
+                ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
+        var hovered = !gizmoHot && ImGui.IsItemHovered();
+        var active = !gizmoHot && ImGui.IsItemActive();
 
         HandleInput(app, origin, size, hovered, active, delta);
 
@@ -317,7 +366,7 @@ internal sealed partial class RenderWindow : Panel
             _renderer!.Forget(_scene);
             _selection.Clear();
             foreach (var warning in _scene.Warnings.Take(20)) Log.Warn($"scene: {warning}");
-            Log.Info($"cell {_scene.Title}: {_scene.Objects.Count} objects, {_scene.Terrain.Count} terrain cells, {_scene.Water.Count} water planes");
+            Log.Info($"cell {_scene.Title}: {_scene.Objects.Count} objects, {_scene.Terrain.Count} terrain cells, {_scene.Water.Count} water planes, {Log.Memory()}");
 
             if (_scene.IsInterior)
             {
@@ -380,6 +429,7 @@ internal sealed partial class RenderWindow : Panel
         Toggle("Navmesh", () => options.ShowNavmesh, v => options.ShowNavmesh = v, "Show navmeshes (N edits them)");
         Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, "Particles: fire, smoke, dust, sparks");
         Toggle("Anim", () => options.Animate, v => options.Animate = v, "Play flames, scrolling water and particles (off: frozen frame, idle CPU)");
+        Toggle("NPC", () => options.HighlightActors, v => options.HighlightActors = app.Settings.HighlightActors = v, "Tint NPCs and creatures so they are easy to spot in dark places");
 
         if (_world is not null)
         {

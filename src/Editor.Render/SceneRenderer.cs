@@ -20,6 +20,9 @@ public enum ShadingMode
 /// <summary>What to draw; toggled from the render window toolbar.</summary>
 public sealed class RenderOptions
 {
+    /// <summary>Applied to actors when <see cref="HighlightActors"/> is on: light cyan, a third of the colour.</summary>
+    public static readonly System.Numerics.Vector4 ActorTint = new(0.45f, 0.85f, 1f, 0.35f);
+
     public ShadingMode Shading { get; set; } = ShadingMode.Lit;
     public bool Wireframe { get; set; }
     public bool ShowMarkers { get; set; } = true;
@@ -32,6 +35,9 @@ public sealed class RenderOptions
 
     /// <summary>Play shader animations (flames, water flow) and simulate particles.</summary>
     public bool Animate { get; set; } = true;
+
+    /// <summary>Tint NPCs and creatures so they stand out in dark interiors.</summary>
+    public bool HighlightActors { get; set; } = true;
     public bool ShowParticles { get; set; } = true;
 
     /// <summary>Navmesh overlay (CK: the navmesh view of the render window).</summary>
@@ -511,6 +517,12 @@ public sealed unsafe class SceneRenderer : IDisposable
         foreach (var obj in scene.Objects)
         {
             Stats.Objects++;
+            // Keep this scene's models marked as used; one the cache evicted meanwhile is asked for again.
+            if (obj.Model is { } held)
+            {
+                if (held.IsDisposed) obj.Model = null;
+                else _meshes.Get(held.Path);
+            }
             if (obj.IsDeleted) continue;
             if (obj.InitiallyDisabled && !Options.ShowInitiallyDisabled) continue;
 
@@ -533,7 +545,8 @@ public sealed unsafe class SceneRenderer : IDisposable
 
             var selected = selection.Contains(obj);
             var highlight = obj.IsModified ? new Vector4(1f, 0.85f, 0.35f, 0.12f)
-                : obj.InitiallyDisabled ? new Vector4(0.6f, 0.2f, 0.9f, 0.25f) : Vector4.Zero;
+                : obj.InitiallyDisabled ? new Vector4(0.6f, 0.2f, 0.9f, 0.25f)
+                : obj.Kind == SceneObjectKind.Actor && Options.HighlightActors ? RenderOptions.ActorTint : Vector4.Zero;
             var instance = new InstanceData { World = obj.World, Highlight = highlight };
 
             // Actors whose look could not be put together stay boxes.

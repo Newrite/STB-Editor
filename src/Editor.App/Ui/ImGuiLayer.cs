@@ -70,10 +70,19 @@ internal sealed unsafe class ImGuiLayer : IDisposable
     public bool HandleMessage(nint hwnd, uint msg, nint wParam, nint lParam) =>
         ImGuiImplWin32.WndProcHandler(hwnd, msg, (nuint)wParam, lParam) != 0;
 
+    /// <summary>Autotests: mouse position / left button to feed ImGui instead of the real mouse.</summary>
+    public static (System.Numerics.Vector2 Position, bool Down)? TestMouse { get; set; }
+
     public void NewFrame()
     {
         ImGuiImplD3D11.NewFrame();
         ImGuiImplWin32.NewFrame();
+        if (TestMouse is { } mouse)
+        {
+            var io = ImGui.GetIO();
+            io.AddMousePosEvent(mouse.Position.X, mouse.Position.Y);
+            io.AddMouseButtonEvent(0, mouse.Down);
+        }
         ImGui.NewFrame();
     }
 
@@ -96,6 +105,9 @@ internal sealed unsafe class ImGuiLayer : IDisposable
     {
         ImGuiImplD3D11.Shutdown();
         ImGuiImplWin32.Shutdown();
+        // cimguizmo keeps its own pointer to the context; left dangling, its static state frees through
+        // it when the DLL unloads (access violation on exit, only after the gizmo was used).
+        Hexa.NET.ImGuizmo.ImGuizmo.SetImGuiContext(null);
         ImGui.DestroyContext(_context);
         Marshal.FreeCoTaskMem(_iniPath);
     }

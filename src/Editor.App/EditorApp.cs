@@ -85,6 +85,8 @@ internal sealed class EditorApp : IDisposable
             new LoadOrderPanel(),
             new LogPanel(),
         ];
+        foreach (var panel in _panels) panel.IsOpen = !settings.ClosedPanels.Contains(panel.Name);
+        Loc.Russian = settings.Language == "ru";
 
         if (options.Game is not null) settings.GameFolder = options.Game;
         if (options.Mo2 is not null) settings.Mo2Folder = options.Mo2;
@@ -236,6 +238,9 @@ internal sealed class EditorApp : IDisposable
         RunLandViewAutotest();
         RunDuplicateAutotest();
         RunNavmeshAutotest();
+        RunFlyAutotest();
+        if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
+        if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
 
         DrawMainMenu();
         StatusBar.Draw(this);
@@ -252,12 +257,14 @@ internal sealed class EditorApp : IDisposable
             if (!panel.IsOpen) continue;
             panel.Draw(this);
         }
+        RememberClosedPanels();
 
         if (Session is not null) Thumbnails?.Update(Session);
         _objectShot?.Step(this);
 
         _dataDialog.Draw();
         _activeDialog.Draw();
+        _help.Draw(this);
         _newRecordDialog.Draw();
         HandleShortcuts();
     }
@@ -279,6 +286,7 @@ internal sealed class EditorApp : IDisposable
             Preview = null;
             Thumbnails = null;
             foreach (var panel in _panels) panel.OnSessionChanged(this);
+            _ = session.Doors; // door → cell index for going through doors, built in the background
             if (RenderWindow.Meshes is { } meshes && RenderWindow.Textures is { } textures)
             {
                 Preview = new ObjectPreview(_graphics.Device, _graphics.Context, meshes, textures) { Document = Document };
@@ -400,6 +408,7 @@ internal sealed class EditorApp : IDisposable
 
     private ObjectShot? _objectShot;
     private readonly NewRecordDialog _newRecordDialog;
+    private readonly HelpWindow _help = new();
 
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
@@ -407,7 +416,41 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-land") || _landTestStage == 3)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-landview") || _landViewStage == 3)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dup") || _dupStage == 3)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-nav") || _navStage == 3);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-nav") || _navStage == 3)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-fly") || _flyDone)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-gizmo") || _gizmoDone)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone);
+
+    private bool _gizmoDone;
+    private bool _doorDone;
+
+    private int _flySteps = -1;
+    private readonly System.Diagnostics.Stopwatch _flyClock = System.Diagnostics.Stopwatch.StartNew();
+    private double _flyNext;
+    private bool _flyDone;
+
+    /// <summary>
+    /// --autotest-fly &lt;cells&gt; (with --cell, an exterior): fly east one cell at a time, each step once
+    /// the grid has streamed in, logging process and video memory and the cache sizes.
+    /// </summary>
+    private void RunFlyAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-fly");
+        if (i < 0 || _flyDone || Session is null) return;
+        var total = i + 1 < cli.Length && int.TryParse(cli[i + 1], out var n) ? n : 20;
+        // A cell every 3 s, about a fast fly-through by hand (eviction waits for 20 s unused).
+        if (_flyClock.Elapsed.TotalSeconds < _flyNext || !RenderWindow.FlyStepForTest()) return;
+        _flyNext = _flyClock.Elapsed.TotalSeconds + 3;
+
+        _flySteps++;
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var (used, budget) = _graphics.VideoMemory;
+        Log.Info($"autotest-fly: step {_flySteps}/{total} cell {RenderWindow.Scene?.CenterCell}: private {process.PrivateMemorySize64 >> 20} MB, " +
+            $"managed {GC.GetTotalMemory(false) >> 20} MB, video {used >> 20}/{budget >> 20} MB, meshes {RenderWindow.Meshes?.Count} ({RenderWindow.Meshes?.Bytes >> 20} MB), textures {RenderWindow.Textures?.Count} ({RenderWindow.Textures?.Bytes >> 20} MB), " +
+            $"objects {RenderWindow.Scene?.Objects.Count}");
+        if (_flySteps >= total) _flyDone = true;
+    }
 
     /// <summary>
     /// --autotest-nav &lt;folder&gt; (with --cell, an interior): delete a navmesh triangle, rebuild it from its
@@ -695,12 +738,19 @@ internal sealed class EditorApp : IDisposable
         // The 3D view arrives with the renderer (stage 1).
     }
 
+    /// <summary>Which panels are closed goes into the settings (written on exit).</summary>
+    private void RememberClosedPanels()
+    {
+        var closed = _panels.Where(p => !p.IsOpen).Select(p => p.Name).ToList();
+        if (!closed.SequenceEqual(_settings.ClosedPanels)) _settings.ClosedPanels = closed;
+    }
+
     public bool ReadyForScreenshot(int frames)
     {
         if (_options.Open || _options.Game is not null)
         {
             if (Session is null) return false;
-            if (!AutotestDone) return frames > 60 * 180;
+            if (!AutotestDone) return frames > (Environment.GetCommandLineArgs().Contains("--autotest-fly") ? 60 * 60 * 30 : 60 * 180);
             if (_objectShot is { Done: false }) { _framesSinceLoad = 0; return false; }
             if (_options.Cell is not null && !RenderWindow.IsSettled)
             {
@@ -768,7 +818,34 @@ internal sealed class EditorApp : IDisposable
                 if (ImGui.MenuItem(panel.Name, (string?)null, open)) panel.IsOpen = !open;
             }
             ImGui.Separator();
+            if (ImGui.BeginMenu("Frame limit"))
+            {
+                foreach (var (label, fps) in new[] { ("30 FPS", 30), ("60 FPS", 60), ("120 FPS", 120), ("Monitor refresh (vsync)", 0) })
+                    if (ImGui.MenuItem(label, (string?)null, _settings.FpsLimit == fps)) _settings.FpsLimit = fps;
+                ImGui.Separator();
+                ImGui.TextColored(Theme.TextDim, "Lower = cooler GPU; 15 FPS while in the background.");
+                ImGui.EndMenu();
+            }
+            if (ImGui.BeginMenu("Language / Язык"))
+            {
+                if (ImGui.MenuItem("English", (string?)null, !Loc.Russian)) SetLanguage("en");
+                if (ImGui.MenuItem("Русский", (string?)null, Loc.Russian)) SetLanguage("ru");
+                ImGui.EndMenu();
+            }
+            ImGui.Separator();
             if (ImGui.MenuItem("Reset layout")) DefaultLayout.RequestReset();
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Help"))
+        {
+            if (ImGui.MenuItem("Keys and features", "F1")) _help.Show();
+            if (ImGui.MenuItem("Project page (GitHub)"))
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/STB-Team/STB-Editor") { UseShellExecute = true });
+            if (ImGui.MenuItem("Open log file"))
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.LogFile) { UseShellExecute = true });
+            ImGui.Separator();
+            ImGui.TextColored(Theme.TextDim, $"STB Editor {typeof(EditorApp).Assembly.GetName().Version?.ToString(3)}");
             ImGui.EndMenu();
         }
 
@@ -795,6 +872,12 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.IsKeyPressed(ImGuiKey.Z, true) && !io.KeyShift) Document.Undo();
             if (ImGui.IsKeyPressed(ImGuiKey.Y, true) || (io.KeyShift && ImGui.IsKeyPressed(ImGuiKey.Z, true))) Document.Redo();
         }
+    }
+
+    private void SetLanguage(string language)
+    {
+        _settings.Language = language;
+        Loc.Russian = language == "ru";
     }
 
     public Vector2 Scaled(float x, float y) => new Vector2(x, y) * (ImGui.GetFontSize() / 16f);

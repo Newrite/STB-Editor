@@ -26,7 +26,7 @@ internal sealed class ActiveFileDialog
     private string _filter = "";
     private PluginInfo? _chosen;
     private string _newName = "MyEdits.esp";
-    private bool _newLight = true;
+    private bool _newLight;
     private bool _newMaster;
     private string? _error;
     private bool _closePrompt;

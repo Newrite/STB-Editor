@@ -36,6 +36,7 @@ internal sealed class ObjectPreview : IDisposable
         _device = device;
         _renderer = new SceneRenderer(device, context, meshes, textures);
         _renderer.Options.Fog = false;
+        _renderer.Options.HighlightActors = false;
         _renderer.Options.ShowMarkers = true;
         _renderer.Options.Brightness = 1.15f;
     }

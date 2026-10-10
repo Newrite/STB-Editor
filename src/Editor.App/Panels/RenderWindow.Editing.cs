@@ -263,7 +263,15 @@ internal sealed partial class RenderWindow
 
         if (_drag != DragKind.None) UpdateDrag(io, mouse, size);
 
-        if (hovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && _selection.Count > 0) FrameSelection();
+        if (hovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && _selection.Count > 0)
+        {
+            // A teleport door: go through it (to the cell of the door it leads to). Anything else: frame it.
+            if (_selection.Count == 1 && _tool is EditTool.Select or EditTool.Move or EditTool.Rotate or EditTool.Scale
+                && TeleportOf(app, _selection.First()) is not null)
+                GoToLinkedDoor(app, _selection.First());
+            else
+                FrameSelection();
+        }
 
         // ---- keys
         if ((focused || hovered) && !io.WantTextInput && !_looking && _drag == DragKind.None)
@@ -454,6 +462,7 @@ internal sealed partial class RenderWindow
 
     private unsafe void DrawGizmo(Vector2 origin, Vector2 size)
     {
+        _gizmoOver = false;
         if (_selection.Count == 0 || _tool is EditTool.Select or EditTool.Land or EditTool.Navmesh || _drag != DragKind.None || _scene is null) return;
 
         ImGuizmo.SetOrthographic(false);
@@ -476,6 +485,11 @@ internal sealed partial class RenderWindow
             pivot = Matrix4x4.CreateTranslation(single?.Position ?? Center(_selection.Select(o => o.Position)));
         }
 
+        // ImGuizmo applies each frame's rotation on top of the matrix it is given. Rebuilding the
+        // pivot from the objects loses that in world mode (the pivot has no rotation), so the
+        // objects only ever got the last frame's few degrees: during a drag feed back its own output.
+        if (_gizmoWasUsing && !Environment.GetCommandLineArgs().Contains("--gizmo-old")) pivot = _gizmoPivot;
+
         var operation = _tool switch
         {
             EditTool.Rotate => ImGuizmoOperation.Rotate,
@@ -494,6 +508,10 @@ internal sealed partial class RenderWindow
         var before = pivot;
         var changed = ImGuizmo.Manipulate(&view.M11, &projection.M11, operation, mode, &pivot.M11, null, snap == Vector3.Zero ? null : &snap.X);
         var usingNow = ImGuizmo.IsUsing();
+        _gizmoPivot = pivot;
+        _gizmoOver = ImGuizmo.IsOver();
+        var clip = Vector4.Transform(new Vector4(pivot.Translation, 1f), view * projection);
+        if (clip.W > 0) _gizmoScreen = origin + new Vector2((clip.X / clip.W * 0.5f + 0.5f) * size.X, (0.5f - clip.Y / clip.W * 0.5f) * size.Y);
 
         if (usingNow && !_gizmoWasUsing)
         {
@@ -538,6 +556,90 @@ internal sealed partial class RenderWindow
     }
 
     private Matrix4x4 _gizmoStart;
+    private Matrix4x4 _gizmoPivot;
+    private bool _gizmoOver;
+    private Vector2 _gizmoScreen;
+    private int _gizmoTest;
+    private int _gizmoTestFrame;
+    private float _gizmoTestRadius;
+    private SceneObject? _gizmoTestObject;
+    private Vector3 _gizmoTestBefore;
+    private Vector3 _gizmoTestBeforePosition;
+    private bool _gizmoTestMove;
+
+    /// <summary>
+    /// --autotest-gizmo (with --cell): select an object, rotate tool in world space, find a ring of the
+    /// gizmo by moving a fake mouse out from the centre, drag it, check the object turned. True when done.
+    /// </summary>
+    public bool GizmoTestStep()
+    {
+        _gizmoTestFrame++;
+        switch (_gizmoTest)
+        {
+            case 0 when IsSettled:
+                _gizmoTestObject = _scene!.Objects
+                    .Where(o => o.Model is { IsEmpty: false } && !o.IsDeleted && o.BoundsRadius is > 40 and < 400)
+                    .OrderBy(o => Vector3.Distance(o.Position, _scene.Focus)).FirstOrDefault();
+                if (_gizmoTestObject is null) { Log.Error("autotest-gizmo: no object"); return true; }
+                _selection.Clear();
+                _selection.Add(_gizmoTestObject);
+                _gizmoTestMove = Environment.GetCommandLineArgs().Contains("move");
+                _tool = _gizmoTestMove ? EditTool.Move : EditTool.Rotate;
+                _localSpace = false;
+                _gridSnap = false;
+                _angleSnap = false;
+                // From above, so the Z ring is a circle and a diagonal from the centre meets only it.
+                _camera.Position = _gizmoTestObject.Position + new Vector3(0, -120, 700);
+                _camera.LookAt(_gizmoTestObject.Position);
+                _gizmoTestBefore = _gizmoTestObject.Rotation;
+                _gizmoTestBeforePosition = _gizmoTestObject.Position;
+                _gizmoTest = 1;
+                _gizmoTestFrame = 0;
+                _gizmoTestRadius = 30;
+                break;
+            case 1 when _gizmoTestFrame > 10:
+                _gizmoTest = 2;
+                break;
+            case 2:
+                if (_gizmoOver && _gizmoTestFrame > 2)
+                {
+                    Log.Info($"autotest-gizmo: ring at {_gizmoTestRadius:0} px from the centre");
+                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition(), true);
+                    _gizmoTest = 3;
+                    _gizmoTestFrame = 0;
+                    break;
+                }
+                if (_gizmoTestFrame > 2)
+                {
+                    _gizmoTestRadius += 3;
+                    _gizmoTestFrame = 0;
+                    if (_gizmoTestRadius > 500) { Log.Error("autotest-gizmo: no ring found"); StbEditor.App.Ui.ImGuiLayer.TestMouse = null; return true; }
+                }
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition(), false);
+                break;
+            case 3 when _gizmoTestFrame <= 40:
+                // Along the tangent of the ring (found down-right of the centre).
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition() + Tangent() * (_gizmoTestFrame * 3f), true);
+                break;
+            case 3:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition() + Tangent() * 120f, false);
+                _gizmoTest = 4;
+                _gizmoTestFrame = 0;
+                break;
+            case 4 when _gizmoTestFrame > 5:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = null;
+                var after = _gizmoTestObject!.Rotation;
+                Log.Info($"autotest-gizmo: {_gizmoTestObject.BaseEditorId} rotation {Deg(_gizmoTestBefore)} -> {Deg(after)}, position {_gizmoTestBeforePosition} -> {_gizmoTestObject.Position}, undo: {_document?.History.UndoName}");
+                return true;
+        }
+        return false;
+
+        // Rotate: a diagonal meets only the Z ring (seen from above), then along its tangent.
+        // Move: the X arrow points right on screen; drag along it.
+        Vector2 ImGuiLayerPosition() => _gizmoScreen + (_gizmoTestMove ? new Vector2(1, 0) : new Vector2(0.7071f)) * _gizmoTestRadius;
+        Vector2 Tangent() => _gizmoTestMove ? new Vector2(1, 0) : new Vector2(-1, 1);
+        static string Deg(Vector3 r) => $"({TransformMath.Degrees(r.X):0.#}, {TransformMath.Degrees(r.Y):0.#}, {TransformMath.Degrees(r.Z):0.#})";
+    }
 
     // ------------------------------------------------------------------ commands
 

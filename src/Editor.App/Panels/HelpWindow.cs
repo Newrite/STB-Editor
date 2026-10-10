@@ -1,0 +1,119 @@
+using System.Numerics;
+using Hexa.NET.ImGui;
+using StbEditor.App.Ui;
+using static StbEditor.App.Ui.Loc;
+
+namespace StbEditor.App.Panels;
+
+/// <summary>Help → Keys and features (F1): every shortcut and what each window does.</summary>
+internal sealed class HelpWindow
+{
+    private bool _open;
+
+    public void Show() => _open = true;
+
+    public void Toggle() => _open = !_open;
+
+    /// <summary>(keys, what they do) per section. Keep in step with RenderWindow.Editing / Navmesh / Landscape.</summary>
+    private static readonly (string Section, (string Keys, string Action)[] Rows)[] Sections =
+    [
+        ("Camera (Render Window)",
+        [
+            ("RMB + mouse", "Look around"),
+            ("RMB + W A S D", "Fly; Q / E down / up, Shift faster, Ctrl slower"),
+            ("RMB + wheel", "Flying speed"),
+            ("Wheel", "Move forward / back"),
+            ("MMB drag, or Space + mouse", "Pan"),
+            ("Shift + mouse", "Orbit the selection (look around without one)"),
+            ("Alt + LMB drag", "Orbit"),
+            ("C, or double-click", "Frame the selection"),
+            ("T", "Top view"),
+        ]),
+        ("Selecting and moving objects",
+        [
+            ("LMB", "Select; Ctrl adds to the selection; Esc clears it"),
+            ("LMB drag on the selection", "Move along the ground; hold Z for height, X / Y to lock an axis"),
+            ("S + LMB drag", "Scale"),
+            ("RMB drag on the selection", "Rotate about Z; hold X or Y for those axes"),
+            ("Q / W / E / R", "Tool: select / move / rotate / scale (gizmo with arrows and rings)"),
+            ("L", "Gizmo axes: world or the object's own"),
+            ("G", "Snap to the grid (step next to it in the toolbar); Angle: snap rotation"),
+            ("F", "Drop to the ground"),
+            ("Delete", "Delete the selection"),
+            ("Ctrl+D", "Duplicate the selection"),
+            ("Drag from the Object Window", "Place an object (also from Preview)"),
+            ("Inspector: Placement", "Exact position, rotation in degrees and scale: drag the number, or double-click it and type"),
+        ]),
+        ("Doors and cells",
+        [
+            ("Double-click a door", "Go through it: opens the cell of the linked door, camera at its marker"),
+            ("Inspector: Go to linked door", "The same from the door's properties"),
+            ("Cell View: double-click a cell", "Load it; the list on the right shows its objects (click one to go to it)"),
+            ("World menu", "New interior cell, new worldspace"),
+            ("grid ±N (toolbar)", "How many exterior cells load around the centre one"),
+        ]),
+        ("Landscape (H)",
+        [
+            ("H", "Landscape tool on / off (Landscape panel: brush, radius, strength, textures)"),
+            ("LMB drag", "Raise, lower, flatten, smooth or paint"),
+            ("Shift + LMB", "Swap raise and lower"),
+        ]),
+        ("Navmesh (N)",
+        [
+            ("N", "Navmesh editing on / off"),
+            ("LMB", "Select a vertex or triangle; Ctrl adds"),
+            ("LMB drag", "Move vertices; hold Z for height"),
+            ("Shift + LMB on the ground", "New vertex; with two selected it also makes the triangle"),
+            ("Delete / F / Esc", "Delete, drop to the ground, clear the selection"),
+        ]),
+        ("Files and editing",
+        [
+            ("Ctrl+S", "Save into the active file (asks for one the first time)"),
+            ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
+            ("Ctrl+O", "Data: game, MO2 profile"),
+            ("Ctrl+F", "Search in the Object Window"),
+            ("Alt+Left / Alt+Right", "Back / forward through selected records"),
+            ("Inspector: Edit fields", "Edit any field of the selected record"),
+            ("Inspector: Scripts", "Attach scripts and set their properties (from .pex, no compiling)"),
+        ]),
+        ("View",
+        [
+            ("M / B / Shift+W", "Markers / cell borders / wireframe"),
+            ("Toolbar: NPC", "Tint NPCs and creatures so they are easy to find"),
+            ("Toolbar: FX, Anim", "Particles and animation off for weak PCs"),
+            ("View menu", "Windows (Log, Load Order...), frame limit, language"),
+            ("F1", "This window"),
+        ]),
+    ];
+
+    public void Draw(EditorApp app)
+    {
+        if (ImGui.IsKeyPressed(ImGuiKey.F1, false)) _open = !_open;
+        if (!_open) return;
+
+        ImGui.SetNextWindowSize(app.Scaled(720, 640), ImGuiCond.FirstUseEver);
+        if (ImGui.Begin(Title("Keys and features"), ref _open))
+        {
+            ImGui.TextColored(Theme.TextDim, T("Controls follow the Creation Kit where it has them."));
+            foreach (var (section, rows) in Sections)
+            {
+                if (!ImGui.CollapsingHeader(T(section), ImGuiTreeNodeFlags.DefaultOpen)) continue;
+                if (!ImGui.BeginTable("##" + section, 2, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp)) continue;
+                ImGui.TableSetupColumn("keys", ImGuiTableColumnFlags.WidthStretch, 0.38f);
+                ImGui.TableSetupColumn("action", ImGuiTableColumnFlags.WidthStretch, 0.62f);
+                foreach (var (keys, action) in rows)
+                {
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.TextColored(Theme.Accent, T(keys));
+                    ImGui.TableNextColumn();
+                    ImGui.TextWrapped(T(action));
+                }
+                ImGui.EndTable();
+            }
+            ImGui.Spacing();
+            ImGui.TextColored(Theme.TextDim, T("More in README.md (GitHub page of the project)."));
+        }
+        ImGui.End();
+    }
+}

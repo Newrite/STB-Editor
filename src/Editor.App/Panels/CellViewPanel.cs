@@ -7,7 +7,10 @@ using StbEditor.Data.Catalog;
 
 namespace StbEditor.App.Panels;
 
-/// <summary>The CK Cell View: pick a worldspace (or Interiors), then a cell.</summary>
+/// <summary>
+/// The CK Cell View: pick a worldspace (or Interiors), then a cell; on the right the objects of the
+/// cell loaded in the Render Window (click: select and frame it).
+/// </summary>
 internal sealed class CellViewPanel : Panel
 {
     private readonly record struct WorldItem(FormKey? Key, string Label, int Count);
@@ -71,8 +74,111 @@ internal sealed class CellViewPanel : Panel
     protected override void DrawContent(EditorApp app)
     {
         if (!RequireSession(app)) return;
-        var ws = app.Session!.Workspace;
         SyncDrafts(app);
+
+        // Cells on the left, the loaded cell's objects on the right (drag the border to resize).
+        var avail = ImGui.GetContentRegionAvail();
+        if (_split <= 0) _split = avail.X * 0.55f;
+        if (ImGui.BeginChild("##cellList", new Vector2(_split, 0), ImGuiChildFlags.ResizeX))
+            DrawCells(app);
+        _split = ImGui.GetItemRectSize().X;
+        ImGui.EndChild();
+        ImGui.SameLine();
+        if (ImGui.BeginChild("##cellObjects", Vector2.Zero))
+            DrawObjects(app);
+        ImGui.EndChild();
+    }
+
+    private float _split;
+    private string _objectFilter = string.Empty;
+    private List<StbEditor.Render.SceneObject> _objects = [];
+    private (StbEditor.Render.Scene? Scene, FormKey? Cell, string Filter, int Count, int Version) _objectsKey;
+
+    /// <summary>
+    /// References of the loaded cell: an interior's all, for an exterior those standing in the
+    /// chosen cell (the one selected on the left if it is loaded, else the centre cell).
+    /// </summary>
+    private void DrawObjects(EditorApp app)
+    {
+        var window = app.RenderWindow;
+        var scene = window.Scene;
+        var catalog = app.Session!.Catalog;
+        if (scene is null)
+        {
+            ImGui.TextColored(Theme.TextDim, "Double-click a cell to load it; its objects show here.");
+            return;
+        }
+
+        var cellKey = window.LoadedCell;
+        if (!scene.IsInterior && app.Selected is { } picked && catalog.Get(picked)?.Winner.Cell is { IsInterior: false, IsPersistentCell: false } p
+            && p.Worldspace == scene.Worldspace && Math.Abs(p.GridX - scene.CenterCell.X) <= 5 && Math.Abs(p.GridY - scene.CenterCell.Y) <= 5)
+            cellKey = picked;
+        var cellRecord = cellKey is { } ck ? catalog.Get(ck) : null;
+        var grid = cellRecord?.Winner.Cell is { IsInterior: false } g ? (g.GridX, g.GridY) : scene.CenterCell;
+
+        var key = (scene, cellKey, _objectFilter, scene.Objects.Count, app.Document.History.Version);
+        if (key != _objectsKey)
+        {
+            _objectsKey = key;
+            var filter = _objectFilter.Trim();
+            _objects = scene.Objects
+                .Where(o => !o.IsDeleted && o.CollectionPart <= 0)
+                .Where(o => scene.IsInterior || ((int)MathF.Floor(o.Position.X / StbEditor.Render.TerrainCell.CellSize) == grid.Item1
+                                                 && (int)MathF.Floor(o.Position.Y / StbEditor.Render.TerrainCell.CellSize) == grid.Item2))
+                .Where(o => filter.Length == 0 || (o.BaseEditorId?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
+                            || o.BaseSignature.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                            || app.Session.Workspace.FormIdText(o.Reference).Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .DistinctBy(o => o.Reference)
+                .OrderBy(o => o.BaseEditorId ?? "~", StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var title = scene.IsInterior ? cellRecord?.EditorId ?? scene.Title : $"{cellRecord?.EditorId ?? "(wilderness)"} [{grid.Item1}, {grid.Item2}]";
+        ImGui.TextColored(Theme.TextDim, $"{title}: {_objects.Count:N0} objects");
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##objectfilter", "Filter objects (EditorID, type, FormID)", ref _objectFilter, 256);
+
+        var flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV
+            | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.Hideable;
+        if (!ImGui.BeginTable("##objects", 4, flags)) return;
+        ImGui.TableSetupScrollFreeze(0, 1);
+        ImGui.TableSetupColumn("Base", ImGuiTableColumnFlags.WidthStretch, 1.4f);
+        ImGui.TableSetupColumn("Type");
+        ImGui.TableSetupColumn("Ref ID");
+        ImGui.TableSetupColumn("Plugin", ImGuiTableColumnFlags.WidthStretch, 0.8f);
+        ImGui.TableHeadersRow();
+
+        var ws = app.Session.Workspace;
+        var clipper = new ImGuiListClipper();
+        clipper.Begin(_objects.Count);
+        while (clipper.Step())
+        {
+            for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+            {
+                var obj = _objects[i];
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+                ImGui.PushID(i);
+                var label = obj.BaseEditorId ?? ws.FormIdText(obj.Base);
+                if (obj.IsModified) label += "  *";
+                if (ImGui.Selectable(label, window.IsSelected(obj), ImGuiSelectableFlags.SpanAllColumns)) app.Select(obj.Reference);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(obj.ModelPath ?? "no model");
+                ImGui.PopID();
+                ImGui.TableNextColumn();
+                ImGui.TextColored(Theme.TextDim, obj.BaseSignature);
+                ImGui.TableNextColumn();
+                ImGui.TextColored(Theme.TextDim, ws.FormIdText(obj.Reference));
+                ImGui.TableNextColumn();
+                ImGui.TextColored(Theme.TextDim, obj.SourcePlugin ?? "new");
+            }
+        }
+        clipper.End();
+        ImGui.EndTable();
+    }
+
+    private void DrawCells(EditorApp app)
+    {
+        var ws = app.Session!.Workspace;
 
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.45f);
         var current = _worlds.Count > 0 ? _worlds[_worldIndex] : default;

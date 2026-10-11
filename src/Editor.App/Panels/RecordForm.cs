@@ -17,6 +17,7 @@ internal sealed class RecordForm
     private FormKey? _loadedFor;
     private List<(string Plugin, IMajorRecordGetter Record)> _versions = [];
     private string? _error;
+    private StbEditor.Render.Scene? _errorScene;
 
     /// <summary>Records that do not sit in a top-level group (or need their own tools) are not field-edited here.</summary>
     private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "QUST", "SCEN", "TES4"];
@@ -25,7 +26,8 @@ internal sealed class RecordForm
     public void Draw(EditorApp app, FormKey key, bool inWindow)
     {
         var session = app.Session!;
-        if (_loadedFor != key) Load(app, key);
+        // A placed reference is found through the loaded scene: try again once a scene is there.
+        if (_loadedFor != key || (_error is not null && _errorScene != app.RenderWindow.Scene)) Load(app, key);
 
         var catalog = session.Catalog.Get(key);
         var placedObject = catalog is null ? app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) : null;
@@ -260,6 +262,7 @@ internal sealed class RecordForm
         _loadedFor = key;
         _versions = [];
         _error = null;
+        _errorScene = app.RenderWindow.Scene;
 
         try
         {

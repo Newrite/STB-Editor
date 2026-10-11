@@ -27,6 +27,14 @@ if (command == "mathtest")
         for (var k = 0; k < 16; k++) worst = Math.Max(worst, Math.Abs(m[k / 4, k % 4] - m2[k / 4, k % 4]) / (k >= 12 ? 1000f : 1f));
     }
     Console.WriteLine($"decompose round trip: worst error {worst:E2}");
+
+    // Orbit about a pivot beside the camera (not in front of it): it must turn, not jump.
+    var cam = new Camera { Position = new System.Numerics.Vector3(0, 0, 0), Yaw = 0, Pitch = 0 };
+    var pivot = new System.Numerics.Vector3(500, 0, 0);
+    var before = cam.Position;
+    cam.Orbit(pivot, 0.01f, 0.005f);
+    var moved = System.Numerics.Vector3.Distance(before, cam.Position);
+    Console.WriteLine($"orbit 0.01 rad about a pivot 500 units to the side: camera moved {moved:0.0} units (expected ~5), distance to pivot {System.Numerics.Vector3.Distance(cam.Position, pivot):0.0}");
     return;
 }
 

@@ -42,7 +42,7 @@ internal sealed partial class RenderWindow : Panel
         || (_renderer is { } r && (r.Meshes.Pending > 0 || r.Textures.Pending > 0))
         || ImGui.IsMouseDown(ImGuiMouseButton.Right) || ImGui.IsMouseDown(ImGuiMouseButton.Middle)
         || _drag != DragKind.None || _gizmoWasUsing
-        || ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.Space)
+        || ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.Space) || _zoomLeft != 0
         || (_renderer is { } a && a.Options.Animate && a.HasAnimation && IsOpen)
         || LandscapeMode
         || (NavmeshMode && ImGui.IsMouseDown(ImGuiMouseButton.Left));
@@ -61,6 +61,19 @@ internal sealed partial class RenderWindow : Panel
     public FormKey? LoadedCell => _cell;
 
     public bool IsSelected(SceneObject obj) => _selection.Contains(obj);
+
+    /// <summary>RMB flying speed (units per second); kept in the settings.</summary>
+    public float FlySpeed
+    {
+        get => _camera.Speed;
+        set => _camera.Speed = Math.Clamp(value, 50f, 20000f);
+    }
+
+    public void SetHighlightActors(EditorApp app, bool on)
+    {
+        app.Settings.HighlightActors = on;
+        if (_renderer is not null) _renderer.Options.HighlightActors = on;
+    }
 
     public MeshCache? Meshes => _renderer?.Meshes;
     public TextureCache? Textures => _renderer?.Textures;
@@ -113,6 +126,7 @@ internal sealed partial class RenderWindow : Panel
         var assets = app.Session!.Assets;
         _renderer = new SceneRenderer(device, app.Graphics.Context, new MeshCache(device, assets), new TextureCache(device, assets));
         _renderer.Options.HighlightActors = app.Settings.HighlightActors;
+        _camera.Speed = app.Settings.FlySpeed;
         _target ??= new ViewportTarget(device);
     }
 
@@ -204,6 +218,7 @@ internal sealed partial class RenderWindow : Panel
     }
 
     private bool _streaming;
+    private Vector2 _viewCenter;
     private double _lastTrim;
 
     /// <summary>
@@ -230,6 +245,36 @@ internal sealed partial class RenderWindow : Panel
         var meshes = _renderer.Meshes.Trim(meshBudget, 20_000);
         if (textures + meshes > 0)
             Log.Info($"cache trim: {meshes} meshes, {textures} textures released; now {_renderer.Meshes.Bytes >> 20} MB meshes, {_renderer.Textures.Bytes >> 20} MB textures");
+    }
+
+    private int _zoomTest;
+    private Vector3 _zoomStart;
+    private int _zoomFrames;
+
+    /// <summary>--autotest-zoom: one wheel notch over the view; logs how far the camera went and over how many frames.</summary>
+    public bool ZoomTestStep()
+    {
+        if (!IsSettled) return false;
+        switch (_zoomTest)
+        {
+            case 0:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_viewCenter, false);
+                _zoomTest = 1;
+                return false;
+            case 1:
+                _zoomStart = _camera.Position;
+                StbEditor.App.Ui.ImGuiLayer.TestWheel = 1;
+                _zoomTest = 2;
+                _zoomFrames = 0;
+                return false;
+            case 2:
+                _zoomFrames++;
+                if ((_zoomLeft != 0 || _zoomFrames < 4) && _zoomFrames < 600) return false;
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = null;
+                Log.Info($"autotest-zoom: one notch moved the camera {Vector3.Distance(_zoomStart, _camera.Position):0.0} units over {_zoomFrames} frame(s)");
+                return true;
+        }
+        return false;
     }
 
     /// <summary>--autotest-fly: once everything around has streamed in, move the camera one cell east. False while still loading.</summary>
@@ -282,6 +327,7 @@ internal sealed partial class RenderWindow : Panel
         if (delta > 0) _fps = _fps * 0.9f + 0.1f / delta;
 
         var origin = ImGui.GetCursorScreenPos();
+        _viewCenter = origin + size / 2;
         // ImGuizmo only starts a drag when no ImGui item is hovered (this frame or the last), and the
         // viewport button covers the whole view: while the mouse is on a gizmo handle leave it out.
         var gizmoHot = _gizmoOver || _gizmoWasUsing;
@@ -334,6 +380,7 @@ internal sealed partial class RenderWindow : Panel
         }
 
         DrawGizmo(origin, size);
+        DrawDoorQuestion(app);
         DrawOverlay(drawList, origin, size);
         AcceptDrop(app, origin, size);
     }

@@ -62,11 +62,26 @@ public sealed class Camera
     }
 
     /// <summary>Orbits around a pivot by yaw/pitch deltas (Alt + drag).</summary>
+    /// <remarks>
+    /// The camera turns about the pivot from where it is: its offset from the pivot is rotated by the
+    /// same angles as the view. (Placing it at "pivot − forward × distance" made it jump on the first
+    /// frame whenever it was not already looking at the pivot — e.g. right after going through a door.)
+    /// </remarks>
     public void Orbit(Vector3 pivot, float deltaYaw, float deltaPitch)
     {
-        var distance = Vector3.Distance(Position, pivot);
+        var oldPitch = Pitch;
         Rotate(deltaYaw, deltaPitch);
-        Position = pivot - Forward * distance;
+        var appliedPitch = Pitch - oldPitch;
+
+        var offset = Position - pivot;
+        var radius = offset.Length();
+        if (radius < 1e-3f) return;
+        var horizontal = MathF.Sqrt(offset.X * offset.X + offset.Y * offset.Y);
+        // Heading as the camera's yaw (clockwise from +Y); elevation drops as the view tilts up.
+        var heading = MathF.Atan2(offset.X, offset.Y) + deltaYaw;
+        var elevation = Math.Clamp(MathF.Atan2(offset.Z, horizontal) - appliedPitch, -1.55f, 1.55f);
+        var flat = radius * MathF.Cos(elevation);
+        Position = pivot + new Vector3(flat * MathF.Sin(heading), flat * MathF.Cos(heading), radius * MathF.Sin(elevation));
     }
 
     /// <summary>World-space ray through a point of the viewport (pixels from top-left).</summary>

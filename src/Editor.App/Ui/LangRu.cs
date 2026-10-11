@@ -307,6 +307,27 @@ internal static class LangRu
         ["{0:N0} record(s): {1}"] = "записей: {0:N0} ({1})",
         ["{0:N0} record(s)"] = "записей: {0:N0}",
 
+        // ---- settings window, door question
+        ["Settings..."] = "Настройки...",
+        ["Settings"] = "Настройки",
+        ["Go through the door"] = "Переход через дверь",
+        ["Go to the cell this door leads to?"] = "Перейти в ячейку, куда ведёт эта дверь?",
+        ["Go to {0}?"] = "Перейти в {0}?",
+        ["{0} {1}"] = "{0} {1}",
+        ["Ask every time"] = "Спрашивать каждый раз",
+        ["Off: a double-click goes straight through (Settings can turn it back on)"] = "Выкл.: двойной клик сразу переходит (включить обратно можно в настройках)",
+        ["Yes"] = "Да",
+        ["No"] = "Нет",
+        ["Camera"] = "Камера",
+        ["Wheel zoom speed"] = "Скорость колеса",
+        ["How far one wheel notch moves the camera (Shift x4, Ctrl x0.25)"] = "Насколько сдвигает камеру один щелчок колеса (Shift ×4, Ctrl ×0.25)",
+        ["Smooth wheel zoom"] = "Плавное приближение колесом",
+        ["RMB + W A S D; the wheel while holding RMB changes it too"] = "ПКМ + W A S D; колесо при зажатой ПКМ тоже меняет её",
+        ["Ask before going through a door"] = "Спрашивать перед переходом через дверь",
+        ["Performance"] = "Производительность",
+        ["Interface"] = "Интерфейс",
+        ["Saved when the editor closes."] = "Сохраняется при закрытии редактора.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",
@@ -419,6 +440,7 @@ internal static class LangRu
         ["Flying speed"] = "Скорость полёта",
         ["Wheel"] = "Колесо",
         ["Move forward / back"] = "Вперёд / назад",
+        ["Move forward / back, smoothly (speed in View - Settings)"] = "Вперёд / назад, плавно (скорость — Вид → Настройки)",
         ["MMB drag, or Space + mouse"] = "СКМ + перетаскивание или Пробел + мышь",
         ["Pan"] = "Сдвиг вида",
         ["Shift + mouse"] = "Shift + мышь",
@@ -453,6 +475,7 @@ internal static class LangRu
         ["Doors and cells"] = "Двери и ячейки",
         ["Double-click a door"] = "Двойной клик по двери",
         ["Go through it: opens the cell of the linked door, camera at its marker"] = "Пройти через неё: откроется ячейка связанной двери, камера — у её маркера",
+        ["Go through it (asks first): opens the cell of the linked door, camera at its marker"] = "Пройти через неё (сначала спросит): откроется ячейка связанной двери, камера — у её маркера",
         ["Inspector: Go to linked door"] = "Инспектор: К связанной двери",
         ["The same from the door's properties"] = "То же из свойств двери",
         ["Cell View: double-click a cell"] = "Ячейки: двойной клик по ячейке",
@@ -493,6 +516,7 @@ internal static class LangRu
         ["Particles and animation off for weak PCs"] = "Выключить частицы и анимацию на слабых ПК",
         ["View menu"] = "Меню «Вид»",
         ["Windows (Log, Load Order...), frame limit, language"] = "Окна (Лог, Порядок загрузки...), ограничение FPS, язык",
+        ["Windows (Log, Load Order...), Settings (wheel and flying speed, door question), frame limit, language"] = "Окна (Лог, Порядок загрузки...), Настройки (скорость колеса и полёта, вопрос о двери), FPS, язык",
         ["This window"] = "Это окно",
 
         // ---- inspector

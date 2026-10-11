@@ -22,7 +22,7 @@ internal sealed class HelpWindow
             ("RMB + mouse", "Look around"),
             ("RMB + W A S D", "Fly; Q / E down / up, Shift faster, Ctrl slower"),
             ("RMB + wheel", "Flying speed"),
-            ("Wheel", "Move forward / back"),
+            ("Wheel", "Move forward / back, smoothly (speed in View - Settings)"),
             ("MMB drag, or Space + mouse", "Pan"),
             ("Shift + mouse", "Orbit the selection (look around without one)"),
             ("Alt + LMB drag", "Orbit"),
@@ -46,7 +46,7 @@ internal sealed class HelpWindow
         ]),
         ("Doors and cells",
         [
-            ("Double-click a door", "Go through it: opens the cell of the linked door, camera at its marker"),
+            ("Double-click a door", "Go through it (asks first): opens the cell of the linked door, camera at its marker"),
             ("Inspector: Go to linked door", "The same from the door's properties"),
             ("Cell View: double-click a cell", "Load it; the list on the right shows its objects (click one to go to it)"),
             ("World menu", "New interior cell, new worldspace"),
@@ -82,7 +82,7 @@ internal sealed class HelpWindow
             ("M / B / Shift+W", "Markers / cell borders / wireframe"),
             ("Toolbar: NPC", "Tint NPCs and creatures so they are easy to find"),
             ("Toolbar: FX, Anim", "Particles and animation off for weak PCs"),
-            ("View menu", "Windows (Log, Load Order...), frame limit, language"),
+            ("View menu", "Windows (Log, Load Order...), Settings (wheel and flying speed, door question), frame limit, language"),
             ("F1", "This window"),
         ]),
     ];

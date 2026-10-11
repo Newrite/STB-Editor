@@ -27,6 +27,9 @@ internal sealed partial class RenderWindow
 
     private EditTool _tool = EditTool.Move;
     private bool _localSpace;
+
+    /// <summary>Wheel zoom distance still to travel (smooth zoom).</summary>
+    private float _zoomLeft;
     private bool _gridSnap;
     private float _gridStep = 16f;
     private bool _angleSnap = true;
@@ -166,8 +169,21 @@ internal sealed partial class RenderWindow
         if (_looking) Fly(io, delta);
         else if (hovered && io.MouseWheel != 0 && _drag == DragKind.None)
         {
-            var step = Math.Max(64f, _camera.Speed * 0.35f) * (io.KeyShift ? 4f : io.KeyCtrl ? 0.25f : 1f);
-            _camera.Position += _camera.Forward * io.MouseWheel * step;
+            // Each notch adds to a distance still to travel; it is covered smoothly over ~0.15 s.
+            var step = 96f * app.Settings.WheelZoomSpeed * (io.KeyShift ? 4f : io.KeyCtrl ? 0.25f : 1f);
+            _zoomLeft += io.MouseWheel * step;
+            if (!app.Settings.SmoothZoom)
+            {
+                _camera.Position += _camera.Forward * _zoomLeft;
+                _zoomLeft = 0;
+            }
+        }
+        if (_zoomLeft != 0)
+        {
+            var part = _zoomLeft * (1 - MathF.Exp(-delta * 18f));
+            if (MathF.Abs(_zoomLeft - part) < 0.5f) part = _zoomLeft;
+            _camera.Position += _camera.Forward * part;
+            _zoomLeft -= part;
         }
 
         // ---- camera without buttons: Shift orbits/looks, Space pans (Creation Kit).
@@ -175,6 +191,8 @@ internal sealed partial class RenderWindow
         if (hovered && noButtons && !io.WantTextInput)
         {
             var d = io.MousePos - _shiftLastMouse;
+            // The mouse came back from elsewhere (another panel, outside the window): no jump.
+            if (d.LengthSquared() > 150f * 150f || !ImGui.IsMousePosValid()) d = Vector2.Zero;
             if (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift))
             {
                 if (_selection.Count > 0) _camera.Orbit(SelectionCenter(), d.X * 0.005f, -d.Y * 0.005f);
@@ -269,7 +287,7 @@ internal sealed partial class RenderWindow
             // A teleport door: go through it (to the cell of the door it leads to). Anything else: frame it.
             if (_selection.Count == 1 && _tool is EditTool.Select or EditTool.Move or EditTool.Rotate or EditTool.Scale
                 && TeleportOf(app, _selection.First()) is not null)
-                GoToLinkedDoor(app, _selection.First());
+                AskGoThroughDoor(app, _selection.First());
             else
                 FrameSelection();
         }

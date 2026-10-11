@@ -75,6 +75,9 @@ internal sealed unsafe class ImGuiLayer : IDisposable
 
     /// <summary>Autotests: text typed into the focused field this frame, and keys pressed (released the next frame).</summary>
     public static string? TestText { get; set; }
+
+    /// <summary>Autotests: wheel notches this frame.</summary>
+    public static float TestWheel { get; set; }
     public static Queue<ImGuiKey> TestKeys { get; } = new();
     private static ImGuiKey? _testKeyDown;
 
@@ -87,6 +90,11 @@ internal sealed unsafe class ImGuiLayer : IDisposable
             var io = ImGui.GetIO();
             io.AddMousePosEvent(mouse.Position.X, mouse.Position.Y);
             io.AddMouseButtonEvent(0, mouse.Down);
+        }
+        if (TestWheel != 0)
+        {
+            ImGui.GetIO().AddMouseWheelEvent(0, TestWheel);
+            TestWheel = 0;
         }
         if (TestText is { } typed)
         {

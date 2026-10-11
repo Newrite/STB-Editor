@@ -252,6 +252,7 @@ internal sealed class EditorApp : IDisposable
         RunFlyAutotest();
         RunFormAutotest();
         RunPickerAutotest();
+        if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
 
@@ -284,6 +285,7 @@ internal sealed class EditorApp : IDisposable
             _openForm = null;
         }
         _help.Draw(this);
+        _settingsWindow.Draw(this);
         FormWindows.Draw(this);
         _newRecordDialog.Draw();
         HandleShortcuts();
@@ -429,6 +431,7 @@ internal sealed class EditorApp : IDisposable
     private ObjectShot? _objectShot;
     private readonly NewRecordDialog _newRecordDialog;
     private readonly HelpWindow _help = new();
+    private readonly SettingsWindow _settingsWindow = new();
 
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
@@ -440,6 +443,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fly") || _flyDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-gizmo") || _gizmoDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-zoom") || _zoomDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9);
 
@@ -611,6 +615,7 @@ internal sealed class EditorApp : IDisposable
     private bool _gizmoDone;
     private string? _openForm;
     private bool _doorDone;
+    private bool _zoomDone;
 
     private int _flySteps = -1;
     private readonly System.Diagnostics.Stopwatch _flyClock = System.Diagnostics.Stopwatch.StartNew();
@@ -931,6 +936,7 @@ internal sealed class EditorApp : IDisposable
     {
         var closed = _panels.Where(p => !p.IsOpen).Select(p => p.Name).ToList();
         if (!closed.SequenceEqual(_settings.ClosedPanels)) _settings.ClosedPanels = closed;
+        _settings.FlySpeed = RenderWindow.FlySpeed;
     }
 
     public bool ReadyForScreenshot(int frames)
@@ -1006,6 +1012,7 @@ internal sealed class EditorApp : IDisposable
                 if (ImGui.MenuItem(T(panel.Name), (string?)null, open)) panel.IsOpen = !open;
             }
             ImGui.Separator();
+            if (ImGui.MenuItem(T("Settings..."))) _settingsWindow.Show();
             if (ImGui.BeginMenu(T("Frame limit")))
             {
                 foreach (var (label, fps) in new[] { ("30 FPS", 30), ("60 FPS", 60), ("120 FPS", 120), (T("Monitor refresh (vsync)"), 0) })
@@ -1062,7 +1069,7 @@ internal sealed class EditorApp : IDisposable
         }
     }
 
-    private void SetLanguage(string language)
+    public void SetLanguage(string language)
     {
         _settings.Language = language;
         Loc.Russian = language == "ru";

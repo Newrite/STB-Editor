@@ -103,6 +103,18 @@ internal sealed class Settings
     /// <summary>Plugins to load (their masters come along); null = the whole load order.</summary>
     public List<string>? LoadOnly { get; set; }
 
+    /// <summary>Mouse wheel zoom: units per notch × this (Shift ×4, Ctrl ×0.25).</summary>
+    public float WheelZoomSpeed { get; set; } = 1f;
+
+    /// <summary>RMB flying speed, units per second.</summary>
+    public float FlySpeed { get; set; } = 800f;
+
+    /// <summary>Wheel zoom glides instead of jumping.</summary>
+    public bool SmoothZoom { get; set; } = true;
+
+    /// <summary>Double-click on a teleport door asks before loading the other cell (as the Creation Kit).</summary>
+    public bool ConfirmDoorTravel { get; set; } = true;
+
     /// <summary>Frames per second at most (0 = monitor refresh). In the background: 15.</summary>
     public int FpsLimit { get; set; } = 60;
 

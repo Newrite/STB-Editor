@@ -121,9 +121,10 @@ internal static class FormView
     private static readonly HashSet<string> Header = ["FormKey", "FormVersion", "VersionControl", "Version2", "MajorRecordFlagsRaw",
         "IsCompressed", "IsDeleted", "SkyrimMajorRecordFlags", "MajorFlags"];
 
-    public static List<FormTab> Tabs(IMajorRecordGetter record, string signature)
+    public static List<FormTab> Tabs(IMajorRecordGetter record, string signature, bool showHeader)
     {
-        var members = RecordFields.PropertiesOf(record).Where(p => p.Name != "VirtualMachineAdapter").ToList();
+        var members = RecordFields.PropertiesOf(record)
+            .Where(p => p.Name != "VirtualMachineAdapter" && (showHeader || !RecordFields.IsRecordHeader(p.Name))).ToList();
         var byName = members.ToDictionary(p => p.Name);
         var tabs = new List<FormTab>();
         var used = new HashSet<string>();

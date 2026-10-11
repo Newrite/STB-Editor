@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.5.0, 2026-10-11) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.6.0, 2026-10-11) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -15,6 +15,10 @@ any record, Duplicate, scripts + properties; new interior cells / worldspaces / 
 (`Data/DoorIndex.cs`, `Panels/RenderWindow.Doors.cs`), Cell View object list, Help window (F1),
 Russian / English UI (`Ui/Loc.cs`, `Ui/LangRu.cs`). .NET 10 (`global.json`). v0.5.0: CK-like record
 forms (`Panels/RecordForm.cs`, `FormView.cs`, `FormWindows.cs`), plugin selection in Data (`Workspace.Open(only)`).
+v0.6.0: xEdit-like comparison (`Ui/RecordCompare.cs` builds the aligned field tree and colours,
+`Panels/CompareWindows.cs`; Object Window Ctrl/Shift multi-pick), colour themes (`Ui/Theme.cs`
+`Palettes`, `Theme.Use`; use `Theme.*` colours, never hard-coded ones), record header fields hidden
+unless `Settings.ShowRecordHeader` (`RecordFields.IsRecordHeader`).
 Next: condition editor (CTDA) + Use Info, properties of existing cells, navmesh finalize (NAVI).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

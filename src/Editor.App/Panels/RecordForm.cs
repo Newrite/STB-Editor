@@ -105,10 +105,10 @@ internal sealed class RecordForm
 
         if (placedObject is null)
         {
-            if (_tabsFor != (key, current))
+            if (_tabsFor != (key, current, app.Settings.ShowRecordHeader))
             {
-                _tabsFor = (key, current);
-                _tabs = FormView.Tabs(current, signature);
+                _tabsFor = (key, current, app.Settings.ShowRecordHeader);
+                _tabs = FormView.Tabs(current, signature, app.Settings.ShowRecordHeader);
             }
             foreach (var tab in _tabs)
             {
@@ -137,25 +137,28 @@ internal sealed class RecordForm
 
         if (Tab(TF($"Versions ({_versions.Count})###versions")))
         {
-            if (ImGui.BeginTabBar("##versions", ImGuiTabBarFlags.FittingPolicyScroll))
+            if (placedObject is null)
             {
-                for (var i = 0; i < _versions.Count; i++)
-                {
-                    var (plugin, record) = _versions[i];
-                    var label = i == 0 && _versions.Count > 1 ? $"{plugin} ({T("winner")})###v{i}" : $"{plugin}###v{i}";
-                    if (!ImGui.BeginTabItem(label)) continue;
-                    PropertyTree.Draw(app, record);
-                    ImGui.EndTabItem();
-                }
-                ImGui.EndTabBar();
+                if (ImGui.SmallButton(T("Open in a compare window"))) app.Compare.OpenVersions(key);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Every plugin's version side by side in a separate, larger window (as xEdit)"));
             }
-            ImGui.EndTabItem();
+            if (_versionColumnsAt != (key, app.Document.History.Version))
+            {
+                _versionColumnsAt = (key, app.Document.History.Version);
+                _versionColumns = placedObject is null
+                    ? CompareWindows.VersionColumns(app, key)
+                    : _versions.Select(v => new CompareColumn(v.Plugin, v.Plugin, v.Record)).ToList();
+            }
+            Body(() => _compare.Draw(app, _versionColumns, versions: true));
         }
 
         ImGui.EndTabBar();
     }
 
-    private (FormKey, IMajorRecordGetter)? _tabsFor;
+    private (FormKey, IMajorRecordGetter, bool)? _tabsFor;
+    private readonly CompareView _compare = new();
+    private (FormKey, int)? _versionColumnsAt;
+    private List<CompareColumn> _versionColumns = [];
     private List<FormTab> _tabs = [];
     private (FormKey Key, int Version) _notesFor;
     private Dictionary<string, string> _notes = [];

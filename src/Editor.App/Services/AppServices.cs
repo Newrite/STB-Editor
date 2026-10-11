@@ -124,6 +124,15 @@ internal sealed class Settings
     /// <summary>Tint actors in Flat / unlit shading so they stand out in dark interiors.</summary>
     public bool HighlightActors { get; set; } = true;
 
+    /// <summary>Show record header bookkeeping (form version, version control, raw flags) in the field views.</summary>
+    public bool ShowRecordHeader { get; set; }
+
+    /// <summary>Colour theme by name (<c>Theme.Palettes</c>).</summary>
+    public string Theme { get; set; } = "STB";
+
+    /// <summary>Record comparison: hide the rows where every column has the same value.</summary>
+    public bool CompareOnlyDifferences { get; set; }
+
     /// <summary>Interface language: "en" or "ru".</summary>
     public string Language { get; set; } = "en";
 

@@ -43,8 +43,10 @@ internal static class PropertyTree
 
     private static void DrawMembers(EditorApp app, object obj, int depth)
     {
+        var hideHeader = depth == 0 && obj is IMajorRecordGetter && !app.Settings.ShowRecordHeader;
         foreach (var property in RecordFields.PropertiesOf(obj))
         {
+            if (hideHeader && RecordFields.IsRecordHeader(property.Name)) continue;
             object? value;
             string? error = null;
             try
@@ -157,7 +159,7 @@ internal static class PropertyTree
     private static void Leaf(string label) =>
         ImGui.TreeNodeEx(label, ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth | ImGuiTreeNodeFlags.Bullet);
 
-    private static string Summary(EditorApp app, object value)
+    internal static string Summary(EditorApp app, object value)
     {
         switch (value)
         {
@@ -180,7 +182,7 @@ internal static class PropertyTree
     /// <summary>
     /// Small structures (bounds, coordinates) read better inline: "First = (-20, -20, 0), Second = (20, 20, 40)".
     /// </summary>
-    private static string? InlineSummary(object value)
+    internal static string? InlineSummary(object value)
     {
         var properties = RecordFields.PropertiesOf(value);
         if (properties.Length is 0 or > 4) return null;

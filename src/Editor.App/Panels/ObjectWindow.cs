@@ -27,6 +27,20 @@ internal sealed class ObjectWindow : Panel
     private Dictionary<string, List<RecordTypeInfo>> _categories = new();
     private bool _tiles = true;
 
+    /// <summary>Records picked with Ctrl/Shift+click (for Compare); the anchor is where a Shift range starts.</summary>
+    private readonly HashSet<Mutagen.Bethesda.Plugins.FormKey> _picked = [];
+    private int _anchor = -1;
+
+    /// <summary>The picked records in list order (autotests use it as well).</summary>
+    public List<Mutagen.Bethesda.Plugins.FormKey> Picked => _rows.Where(r => _picked.Contains(r.FormKey)).Select(r => r.FormKey).ToList();
+
+    /// <summary>Picks records as Ctrl+click would (autotests).</summary>
+    public void Pick(IEnumerable<Mutagen.Bethesda.Plugins.FormKey> keys)
+    {
+        _picked.Clear();
+        _picked.UnionWith(keys);
+    }
+
     public override string Name => "Object Window";
 
     public void SetFilter(string text)
@@ -227,7 +241,7 @@ internal sealed class ObjectWindow : Panel
                     }
 
                     if (app.Selected == record.FormKey)
-                        ImGui.GetWindowDrawList().AddRect(start, start + new Vector2(tile, tile), 0xE0FFFFFF, 0, 0, 2f);
+                        ImGui.GetWindowDrawList().AddRect(start, start + new Vector2(tile, tile), ImGui.GetColorU32(Theme.Accent), 0, 0, 2f);
 
                     var label = record.EditorId ?? "?";
                     while (label.Length > 3 && ImGui.CalcTextSize(label).X > tile) label = label[..^2];
@@ -240,6 +254,35 @@ internal sealed class ObjectWindow : Panel
         }
         clipper.End();
         ImGui.EndChild();
+    }
+
+    /// <summary>Click: just this record. Ctrl+click: add or drop it. Shift+click: the range from the last click.</summary>
+    /// <returns>False when Ctrl+click dropped the record from the picked set.</returns>
+    private bool Pick(EditorApp app, int index)
+    {
+        var io = ImGui.GetIO();
+        var key = _rows[index].FormKey;
+        if (io.KeyCtrl)
+        {
+            if (_picked.Count == 0 && app.Selected is { } current) _picked.Add(current);
+            _anchor = index;
+            if (_picked.Add(key)) return true;
+            _picked.Remove(key);
+            return _picked.Count == 0;
+        }
+        else if (io.KeyShift && _anchor >= 0 && _anchor < _rows.Count)
+        {
+            _picked.Clear();
+            var (from, to) = (Math.Min(_anchor, index), Math.Max(_anchor, index));
+            for (var j = from; j <= to && _picked.Count < 500; j++) _picked.Add(_rows[j].FormKey);
+        }
+        else
+        {
+            _picked.Clear();
+            _picked.Add(key);
+            _anchor = index;
+        }
+        return true;
     }
 
     private unsafe void DrawTable(EditorApp app)
@@ -281,6 +324,9 @@ internal sealed class ObjectWindow : Panel
             scrollTo = _rows.FindIndex(r => r.FormKey == selectedKey);
         }
 
+        // A selection made elsewhere (render window, links) replaces the picked set.
+        if (app.Selected is { } current && !_picked.Contains(current)) _picked.Clear();
+
         var clipper = new ImGuiListClipper();
         clipper.Begin(_rows.Count);
         if (scrollTo >= 0) clipper.IncludeItemByIndex(scrollTo);
@@ -293,11 +339,12 @@ internal sealed class ObjectWindow : Panel
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
 
-                var selected = app.Selected == record.FormKey;
+                var selected = app.Selected == record.FormKey || _picked.Contains(record.FormKey);
                 ImGui.PushID(i);
                 if (ImGui.Selectable(record.EditorId ?? T("<no editor id>"), selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
                 {
-                    app.Select(record.FormKey);
+                    if (Pick(app, i)) app.Select(record.FormKey);
+                    else if (_picked.Count > 0) app.Select(_picked.First());
                     _scrolledToSelection = app.SelectionVersion;
                     // As in the Creation Kit: double-click opens the record's form window.
                     if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) app.FormWindows.Open(record.FormKey);
@@ -307,6 +354,19 @@ internal sealed class ObjectWindow : Panel
 
                 if (ImGui.BeginPopupContextItem("##ctx"))
                 {
+                    if (_picked.Count > 1 && _picked.Contains(record.FormKey))
+                    {
+                        if (ImGui.MenuItem(TF($"Compare selected ({_picked.Count})"))) app.Compare.OpenRecords(Picked);
+                        if (_picked.Count > CompareWindows.MaxColumns && ImGui.IsItemHovered())
+                            ImGui.SetTooltip(TF($"The first {CompareWindows.MaxColumns} are compared"));
+                    }
+                    else if (app.Selected is { } other && other != record.FormKey && ImGui.MenuItem(TF($"Compare with {app.Session!.Catalog.Get(other)?.EditorId ?? ws.FormIdText(other)}")))
+                    {
+                        app.Compare.OpenRecords([other, record.FormKey]);
+                    }
+                    if (ImGui.MenuItem(TF($"Compare versions ({record.Plugins.Count})"), (string?)null, false, record.Plugins.Count > 1))
+                        app.Compare.OpenVersions(record.FormKey);
+                    ImGui.Separator();
                     if (ImGui.MenuItem(T("Copy Form ID"))) ImGui.SetClipboardText(ws.FormIdText(record.FormKey));
                     if (ImGui.MenuItem(T("Copy Editor ID"), (string?)null, false, record.EditorId is not null)) ImGui.SetClipboardText(record.EditorId!);
                     if (ImGui.MenuItem(T("Copy FormKey"))) ImGui.SetClipboardText(record.FormKey.ToString());

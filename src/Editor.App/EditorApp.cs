@@ -65,6 +65,7 @@ internal sealed class EditorApp : IDisposable
 
     /// <summary>Records open in their own form windows.</summary>
     public FormWindows FormWindows { get; } = new();
+    public CompareWindows Compare { get; } = new();
 
     public EditorApp(Settings settings, ImGuiLayer imgui, GraphicsDevice graphics, CommandLine options)
     {
@@ -96,6 +97,10 @@ internal sealed class EditorApp : IDisposable
         var lang = Array.IndexOf(cliArgs0, "--lang");
         if (lang >= 0 && lang + 1 < cliArgs0.Length) Loc.Russian = cliArgs0[lang + 1] == "ru";
         if (cliArgs0.Contains("--show-help")) _help.Show();
+        if (cliArgs0.Contains("--show-settings")) _settingsWindow.Show();
+        // --theme <name>: this run only (screenshots).
+        var theme = Array.IndexOf(cliArgs0, "--theme");
+        Theme.Use(theme >= 0 && theme + 1 < cliArgs0.Length ? cliArgs0[theme + 1] : settings.Theme);
         _openForm = cliArgs0.SkipWhile(x => x != "--open-form").Skip(1).FirstOrDefault();
 
         if (options.Game is not null) settings.GameFolder = options.Game;
@@ -137,6 +142,7 @@ internal sealed class EditorApp : IDisposable
         Session?.Dispose();
         Session = null;
         FormWindows.CloseAll();
+        Compare.CloseAll();
         RenderWindow.DropScene();
     }
 
@@ -252,6 +258,7 @@ internal sealed class EditorApp : IDisposable
         RunFlyAutotest();
         RunFormAutotest();
         RunPickerAutotest();
+        RunCompareAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
@@ -287,6 +294,7 @@ internal sealed class EditorApp : IDisposable
         _help.Draw(this);
         _settingsWindow.Draw(this);
         FormWindows.Draw(this);
+        Compare.Draw(this);
         _newRecordDialog.Draw();
         HandleShortcuts();
     }
@@ -445,7 +453,67 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-zoom") || _zoomDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-compare") || _compareStage == 3);
+
+    private int _compareStage;
+    private int _compareFrames;
+
+    /// <summary>
+    /// --autotest-compare &lt;FormID&gt; [FormID...] [versions|records]: opens the version comparison of the
+    /// first record, then picks all the given records in the Object Window (as Ctrl+click) and compares
+    /// them; logs rows per colour state and the differing rows. Leaves the windows open for a screenshot
+    /// (versions / records: keep only that window).
+    /// </summary>
+    private void RunCompareAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-compare");
+        if (i < 0 || Session is not { } session || _compareStage == 3) return;
+        var keys = cli.Skip(i + 1).TakeWhile(a => !a.StartsWith("--")).Select(a => session.Workspace.ParseFormReference(a)).OfType<FormKey>().ToList();
+        var only = cli.Skip(i + 1).TakeWhile(a => !a.StartsWith("--")).FirstOrDefault(a => a is "versions" or "records");
+        if (keys.Count == 0) { Log.Warn("autotest-compare: no FormIDs"); _compareStage = 3; return; }
+        if (++_compareFrames < 20) return;
+        _compareFrames = 0;
+
+        void Report(string what)
+        {
+            var root = Compare.LastRoot;
+            if (root is null) { Log.Warn($"autotest-compare: {what}: nothing drawn"); return; }
+            var all = new List<CompareNode>();
+            void Walk(CompareNode n) { foreach (var c in n.Children) { all.Add(c); Walk(c); } }
+            Walk(root);
+            var leaves = all.Where(n => n.Children.Count == 0).ToList();
+            Log.Info($"autotest-compare: {what}: columns [{string.Join(" | ", Compare.LastColumns.Select(c => c.Title))}], {all.Count} rows, " +
+                string.Join(", ", leaves.GroupBy(n => n.State).Select(g => $"{g.Key} {g.Count()}")));
+            foreach (var n in leaves.Where(n => n.State != CompareState.Same).OrderByDescending(n => n.State == CompareState.Conflict).Take(14))
+                Log.Info($"autotest-compare:   {n.State,-8} {n.Label,-22} {string.Join(" | ", n.Text.Select(t => t.Length > 40 ? t[..40] + "…" : t))}");
+        }
+
+        switch (_compareStage)
+        {
+            case 0:
+                Compare.OpenVersions(keys[0]);
+                _compareStage = 1;
+                break;
+            case 1:
+                Report($"versions of {session.Catalog.Get(keys[0])?.EditorId}");
+                if (only == "records") Compare.CloseAll();
+                if (keys.Count > 1)
+                {
+                    ObjectWindow.Pick(keys);
+                    Select(keys[0]);
+                    Compare.OpenRecords(keys);
+                }
+                _compareStage = 2;
+                break;
+            case 2:
+                if (keys.Count > 1) Report($"{keys.Count} records");
+                if (only == "versions" && keys.Count > 1) Compare.CloseLast();
+                _compareStage = 3;
+                break;
+        }
+    }
 
     private int _pickerStage;
     private int _pickerFrames;

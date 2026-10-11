@@ -45,6 +45,14 @@ public static class RecordFields
     private static readonly HashSet<string> ReadOnlyNames =
         ["FormKey", "FormVersion", "VersionControl", "Version2", "IsCompressed", "IsDeleted", "SkyrimMajorRecordFlags", "MajorRecordFlagsRaw"];
 
+    /// <summary>
+    /// Record header bookkeeping (form version, version control, raw flags, compression): the
+    /// editor and the writer own it, so the views hide it unless asked. Typed MajorFlags stay.
+    /// </summary>
+    public static bool IsRecordHeader(string name) =>
+        name is "FormKey" or "MajorRecordFlagsRaw" or "SkyrimMajorRecordFlags" or "IsDeleted" or "IsCompressed"
+            or "FormVersion" or "VersionControl" or "Version2";
+
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> PropertyCache = new();
 
     /// <summary>

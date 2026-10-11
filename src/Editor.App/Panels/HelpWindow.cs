@@ -76,6 +76,8 @@ internal sealed class HelpWindow
             ("Double-click a record (Object Window)", "Its form in a separate window, tabs as in the CK; several can be open"),
             ("Inspector / form: tabs", "Edit fields right there; lists: + add, x removes a row; «!» = the file stores it differently"),
             ("Inspector: Scripts", "Attach scripts and set their properties (from .pex, no compiling)"),
+            ("Ctrl+click / Shift+click", "select several records (Object Window); right-click → Compare selected"),
+            ("Right-click a record → Compare versions", "every plugin's version side by side, coloured as in xEdit"),
         ]),
         ("View",
         [

@@ -48,6 +48,37 @@ internal sealed class SettingsWindow
             var language = Loc.Russian ? 1 : 0;
             if (ImGui.Combo("Language / Язык", ref language, ["English", "Русский"], 2)) app.SetLanguage(language == 1 ? "ru" : "en");
 
+            ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
+            if (ImGui.BeginCombo(T("Theme"), T(Theme.Current)))
+            {
+                foreach (var palette in Theme.Palettes)
+                {
+                    // Each entry in its own colours: a swatch of the background and the accent.
+                    var draw = ImGui.GetWindowDrawList();
+                    var at = ImGui.GetCursorScreenPos();
+                    var h = ImGui.GetTextLineHeight();
+                    draw.AddRectFilled(at, at + new System.Numerics.Vector2(h * 1.4f, h), ImGui.GetColorU32(palette.Bg with { W = 1 }));
+                    draw.AddRectFilled(at + new System.Numerics.Vector2(h * 0.9f, h * 0.2f), at + new System.Numerics.Vector2(h * 1.3f, h * 0.8f), ImGui.GetColorU32(palette.Accent));
+                    draw.AddRect(at, at + new System.Numerics.Vector2(h * 1.4f, h), ImGui.GetColorU32(ImGuiCol.Border));
+                    ImGui.Indent(h * 1.8f);
+                    if (ImGui.Selectable(T(palette.Name), palette.Name == Theme.Current))
+                    {
+                        Theme.Use(palette.Name);
+                        settings.Theme = palette.Name;
+                    }
+                    ImGui.Unindent(h * 1.8f);
+                }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Colours of the whole interface (as xEdit's styles)"));
+
+            ImGui.SeparatorText(T("Records"));
+            var header = settings.ShowRecordHeader;
+            if (ImGui.Checkbox(T("Show record header fields"), ref header)) settings.ShowRecordHeader = header;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Form version, version control, raw flags, compression: bookkeeping the editor writes itself"));
+            var onlyDiff = settings.CompareOnlyDifferences;
+            if (ImGui.Checkbox(T("Comparison: only differences"), ref onlyDiff)) settings.CompareOnlyDifferences = onlyDiff;
+
             ImGui.Spacing();
             ImGui.TextColored(Theme.TextDim, T("Saved when the editor closes."));
         }

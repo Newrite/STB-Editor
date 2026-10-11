@@ -296,6 +296,17 @@ internal static class LangRu
         ["Inspector / form: tabs"] = "Инспектор / форма: вкладки",
         ["Edit fields right there; lists: + add, x removes a row; «!» = the file stores it differently"] = "Поля правятся прямо там; списки: + добавить, x убирает строку; «!» — файл хранит иначе",
 
+        // ---- form fields: search as you type, list
+        ["FormID, EditorID or name: type to search"] = "FormID, EditorID или название — начните вводить",
+        ["{0}: no matching form, pick one from the list"] = "{0}: такой формы нет, выберите из списка",
+        ["Choose from the list"] = "Выбрать из списка",
+        ["Nothing matches."] = "Ничего не найдено.",
+        ["first {0} matches: type more to narrow"] = "первые {0} совпадений — уточните запрос",
+        ["{0} match(es): Up/Down and Enter, or click"] = "совпадений: {0} — стрелки и Enter или клик",
+        ["Filter: EditorID, name or FormID"] = "Фильтр: EditorID, название или FormID",
+        ["{0:N0} record(s): {1}"] = "записей: {0:N0} ({1})",
+        ["{0:N0} record(s)"] = "записей: {0:N0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

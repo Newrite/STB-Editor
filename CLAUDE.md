@@ -178,6 +178,9 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   and `--autotest-fly <n>` (memory must stay flat).
 - Mesh/texture caches trim what was not drawn for 20 s beyond their share of the DXGI video budget
   (`RenderWindow.TrimCaches`); holders of a `GpuModel` check `IsDisposed`. Frame limit 60 FPS (15 in background).
+- Hexa.NET.ImGui `InputText(ref string)` with `EnterReturnsTrue` hands back the typed text **only on Enter**
+  (the form-reference search never saw what was typed). Read Enter from the key instead; keyboard nav is on,
+  so a field that uses the arrows takes them with `ImGuiP.SetItemKeyOwner`. Test: `--autotest-picker`.
 - ImGuizmo: it will not start a drag while any ImGui item is hovered — over a gizmo handle the viewport
   button is replaced by a Dummy. Its rotation is incremental on the matrix it is given: during a drag feed
   back its own last output. `ImGuizmo.SetImGuiContext(null)` before `DestroyContext` (else AV on exit).

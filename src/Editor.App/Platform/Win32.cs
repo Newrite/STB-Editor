@@ -123,6 +123,15 @@ internal static unsafe partial class Win32
     [LibraryImport("user32.dll", EntryPoint = "LoadIconW")]
     public static partial nint LoadIcon(nint instance, nint name);
 
+    public const uint IMAGE_ICON = 1;
+    public const uint LR_LOADFROMFILE = 0x10;
+
+    [LibraryImport("user32.dll", EntryPoint = "LoadImageW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial nint LoadImage(nint instance, string name, uint type, int width, int height, uint flags);
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetrics(int index);
+
     [LibraryImport("user32.dll", EntryPoint = "SetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetWindowText(nint hwnd, string text);

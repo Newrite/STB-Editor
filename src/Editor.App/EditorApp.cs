@@ -251,6 +251,7 @@ internal sealed class EditorApp : IDisposable
         RunNavmeshAutotest();
         RunFlyAutotest();
         RunFormAutotest();
+        RunPickerAutotest();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
 
@@ -439,7 +440,117 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fly") || _flyDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-gizmo") || _gizmoDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9);
+
+    private int _pickerStage;
+    private int _pickerFrames;
+    private FormKey? _pickerBefore;
+    private System.Numerics.Vector2 _pickerClick;
+
+    /// <summary>
+    /// --autotest-picker &lt;FormID of an NPC&gt; &lt;text&gt;: in the record's form window, click its Race field,
+    /// type the text (fake keyboard), check suggestions appear, take the 2nd with Down + Enter; logs the
+    /// race before and after. Nothing is saved.
+    /// </summary>
+    private void RunPickerAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-picker");
+        if (i < 0 || i + 2 >= cli.Length || Session is not { } session || _pickerStage == 9) return;
+        if (session.Workspace.ParseFormReference(cli[i + 1]) is not { } npc) return;
+        _pickerFrames++;
+        FormKey? Race() => (StbEditor.Core.OverrideEditing.Override(Document, npc)?.Record as Mutagen.Bethesda.Skyrim.INpcGetter
+            ?? new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(npc))?.Race.FormKeyNullable;
+        switch (_pickerStage)
+        {
+            case 0:
+                FormWindows.Open(npc);
+                _pickerBefore = Race();
+                _pickerStage = 1;
+                _pickerFrames = 0;
+                break;
+            case 1 when _pickerFrames > 20 && cli.Contains("browse") && FormField.LastRects.TryGetValue("Race", out var field):
+                // The ▼ button right of the field: open the full list, type the filter, leave it open.
+                _pickerClick = new System.Numerics.Vector2(field.Max.X + ImGui.GetStyle().ItemSpacing.X + ImGui.GetFrameHeight() / 2, (field.Min.Y + field.Max.Y) / 2);
+                ImGuiLayer.TestMouse = (_pickerClick, true);
+                _pickerStage = 10;
+                _pickerFrames = 0;
+                break;
+            case 10 when _pickerFrames > 3:
+                ImGuiLayer.TestMouse = (_pickerClick, false);
+                _pickerStage = 11;
+                _pickerFrames = 0;
+                break;
+            case 11 when _pickerFrames > 5:
+                ImGuiLayer.TestMouse = null;
+                ImGuiLayer.TestText = cli[i + 2];
+                Log.Info("autotest-picker: browse list opened, filter typed");
+                _pickerStage = 9;
+                break;
+            case 1 when _pickerFrames > 20 && FormField.LastRects.TryGetValue("Race", out var rect):
+                ImGuiLayer.TestMouse = ((rect.Min + rect.Max) / 2, true);
+                _pickerStage = 2;
+                _pickerFrames = 0;
+                break;
+            case 2 when _pickerFrames > 2:
+                ImGuiLayer.TestMouse = ((FormField.LastRects["Race"].Min + FormField.LastRects["Race"].Max) / 2, false);
+                _pickerStage = 3;
+                _pickerFrames = 0;
+                break;
+            case 3 when _pickerFrames > 3:
+                // The click selected the old text (AutoSelectAll): typing replaces it.
+                _pickerStage = 4;
+                _pickerFrames = 0;
+                break;
+            case 4 when _pickerFrames > 3:
+                ImGuiLayer.TestText = cli[i + 2];
+                _pickerStage = 5;
+                _pickerFrames = 0;
+                break;
+            case 5 when _pickerFrames > 10:
+                Log.Info($"autotest-picker: typed \"{cli[i + 2]}\", {FormField.LastSuggestionCount} suggestion(s) shown; query {FormField.LastQuery}");
+                if (cli.Contains("show"))
+                {
+                    // Leave the list open for the screenshot.
+                    _pickerStage = 9;
+                    break;
+                }
+                if (cli.Contains("click"))
+                {
+                    // Third row of the list under the field (a header line, then the rows).
+                    var field = FormField.LastRects["Race"];
+                    var row = ImGui.GetTextLineHeightWithSpacing();
+                    _pickerClick = new System.Numerics.Vector2(field.Min.X + 60, field.Max.Y + ImGui.GetStyle().WindowPadding.Y + row * 3.5f);
+                    ImGuiLayer.TestMouse = (_pickerClick, false);
+                    _pickerStage = 7;
+                }
+                else
+                {
+                    ImGuiLayer.TestKeys.Enqueue(ImGuiKey.DownArrow);
+                    ImGuiLayer.TestKeys.Enqueue(ImGuiKey.Enter);
+                    _pickerStage = 6;
+                }
+                _pickerFrames = 0;
+                break;
+            case 7 when _pickerFrames > 3:
+                ImGuiLayer.TestMouse = (_pickerClick, true);
+                _pickerStage = 8;
+                _pickerFrames = 0;
+                break;
+            case 8 when _pickerFrames > 3:
+                ImGuiLayer.TestMouse = (_pickerClick, false);
+                _pickerStage = 6;
+                _pickerFrames = 0;
+                break;
+            case 6 when _pickerFrames > 12:
+                ImGuiLayer.TestMouse = null;
+                var after = Race();
+                Log.Info($"autotest-picker: race {(_pickerBefore is { } b ? FormField.Describe(this, b) : "-")} -> {(after is { } a ? FormField.Describe(this, a) : "-")}, undo: {Document.History.UndoName}");
+                _pickerStage = 9;
+                break;
+        }
+    }
 
     private int _formStage;
     private FormKey _formKey;

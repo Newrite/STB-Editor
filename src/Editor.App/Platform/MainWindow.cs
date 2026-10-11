@@ -31,6 +31,15 @@ internal sealed unsafe class MainWindow
         _wndProc = Procedure;
         var instance = GetModuleHandle(null);
 
+        // app.ico next to the exe (the exe carries it too, for Explorer and MO2); the Windows default if it is missing.
+        static nint AppIcon(bool large)
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "app.ico");
+            var size = GetSystemMetrics(large ? 11 : 49); // SM_CXICON / SM_CXSMICON
+            var icon = File.Exists(path) ? LoadImage(0, path, IMAGE_ICON, size, size, LR_LOADFROMFILE) : 0;
+            return icon != 0 ? icon : LoadIcon(0, IDI_APPLICATION);
+        }
+
         fixed (char* className = ClassName)
         {
             var wc = new WNDCLASSEXW
@@ -40,7 +49,8 @@ internal sealed unsafe class MainWindow
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
                 hInstance = instance,
                 hCursor = LoadCursor(0, IDC_ARROW),
-                hIcon = LoadIcon(0, IDI_APPLICATION),
+                hIcon = AppIcon(large: true),
+                hIconSm = AppIcon(large: false),
                 lpszClassName = className,
             };
 

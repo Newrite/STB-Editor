@@ -7,7 +7,12 @@
     <!-- .NET 9+ marks the exe CET-compatible; with hardware shadow stacks on, MO2's usvfs hooks
          (and other injectors) crash the process at startup with 0xC0000005. -->
     <CETCompat>false</CETCompat>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Also loose next to the exe: the window class loads it at the sizes Windows asks for. -->
+    <None Include="app.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Editor.Data\Editor.Data.csproj" />
     <ProjectReference Include="..\Editor.Assets\Editor.Assets.csproj" />

@@ -375,6 +375,12 @@ internal static class LangRu
         ["Right-click a record → Compare versions"] = "ПКМ по записи → «Сравнить версии»",
         ["every plugin's version side by side, coloured as in xEdit"] = "версии из всех плагинов рядом, раскраска как в xEdit",
 
+        // ---- save check
+        ["Your edits use records of {0}, which is not a master of {1} yet. With a new master the whole file is written anew, not only the edited records."] = "Ваши правки используют записи из {0}, а это ещё не мастер {1}. С новым мастером файл записывается заново целиком, а не только изменённые записи.",
+        ["{0} record(s) you did not edit would come out slightly different (the writer normalises some data, as the Creation Kit does: for example it drops empty markers). A backup is made either way."] = "Записей, которые вы не трогали, но которые запишутся чуть иначе: {0} (запись нормализует часть данных, как Creation Kit, — например, выбрасывает пустые маркеры). Резервная копия делается в любом случае.",
+        ["changed"] = "изменится",
+        ["missing"] = "пропадёт",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

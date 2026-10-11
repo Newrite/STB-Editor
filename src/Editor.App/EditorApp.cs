@@ -259,6 +259,7 @@ internal sealed class EditorApp : IDisposable
         RunFormAutotest();
         RunPickerAutotest();
         RunCompareAutotest();
+        RunSaveCheckAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
@@ -454,7 +455,49 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-zoom") || _zoomDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-compare") || _compareStage == 3);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-compare") || _compareStage == 3)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-savecheck") || _saveCheckStage == 2);
+
+    private int _saveCheckStage;
+
+    /// <summary>
+    /// --autotest-savecheck &lt;folder&gt; &lt;plugin&gt;: on a copy of the plugin in the folder, override a record of
+    /// a plugin that is not its master and save: the save check (new master, records written differently)
+    /// stays open for a screenshot. Nothing is written.
+    /// </summary>
+    private void RunSaveCheckAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-savecheck");
+        if (i < 0 || i + 2 >= cli.Length || Session is not { } session || _saveCheckStage == 2) return;
+        if (_saveCheckStage == 1)
+        {
+            if (Saver.AwaitingConfirmation is not { } pending) return;
+            Log.Info($"autotest-savecheck: added masters [{string.Join(", ", pending.AddedMasters)}], {pending.LossyRecords.Count} record(s) written differently: {string.Join("; ", pending.LossyRecords)}");
+            _saveCheckStage = 2;
+            return;
+        }
+
+        var plugin = session.Workspace.Active.First(p => p.Name.Equals(cli[i + 2], StringComparison.OrdinalIgnoreCase));
+        Directory.CreateDirectory(cli[i + 1]);
+        var copy = Path.Combine(cli[i + 1], plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        SetActivePlugin(StbEditor.Core.ActivePlugin.ForExisting(plugin, session.Game).RetargetedTo(copy));
+
+        var masters = StbEditor.Data.Raw.PluginHeader.Read(copy).Masters.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var order = session.Workspace.Active.Select(p => p.Name.ToLowerInvariant()).ToList();
+        var self = order.IndexOf(plugin.Name.ToLowerInvariant());
+        var target = session.Catalog.BySignature["MISC"].FirstOrDefault(r => r.FormKey.ModKey.FileName.String is var origin
+            && !masters.Contains(origin) && order.IndexOf(origin.ToLowerInvariant()) is var at && at >= 0 && at < self);
+        if (target is null) { Log.Warn("autotest-savecheck: no record outside the masters"); _saveCheckStage = 2; return; }
+        var winning = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.IMiscItemGetter>(target.FormKey)!;
+        var edited = StbEditor.Core.OverrideEditing.WorkingCopy(Document, target.FormKey, winning);
+        edited.EditorID += "Edited";
+        StbEditor.Core.OverrideEditing.CommitEdit(Document, "edit", edited, StbEditor.Core.RecordPlace.TopLevel);
+        Log.Info($"autotest-savecheck: edited {target.EditorId} from {target.FormKey.ModKey}, saving into a copy of {plugin.Name}");
+        Save();
+        _saveCheckStage = 1;
+    }
 
     private int _compareStage;
     private int _compareFrames;

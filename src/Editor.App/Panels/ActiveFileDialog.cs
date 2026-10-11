@@ -1,5 +1,6 @@
 using System.Numerics;
 using Hexa.NET.ImGui;
+using Mutagen.Bethesda.Plugins;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Core;
@@ -192,6 +193,14 @@ internal sealed class ActiveFileDialog
 
     public static string NewPluginFolder(GameInstall game) => game.Mo2?.OverwriteFolder ?? game.DataFolder;
 
+    /// <summary>"RACE 071E6A:Skyrim.esm changed" → "RACE 00071E6A  ElderRaceVampire — changed".</summary>
+    private string Describe(string line)
+    {
+        var parts = line.Split(' ');
+        if (parts.Length != 3 || _app.Session is not { } session || !FormKey.TryFactory(parts[1], out var key)) return line;
+        return $"{parts[0]} {session.Workspace.FormIdText(key)}  {session.Catalog.Get(key)?.EditorId} — {T(parts[2])}";
+    }
+
     private void DrawSavePrompts()
     {
         var saver = _app.Saver;
@@ -203,10 +212,17 @@ internal sealed class ActiveFileDialog
             var result = saver.AwaitingConfirmation;
             if (result is not null)
             {
-                ImGui.TextWrapped($"Writing {Path.GetFileName(result.TargetPath)} would change {result.LossyRecords.Count}{(result.LossyRecords.Count >= 50 ? "+" : "")} record(s) you did not edit " +
-                    T("(the writer normalises some data, as the Creation Kit does). A backup is made either way."));
-                ImGui.BeginChild("##lossy", new Vector2(0, ImGui.GetTextLineHeightWithSpacing() * 8), ImGuiChildFlags.Borders);
-                foreach (var line in result.LossyRecords) ImGui.TextColored(Theme.TextDim, line);
+                var file = Path.GetFileName(result.TargetPath);
+                if (result.AddedMasters.Count > 0)
+                {
+                    // The usual cause: a new master renumbers the plugin's own FormIDs, so nothing can be kept byte for byte.
+                    ImGui.TextWrapped(TF($"Your edits use records of {string.Join(", ", result.AddedMasters)}, which is not a master of {file} yet. With a new master the whole file is written anew, not only the edited records."));
+                    ImGui.Spacing();
+                }
+                var count = $"{result.LossyRecords.Count}{(result.LossyRecords.Count >= 50 ? "+" : "")}";
+                ImGui.TextWrapped(TF($"{count} record(s) you did not edit would come out slightly different (the writer normalises some data, as the Creation Kit does: for example it drops empty markers). A backup is made either way."));
+                ImGui.BeginChild("##lossy", new Vector2(0, ImGui.GetTextLineHeightWithSpacing() * Math.Min(8, result.LossyRecords.Count + 1)), ImGuiChildFlags.Borders);
+                foreach (var line in result.LossyRecords) ImGui.TextColored(Theme.TextDim, Describe(line));
                 ImGui.EndChild();
                 ImGui.TextColored(Theme.TextDim, T("Safer: save the edits into a new plugin instead."));
 

@@ -30,6 +30,9 @@ public sealed class SaveResult
     public List<string> LossyRecords { get; init; } = [];
 
     public List<string> Warnings { get; init; } = [];
+
+    /// <summary>Masters the edits needed that the plugin did not have: the file is then written anew, not spliced.</summary>
+    public List<string> AddedMasters { get; init; } = [];
 }
 
 /// <summary>
@@ -219,9 +222,11 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
             var mastersKept = !active.IsNew && writtenMasters.Count == originalMasters.Count
                 && writtenMasters.Select(m => m.ToLowerInvariant()).SequenceEqual(originalMasters.Select(m => m.FileName.String.ToLowerInvariant()));
 
+            var addedMasters = new List<string>();
             if (!active.IsNew && !mastersKept)
             {
                 var added = writtenMasters.Except(originalMasters.Select(m => m.FileName.String), StringComparer.OrdinalIgnoreCase).ToList();
+                addedMasters.AddRange(added);
                 warnings.Add($"new master(s) needed: {string.Join(", ", added)} — the plugin's own FormIDs shift, so the whole file is rewritten (no byte-for-byte splice)");
             }
 
@@ -238,7 +243,7 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 warnings.Add($"{restored} untouched record(s) kept byte for byte");
             }
 
-            var lossy = active.IsNew ? [] : CompareUntouched(active.Path, temp, touched, originalMasters.Count, writtenMasters.Count);
+            var lossy = active.IsNew ? [] : CompareUntouched(active.Path, temp, touched, originalMasters.Count, writtenMasters, active.ModKey);
             Verify(temp, active, document);
 
             return new SaveResult
@@ -251,6 +256,7 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 Removed = removed,
                 LossyRecords = lossy,
                 Warnings = warnings,
+                AddedMasters = addedMasters,
             };
         }
         catch (Exception ex)
@@ -341,10 +347,14 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
     /// Untouched records must come out byte-identical (decompressed body + flags). Anything else
     /// means the writer normalised or lost data the user did not ask to change.
     /// </summary>
-    private static List<string> CompareUntouched(string originalPath, string writtenPath, HashSet<FormKey> touched, int oldOwnIndex, int newOwnIndex)
+    private static List<string> CompareUntouched(string originalPath, string writtenPath, HashSet<FormKey> touched, int oldOwnIndex, IReadOnlyList<string> writtenMasters, ModKey self)
     {
-        var before = Digest(originalPath);
-        var after = Digest(writtenPath);
+        var newOwnIndex = writtenMasters.Count;
+        // "RACE 071E6A:Skyrim.esm": FormKeys, since the file's own indices mean nothing outside it.
+        string Name(string type, uint formId) =>
+            $"{type} {new FormKey((formId >> 24) < writtenMasters.Count ? ModKey.FromFileName(writtenMasters[(int)(formId >> 24)]) : self, formId & 0xFFFFFF)}";
+        var before = Contents(originalPath);
+        var after = Contents(writtenPath);
 
         // Own records move to the new self index when masters were added.
         if (oldOwnIndex != newOwnIndex)
@@ -356,31 +366,44 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
         var touchedIds = touched.Select(k => k.ID).ToHashSet();
         var lossy = new List<string>();
 
-        foreach (var (key, hash) in before)
+        foreach (var (key, old) in before)
         {
             if (key.Type == "TES4") continue;
             if (touchedIds.Contains(key.FormId & 0xFFFFFF)) continue;
             // Cells and worldspaces that gained or lost children change only in their groups.
-            if (!after.TryGetValue(key, out var newHash))
-                lossy.Add($"{key.Type} {key.FormId:X8} missing");
-            else if (newHash != hash && key.Type is not ("CELL" or "WRLD"))
-                lossy.Add($"{key.Type} {key.FormId:X8} changed");
+            if (!after.TryGetValue(key, out var written))
+                lossy.Add($"{Name(key.Type, key.FormId)} missing");
+            else if (key.Type is not ("CELL" or "WRLD") && !SameRecord(old, written, oldOwnIndex, newOwnIndex))
+                lossy.Add($"{Name(key.Type, key.FormId)} changed");
             if (lossy.Count >= 50) break;
         }
 
         return lossy;
     }
 
-    private static Dictionary<(string Type, uint FormId), string> Digest(string path)
+    /// <summary>
+    /// The same record, allowing for the plugin's own FormIDs renumbered by an added master: every
+    /// byte that differs must be the top byte of such a FormID (old self index → new self index).
+    /// </summary>
+    private static bool SameRecord((byte[] Data, uint Flags) old, (byte[] Data, uint Flags) written, int oldOwnIndex, int newOwnIndex)
     {
-        var map = new Dictionary<(string, uint), string>();
+        if (old.Flags != written.Flags || old.Data.Length != written.Data.Length) return false;
+        if (old.Data.AsSpan().SequenceEqual(written.Data)) return true;
+        if (oldOwnIndex == newOwnIndex) return false;
+        for (var i = 0; i < old.Data.Length; i++)
+        {
+            if (old.Data[i] == written.Data[i]) continue;
+            if (old.Data[i] != oldOwnIndex || written.Data[i] != newOwnIndex) return false;
+        }
+        return true;
+    }
+
+    private static Dictionary<(string Type, uint FormId), (byte[] Data, uint Flags)> Contents(string path)
+    {
+        var map = new Dictionary<(string, uint), (byte[], uint)>();
         var file = File.ReadAllBytes(path);
         foreach (var record in RawFormat.Records(file))
-        {
-            var flags = record.Flags & ~RawFormat.CompressedFlag;
-            var hash = Convert.ToHexString(SHA1.HashData(record.Data.Span)) + flags.ToString("X");
-            map[(record.Type, record.FormId)] = hash;
-        }
+            map[(record.Type, record.FormId)] = (record.Data.ToArray(), record.Flags & ~RawFormat.CompressedFlag);
         return map;
     }
 

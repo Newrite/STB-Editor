@@ -719,6 +719,42 @@ switch (command)
         Console.WriteLine($"  expected: moved {moved.Reference} to {mstate.Position}, disabled {deleted.Reference}, new {newKey}");
         break;
     }
+    case "mastertest":
+    {
+        // mastertest <game> <out folder> <plugin>: on a copy of the plugin, override a record of a
+        // plugin that is not its master yet (the save must add a master) and report the save check.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var outDir = args[2];
+        Directory.CreateDirectory(outDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var masters = StbEditor.Data.Raw.PluginHeader.Read(copy).Masters.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var order = ws.Active.Select(p => p.Name.ToLowerInvariant()).ToList();
+        var target = catalog.BySignature["MISC"].Concat(catalog.BySignature["WEAP"])
+            .FirstOrDefault(r => !masters.Contains(r.WinningPlugin.Name) && r.FormKey.ModKey.FileName.String is var origin
+                && !masters.Contains(origin) && !origin.Equals(plugin.Name, StringComparison.OrdinalIgnoreCase)
+                && order.IndexOf(origin.ToLowerInvariant()) is var at && at >= 0 && at < order.IndexOf(plugin.Name.ToLowerInvariant()));
+        if (target is null) { Console.WriteLine("no record of a non-master plugin found"); break; }
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var winning = (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)lookup.Resolve<Mutagen.Bethesda.Skyrim.IMiscItemGetter>(target.FormKey)
+            ?? lookup.Resolve<Mutagen.Bethesda.Skyrim.IWeaponGetter>(target.FormKey);
+        var doc = new EditDocument();
+        var edited = doc.WorkingCopy(target.FormKey, winning!);
+        edited.EditorID = (edited.EditorID ?? "x") + "Edited";
+        doc.CommitEdit("edit", edited, RecordPlace.TopLevel);
+        Console.WriteLine($"override {target.EditorId} {target.FormKey} (from {target.FormKey.ModKey}, not a master of {plugin.Name})");
+
+        var t = Stopwatch.StartNew();
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error} in {t.ElapsedMilliseconds} ms; lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings) Console.WriteLine("  warn " + w);
+        Console.WriteLine($"  written to {result.TempPath}");
+        foreach (var l in result.LossyRecords.Take(20)) Console.WriteLine("  lossy " + l);
+        break;
+    }
     case "cellat":
     {
         var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");

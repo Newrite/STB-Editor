@@ -48,6 +48,9 @@ internal static class ScriptsEditor
     private static PropertyInfo? VmadProperty(Type type) =>
         type.GetProperties().FirstOrDefault(p => p.Name == "VirtualMachineAdapter" && typeof(IVirtualMachineAdapterGetter).IsAssignableFrom(p.PropertyType));
 
+    /// <summary>How many scripts the record has (for the tab title).</summary>
+    public static int Count(IMajorRecordGetter record) => VmadOf(record)?.Scripts.Count ?? 0;
+
     private static IVirtualMachineAdapterGetter? VmadOf(IMajorRecordGetter record) =>
         VmadProperty(record.GetType())?.GetValue(record) as IVirtualMachineAdapterGetter;
 
@@ -74,7 +77,7 @@ internal static class ScriptsEditor
         var vmad = VmadOf(current);
         var scripts = vmad?.Scripts ?? [];
 
-        if (!ImGui.TreeNodeEx(TF($"Scripts ({scripts.Count})###scripts"), scripts.Count > 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None)) return;
+        if (scripts.Count == 0) ImGui.TextColored(Theme.TextDim, T("No scripts attached. Type a script name below to attach one."));
 
         for (var s = 0; s < scripts.Count; s++)
         {
@@ -112,18 +115,36 @@ internal static class ScriptsEditor
 
         if (_addFilter.Trim().Length >= 2 && exact is null)
         {
-            var matches = library.Names.Where(n => n.Contains(_addFilter.Trim(), StringComparison.OrdinalIgnoreCase)).Take(12).ToList();
-            foreach (var match in matches)
-                if (ImGui.Selectable(match)) _addFilter = match;
-            if (matches.Count == 0) ImGui.TextColored(Theme.TextDim, "no script with that name among the .pex files");
+            // Every match, in a scrolling list (not just the first dozen).
+            var matches = library.Names.Where(n => n.Contains(_addFilter.Trim(), StringComparison.OrdinalIgnoreCase)).Order(StringComparer.OrdinalIgnoreCase).ToList();
+            if (matches.Count == 0) ImGui.TextColored(Theme.TextDim, T("No script with that name among the .pex files."));
+            else
+            {
+                ImGui.TextColored(Theme.TextDim, TF($"{matches.Count} script(s) match — click to pick:"));
+                var rows = Math.Min(matches.Count, 14);
+                if (ImGui.BeginListBox("##matches", new Vector2(-1, rows * ImGui.GetTextLineHeightWithSpacing() + ImGui.GetStyle().FramePadding.Y * 2)))
+                {
+                    var clipper = new ImGuiListClipper();
+                    clipper.Begin(matches.Count);
+                    while (clipper.Step())
+                        for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                            if (ImGui.Selectable(matches[i])) _addFilter = matches[i];
+                    clipper.End();
+                    ImGui.EndListBox();
+                }
+            }
         }
-        ImGui.TreePop();
     }
 
     private static void DrawProperties(EditorApp app, IScriptEntryGetter entry, List<(PexProperty Property, string Owner)> declared, int scriptIndex,
         Action<string, Action<IMajorRecord>> edit)
     {
-        if (!ImGui.BeginTable("##props", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp)) return;
+        if (declared.Count == 0 && entry.Properties.Count == 0)
+        {
+            ImGui.TextColored(Theme.TextDim, T("This script declares no properties."));
+            return;
+        }
+        if (!ImGui.BeginTable("##scriptprops", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp)) return;
         ImGui.TableSetupColumn(T("Property"), ImGuiTableColumnFlags.WidthStretch, 0.38f);
         ImGui.TableSetupColumn(T("Value"), ImGuiTableColumnFlags.WidthStretch, 0.62f);
         ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());

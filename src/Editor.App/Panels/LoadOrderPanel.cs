@@ -55,6 +55,7 @@ internal sealed class LoadOrderPanel : Panel
             ImGui.TableNextColumn();
             if (plugin.Error is not null) ImGui.TextColored(Theme.Error, plugin.Name);
             else if (!plugin.IsActive) ImGui.TextColored(Theme.TextDim, plugin.Name);
+            else if (plugin.Skipped) ImGui.TextColored(Theme.TextDim, plugin.Name + T("  (not loaded)"));
             else ImGui.Text(plugin.Name);
             if (plugin.Error is not null && ImGui.IsItemHovered()) ImGui.SetTooltip(plugin.Error);
 

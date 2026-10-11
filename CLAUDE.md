@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.4.0, 2026-10-10) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.5.0, 2026-10-11) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -13,7 +13,8 @@ lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice
 any record, Duplicate, scripts + properties; new interior cells / worldspaces / exterior cells
 (`Core/NewRecords.cs`), landscape sculpt + paint; manual navmesh editing; going through doors
 (`Data/DoorIndex.cs`, `Panels/RenderWindow.Doors.cs`), Cell View object list, Help window (F1),
-Russian / English UI (`Ui/Loc.cs`, `Ui/LangRu.cs`). .NET 10 (`global.json`).
+Russian / English UI (`Ui/Loc.cs`, `Ui/LangRu.cs`). .NET 10 (`global.json`). v0.5.0: CK-like record
+forms (`Panels/RecordForm.cs`, `FormView.cs`, `FormWindows.cs`), plugin selection in Data (`Workspace.Open(only)`).
 Next: condition editor (CTDA) + Use Info, properties of existing cells, navmesh finalize (NAVI).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,
@@ -163,6 +164,13 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   multi-partition meshes). Skinned vertices go to the bind pose via the file's own bone nodes × NiSkinData
   bone transforms, blended per vertex (one bone is not enough: facegen bones disagree by a few units).
   Skin parts hide when their main slot (body, else lowest) is worn. `stbedit-cli npc <id>` / `npcscan`.
+- **Record fields go through `Core/RecordFields`** (walk, editability, `Set` by path, add/remove rows,
+  dictionaries, gendered pairs); the UI (`Panels/FormView`, `Ui/PropertyTree`, `Ui/FieldEditors`) only
+  draws. `stbedit-cli formtest <dir> 5` edits every field of every type through it and must report
+  0 unexpected / 0 set errors. Edits clear Mutagen's Break flags (`Unbreak`) — else fields past a short
+  struct are silently not written. `RecordRoundTrip` (write one record, read back) drives the «!» format
+  notes and refuses edits that would make a record unreadable. Floats are typed/shown with `FloatText`
+  (round-trip), never "%.2f". Hide only `System.Type`-valued members, not members named "Type".
 - **Memory: walk a plugin's groups once.** Mutagen's stream overlay reads a group's bytes on every walk
   and each record taken from it keeps that copy alive. Looking cells up by walking the worldspace per cell
   kept one copy of Skyrim.esm's Tamriel group per loaded cell — 5 GB for a 5×5 grid, and 16 GB PCs froze.

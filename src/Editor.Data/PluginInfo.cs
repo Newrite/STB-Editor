@@ -22,6 +22,9 @@ public sealed class PluginInfo
     public ISkyrimModGetter? Mod { get; internal set; }
     public string? Error { get; internal set; }
 
+    /// <summary>Active in the load order but not loaded this session (Data → plugin selection).</summary>
+    public bool Skipped { get; internal set; }
+
     /// <summary>Index prefix as the game assigns it: 0x0E000000 or 0xFE00A000.</summary>
     public uint FormIdPrefix { get; internal set; }
 

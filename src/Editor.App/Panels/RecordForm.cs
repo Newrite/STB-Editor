@@ -1,0 +1,292 @@
+using Hexa.NET.ImGui;
+using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
+using StbEditor.App.Ui;
+using StbEditor.Core;
+using StbEditor.Data.Catalog;
+using static StbEditor.App.Ui.Loc;
+
+namespace StbEditor.App.Panels;
+
+/// <summary>
+/// A record as an editable form (the Inspector and the separate form windows): tabs laid out like
+/// the Creation Kit's dialogs (<see cref="FormView"/>), scripts, every field, every plugin's version.
+/// </summary>
+internal sealed class RecordForm
+{
+    private FormKey? _loadedFor;
+    private List<(string Plugin, IMajorRecordGetter Record)> _versions = [];
+    private string? _error;
+
+    /// <summary>Records that do not sit in a top-level group (or need their own tools) are not field-edited here.</summary>
+    private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "QUST", "SCEN", "TES4"];
+
+    /// <summary>Draws the form of <paramref name="key"/>; <paramref name="inWindow"/>: a form window (no reference tab, no "open in window").</summary>
+    public void Draw(EditorApp app, FormKey key, bool inWindow)
+    {
+        var session = app.Session!;
+        if (_loadedFor != key) Load(app, key);
+
+        var catalog = session.Catalog.Get(key);
+        var placedObject = catalog is null ? app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) : null;
+        var type = catalog is not null ? RecordTypes.Get(catalog.Signature)
+            : placedObject is not null ? new RecordTypeInfo(placedObject.Kind == StbEditor.Render.SceneObjectKind.Actor ? "ACHR" : "REFR", "Reference", "") : null;
+
+        ImGui.PushFont(app.Ui.HeaderFont, 0);
+        ImGui.Text(catalog?.EditorId ?? placedObject?.Record?.EditorID ?? (placedObject is not null ? placedObject.BaseEditorId ?? "" : T("(no editor id)")));
+        ImGui.PopFont();
+        ImGui.SameLine();
+        ImGui.TextColored(Theme.TextDim, $"{T(type?.Name ?? "?")} [{type?.Signature}]  {session.Workspace.FormIdText(key)}");
+        if (placedObject is not null)
+        {
+            ImGui.TextColored(Theme.TextDim, TF($"base {placedObject.BaseEditorId} [{placedObject.BaseSignature}]"));
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Open base"))) app.Select(placedObject.Base);
+        }
+        if (catalog?.Name is { Length: > 0 } name) ImGui.TextColored(Theme.Accent, name);
+
+        var editable = placedObject is not null || (catalog is not null && !NotFieldEditable.Contains(catalog.Signature));
+        if (!inWindow && placedObject is null && _versions.Count > 0)
+        {
+            if (ImGui.SmallButton(T("Open in window"))) app.FormWindows.Open(key);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("A separate, larger window for this record (as the Creation Kit's form dialogs); double-click in the Object Window does the same"));
+            ImGui.SameLine();
+        }
+        if (ImGui.SmallButton(T("Copy FormKey"))) ImGui.SetClipboardText(key.ToString());
+        if (placedObject is null && editable && _versions.Count > 0)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Duplicate"))) Duplicate(app, key);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("New record in the active file: a copy with a new FormID and EditorID (as the CK's Duplicate)"));
+        }
+        if (app.Document.Override(key) is not null)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(Theme.Warning, T("changed, not saved (Ctrl+S)"));
+        }
+
+        if (_error is not null)
+        {
+            ImGui.TextColored(Theme.Error, _error);
+            return;
+        }
+        if (_versions.Count == 0) return;
+
+        // What is shown and edited: the unsaved edit if there is one, else the winning version.
+        var current = (IMajorRecordGetter?)app.Document.Override(key)?.Record ?? _versions[0].Record;
+        EditTarget? target = null;
+        if (editable)
+        {
+            var place = placedObject is not null ? RecordPlace.Reference : RecordPlace.TopLevel;
+            var context = placedObject is not null ? app.RenderWindow.RefContextOf(placedObject) : null;
+            if (context is not null) app.Document.RegisterContext(key, context);
+            target = new EditTarget(
+                () => app.Document.WorkingCopy(key, current),
+                (name, edited) => app.Document.CommitEdit(name, edited, place, context),
+                edited => Validate(app, edited))
+            {
+                Notes = Notes(app, key),
+            };
+        }
+
+        if (!ImGui.BeginTabBar("##inspector", ImGuiTabBarFlags.FittingPolicyScroll)) return;
+        var signature = placedObject is not null ? (placedObject.Kind == StbEditor.Render.SceneObjectKind.Actor ? "ACHR" : "REFR") : catalog!.Signature;
+
+        if (!inWindow && placedObject is not null && app.RenderWindow.SingleSelection == placedObject && Tab(T("Reference")))
+        {
+            Body(() =>
+            {
+                DrawPlacement(app, placedObject);
+                ReferenceProperties.Draw(app, placedObject);
+            });
+        }
+
+        if (placedObject is null)
+        {
+            if (_tabsFor != (key, current))
+            {
+                _tabsFor = (key, current);
+                _tabs = FormView.Tabs(current, signature);
+            }
+            foreach (var tab in _tabs)
+            {
+                if (!Tab(T(tab.Title) + "###" + tab.Title)) continue;
+                if (!editable) ImGui.TextColored(Theme.TextDim, T("Cells, worldspaces, dialogue and navmesh have their own tools"));
+                Body(() => FormView.DrawTab(app, current, tab, target));
+            }
+
+            if (ScriptsEditor.Supports(current) && Tab(TF($"Scripts ({ScriptsEditor.Count(current)})###scripts")))
+            {
+                Body(() => ScriptsEditor.Draw(app, current, (name, change) =>
+                {
+                    var copy = app.Document.WorkingCopy(key, current);
+                    change(copy);
+                    app.Document.CommitEdit(name, copy, RecordPlace.TopLevel);
+                }));
+            }
+        }
+
+        if (Tab(T("All fields") + "###allfields"))
+        {
+            ImGui.TextColored(Theme.TextDim, T("Every field of the record as Mutagen reads it."));
+            PropertyTree.Draw(app, current, target);
+            ImGui.EndTabItem();
+        }
+
+        if (Tab(TF($"Versions ({_versions.Count})###versions")))
+        {
+            if (ImGui.BeginTabBar("##versions", ImGuiTabBarFlags.FittingPolicyScroll))
+            {
+                for (var i = 0; i < _versions.Count; i++)
+                {
+                    var (plugin, record) = _versions[i];
+                    var label = i == 0 && _versions.Count > 1 ? $"{plugin} ({T("winner")})###v{i}" : $"{plugin}###v{i}";
+                    if (!ImGui.BeginTabItem(label)) continue;
+                    PropertyTree.Draw(app, record);
+                    ImGui.EndTabItem();
+                }
+                ImGui.EndTabBar();
+            }
+            ImGui.EndTabItem();
+        }
+
+        ImGui.EndTabBar();
+    }
+
+    private (FormKey, IMajorRecordGetter)? _tabsFor;
+    private List<FormTab> _tabs = [];
+    private (FormKey Key, int Version) _notesFor;
+    private Dictionary<string, string> _notes = [];
+
+    /// <summary>Why an edited record would not save (it does not write and read back), or null.</summary>
+    private static string? Validate(EditorApp app, IMajorRecord edited)
+    {
+        if (edited is Mutagen.Bethesda.Skyrim.IPlacedGetter) return null; // references: the writer checks them on save
+        var session = app.Session!;
+        var encoding = StbEditor.Data.Raw.StringEncodingDetector.WriteEncoding(app.ActivePlugin?.Encoding ?? session.Workspace.DefaultEncoding, session.Game.Language);
+        return StbEditor.Core.RecordRoundTrip.Read(edited, session.Game.Release, encoding) is null ? StbEditor.Core.RecordRoundTrip.LastError ?? "unknown" : null;
+    }
+
+    /// <summary>--inspector-tab &lt;id&gt;: open that tab (screenshots); the id is the tab's English title.</summary>
+    private static string? _forceTab = Environment.GetCommandLineArgs().SkipWhile(x => x != "--inspector-tab").Skip(1).FirstOrDefault();
+    private static int _forceFrames = 30;
+
+    private static unsafe bool Tab(string label)
+    {
+        var force = _forceTab is not null && _forceFrames > 0 && label.Contains(_forceTab, StringComparison.OrdinalIgnoreCase);
+        if (force) _forceFrames--;
+        return ImGui.BeginTabItem(label, (bool*)null, force ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None);
+    }
+
+    /// <summary>A tab's content in its own scrolling area; ends the tab item.</summary>
+    private static void Body(Action draw)
+    {
+        if (ImGui.BeginChild("##body", System.Numerics.Vector2.Zero)) draw();
+        ImGui.EndChild();
+        ImGui.EndTabItem();
+    }
+
+    /// <summary>Fields of the edited record the file would keep differently, recomputed after each edit.</summary>
+    private Dictionary<string, string> Notes(EditorApp app, FormKey key)
+    {
+        if (app.Document.Override(key) is not { } edited) return [];
+        var version = app.Document.History.Version;
+        if (_notesFor == (key, version)) return _notes;
+        _notesFor = (key, version);
+        _notes = FieldEditors.FormatNotes(edited.Record, app);
+        return _notes;
+    }
+
+    /// <summary>Editable position / rotation (degrees, as the Creation Kit shows them) / scale.</summary>
+    private static void DrawPlacement(EditorApp app, StbEditor.Render.SceneObject obj)
+    {
+        ImGui.SeparatorText(obj.IsModified ? T("Placement  (changed)") : T("Placement"));
+
+        var state = obj.State;
+        var position = state.Position;
+        var degrees = new System.Numerics.Vector3(
+            StbEditor.Render.TransformMath.Degrees(state.Rotation.X),
+            StbEditor.Render.TransformMath.Degrees(state.Rotation.Y),
+            StbEditor.Render.TransformMath.Degrees(state.Rotation.Z));
+        var scale = state.Scale;
+        var width = ImGui.GetContentRegionAvail().X - ImGui.GetFontSize() * 5;
+
+        ImGui.SetNextItemWidth(width);
+        if (ImGui.DragFloat3(T("Position"), ref position, 1f, 0, 0, "%.2f"))
+            app.RenderWindow.PreviewFieldEdit(obj, state with { Position = position });
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Position"));
+
+        ImGui.SetNextItemWidth(width);
+        if (ImGui.DragFloat3(T("Rotation"), ref degrees, 0.5f, 0, 0, "%.2f°"))
+        {
+            var radians = new System.Numerics.Vector3(
+                StbEditor.Render.TransformMath.Radians(degrees.X),
+                StbEditor.Render.TransformMath.Radians(degrees.Y),
+                StbEditor.Render.TransformMath.Radians(degrees.Z));
+            app.RenderWindow.PreviewFieldEdit(obj, state with { Rotation = radians });
+        }
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Rotation"));
+
+        ImGui.SetNextItemWidth(width);
+        if (ImGui.DragFloat(T("Scale"), ref scale, 0.005f, 0.01f, 10f, "%.3f"))
+            app.RenderWindow.PreviewFieldEdit(obj, state with { Scale = Math.Clamp(scale, 0.01f, 10f) });
+        if (ImGui.IsItemDeactivatedAfterEdit()) app.RenderWindow.CommitFieldEdit(T("Scale"));
+
+        ImGui.Spacing();
+    }
+
+    private void Duplicate(EditorApp app, FormKey key)
+    {
+        if (app.ActivePlugin is not { } active)
+        {
+            app.ShowActiveFileDialog(T("A duplicate is a new record of the active file — choose it first."));
+            return;
+        }
+
+        var source = (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)app.Document.Override(key)?.Record ?? _versions[0].Record;
+        var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)source.Duplicate(active.Allocate());
+        var catalog = app.Session!.Catalog;
+        var baseId = (source.EditorID ?? T("Record")) + T("Copy");
+        var id = baseId;
+        for (var n = 2; catalog.ByKey.Values.Any(r => string.Equals(r.EditorId, id, StringComparison.OrdinalIgnoreCase)); n++) id = baseId + n;
+        copy.EditorID = id;
+        app.Document.CommitEdit(TF($"Duplicate {source.EditorID} as {id}"), copy, RecordPlace.TopLevel);
+        app.Select(copy.FormKey);
+        StbEditor.App.Services.Log.Info($"duplicate: {source.EditorID} -> {id} {copy.FormKey}");
+    }
+
+    private void Load(EditorApp app, FormKey key)
+    {
+        _loadedFor = key;
+        _versions = [];
+        _error = null;
+
+        try
+        {
+            var session = app.Session!;
+            var signature = session.Catalog.Get(key)?.Signature;
+            var type = signature is null ? null : StbEditor.Data.RecordLookup.GetterType(signature);
+
+            if (type is not null)
+            {
+                // Typed: only this record type gets indexed, not the whole load order.
+                foreach (var context in session.Workspace.LinkCache.ResolveAllSimpleContexts(key, type))
+                    _versions.Add((context.ModKey.FileName.String, context.Record));
+            }
+            else if (app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) is { Record: { } placed })
+            {
+                // Placed references are not in the catalog; the loaded scene holds the winner.
+                _versions.Add((T("winning version"), placed));
+            }
+
+            if (_versions.Count == 0 && app.Document.Override(key) is { Place: RecordPlace.TopLevel } created)
+                _versions.Add(("new (unsaved)", created.Record));
+
+            if (_versions.Count == 0) _error = "Record not found in the loaded plugins (placed references show once their cell is loaded).";
+        }
+        catch (Exception ex)
+        {
+            _error = TF($"Cannot read record: {ex.Message}");
+        }
+    }
+}

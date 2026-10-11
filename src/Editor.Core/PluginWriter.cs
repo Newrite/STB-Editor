@@ -458,6 +458,14 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
     }
 
     /// <summary>Adds or replaces (the plugin's own record, or an earlier override in it).</summary>
+    /// <summary>Puts a record into its top-level group of a mod (tests write records one by one with it).</summary>
+    public static bool AddTopLevel(SkyrimMod mod, IMajorRecord record)
+    {
+        if (GroupFor(mod, record.GetType()) is not { } group) return false;
+        SetInGroup(group, record);
+        return true;
+    }
+
     private static void SetInGroup(IGroup group, IMajorRecord record)
     {
         var set = group.GetType().GetMethods().FirstOrDefault(m => m.Name == "Set" && m.GetParameters() is [{ ParameterType: var t }] && t.IsInstanceOfType(record));
@@ -472,8 +480,10 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
     {
         if (!Groups.TryGetValue(type, out var property))
         {
-            property = typeof(SkyrimMod).GetProperties().FirstOrDefault(p =>
-                p.PropertyType.IsGenericType && p.PropertyType.GetGenericArguments()[0] == type && typeof(IGroup).IsAssignableFrom(p.PropertyType));
+            // Subclasses live in their base's group: GlobalShort / GlobalFloat in Globals, GameSettingFloat in GameSettings.
+            for (var t = type; t is not null && property is null; t = t.BaseType)
+                property = typeof(SkyrimMod).GetProperties().FirstOrDefault(p =>
+                    p.PropertyType.IsGenericType && p.PropertyType.GetGenericArguments()[0] == t && typeof(IGroup).IsAssignableFrom(p.PropertyType));
             Groups[type] = property;
         }
         return property?.GetValue(mod) as IGroup;

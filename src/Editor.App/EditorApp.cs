@@ -63,6 +63,9 @@ internal sealed class EditorApp : IDisposable
     public ObjectWindow ObjectWindow { get; }
     public InspectorPanel Inspector { get; }
 
+    /// <summary>Records open in their own form windows.</summary>
+    public FormWindows FormWindows { get; } = new();
+
     public EditorApp(Settings settings, ImGuiLayer imgui, GraphicsDevice graphics, CommandLine options)
     {
         _settings = settings;
@@ -93,6 +96,7 @@ internal sealed class EditorApp : IDisposable
         var lang = Array.IndexOf(cliArgs0, "--lang");
         if (lang >= 0 && lang + 1 < cliArgs0.Length) Loc.Russian = cliArgs0[lang + 1] == "ru";
         if (cliArgs0.Contains("--show-help")) _help.Show();
+        _openForm = cliArgs0.SkipWhile(x => x != "--open-form").Skip(1).FirstOrDefault();
 
         if (options.Game is not null) settings.GameFolder = options.Game;
         if (options.Mo2 is not null) settings.Mo2Folder = options.Mo2;
@@ -117,7 +121,7 @@ internal sealed class EditorApp : IDisposable
         Selected = null;
         _history.Clear();
         _historyIndex = -1;
-        Loader = new SessionLoader(game, ExtraPluginPath());
+        Loader = new SessionLoader(game, ExtraPluginPath(), _settings.LoadOnly);
     }
 
     /// <summary>The active file goes into the load order even when MO2 does not list it yet.</summary>
@@ -132,6 +136,7 @@ internal sealed class EditorApp : IDisposable
     {
         Session?.Dispose();
         Session = null;
+        FormWindows.CloseAll();
         RenderWindow.DropScene();
     }
 
@@ -170,7 +175,7 @@ internal sealed class EditorApp : IDisposable
         _settings.Save();
         Document = new StbEditor.Core.EditDocument();
         Selected = null;
-        Loader = new SessionLoader(game, File.Exists(savedPath) ? savedPath : null);
+        Loader = new SessionLoader(game, File.Exists(savedPath) ? savedPath : null, _settings.LoadOnly);
     }
 
     /// <summary>New base records (duplicates) of the session appear in the catalog, and go again on undo.</summary>
@@ -245,6 +250,7 @@ internal sealed class EditorApp : IDisposable
         RunDuplicateAutotest();
         RunNavmeshAutotest();
         RunFlyAutotest();
+        RunFormAutotest();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
 
@@ -270,7 +276,14 @@ internal sealed class EditorApp : IDisposable
 
         _dataDialog.Draw();
         _activeDialog.Draw();
+        // --open-form <FormID>: that record's form window once the data is loaded (screenshots).
+        if (_openForm is not null && Session is { } loaded && loaded.Workspace.ParseFormReference(_openForm) is { } formKey)
+        {
+            FormWindows.Open(formKey);
+            _openForm = null;
+        }
         _help.Draw(this);
+        FormWindows.Draw(this);
         _newRecordDialog.Draw();
         HandleShortcuts();
     }
@@ -425,9 +438,67 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-nav") || _navStage == 3)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fly") || _flyDone)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-gizmo") || _gizmoDone)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-door") || _doorDone)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2);
+
+    private int _formStage;
+    private FormKey _formKey;
+
+    /// <summary>
+    /// --autotest-form &lt;folder&gt; [FormID of an NPC]: edits through the same EditTarget the form tabs use —
+    /// a fine float (height 1.000123), a skill value, an enum, an added inventory row — saves into a new
+    /// plugin in the folder, reloads, logs what the record reads back.
+    /// </summary>
+    private void RunFormAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-form");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session) return;
+        switch (_formStage)
+        {
+            case 0:
+            {
+                var npc = i + 2 < cli.Length && session.Workspace.ParseFormReference(cli[i + 2]) is { } given ? given
+                    : session.Catalog.BySignature["NPC_"].First(r => r.FormKey.ModKey.FileName == "Skyrim.esm").FormKey;
+                _formKey = npc;
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorFormAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var record = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve(npc)!;
+                var item = session.Catalog.BySignature["MISC"].First().FormKey;
+                var target = new EditTarget(
+                    () => StbEditor.Core.OverrideEditing.WorkingCopy(Document, npc, (IMajorRecordGetter?)StbEditor.Core.OverrideEditing.Override(Document, npc)?.Record ?? record),
+                    (name, edited) => StbEditor.Core.OverrideEditing.CommitEdit(Document, name, edited, StbEditor.Core.RecordPlace.TopLevel));
+                target.Apply("height", c => StbEditor.Core.RecordFields.Set(c, ["Height"], 1.000123f));
+                target.Apply("skill", c => StbEditor.Core.RecordFields.Set(c, ["PlayerSkills", "SkillValues", Mutagen.Bethesda.Skyrim.Skill.OneHanded], (byte)33));
+                target.Apply("confidence", c => StbEditor.Core.RecordFields.Set(c, ["AIData", "Confidence"], Mutagen.Bethesda.Skyrim.Confidence.Foolhardy));
+                target.Apply("add item", c => StbEditor.Core.RecordFields.AddItem(c, ["Items"]));
+                var edited = StbEditor.Core.OverrideEditing.Override(Document, npc)!.Record;
+                var row = ((System.Collections.IList)StbEditor.Core.RecordFields.Get(edited, ["Items"])!).Count - 1;
+                target.Apply("item", c => StbEditor.Core.RecordFields.Set(c, ["Items", row, "Item", "Item"], item));
+                target.Apply("count", c => StbEditor.Core.RecordFields.Set(c, ["Items", row, "Item", "Count"], 7));
+                Log.Info($"autotest-form: {record.EditorID} edited ({History()}), {Document.PendingCount} pending; saving");
+                Save();
+                _formStage = 1;
+                break;
+            }
+            case 1 when Loader is null && !Saver.IsBusy && Document.PendingCount == 0:
+            {
+                var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+                var back = lookup.Resolve(_formKey);
+                string F(params object[] path) => StbEditor.Core.RecordFields.Repr(StbEditor.Core.RecordFields.Get(back!, path));
+                var items = StbEditor.Core.RecordFields.Get(back!, ["Items"]) as System.Collections.IEnumerable;
+                var last = items?.Cast<object>().LastOrDefault();
+                Log.Info($"autotest-form: reloaded {back?.EditorID} from {session.Catalog.Get(_formKey)?.WinningPlugin.Name}: height {F("Height")}, one-handed {F("PlayerSkills", "SkillValues", Mutagen.Bethesda.Skyrim.Skill.OneHanded)}, confidence {F("AIData", "Confidence")}, " +
+                    $"items {items?.Cast<object>().Count()}, last {StbEditor.Core.RecordFields.Repr(last is null ? null : StbEditor.Core.RecordFields.Get(last, ["Item", "Item"]))} x {StbEditor.Core.RecordFields.Repr(last is null ? null : StbEditor.Core.RecordFields.Get(last, ["Item", "Count"]))}");
+                _formStage = 2;
+                break;
+            }
+        }
+
+        string History() => string.Join(", ", Document.History.Entries.Select(e => e.Name));
+    }
 
     private bool _gizmoDone;
+    private string? _openForm;
     private bool _doorDone;
 
     private int _flySteps = -1;

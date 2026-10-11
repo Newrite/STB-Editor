@@ -100,6 +100,9 @@ internal sealed class Settings
     public string? ActivePluginPath { get; set; }
     public List<string> RecentActivePlugins { get; set; } = [];
 
+    /// <summary>Plugins to load (their masters come along); null = the whole load order.</summary>
+    public List<string>? LoadOnly { get; set; }
+
     /// <summary>Frames per second at most (0 = monitor refresh). In the background: 15.</summary>
     public int FpsLimit { get; set; } = 60;
 

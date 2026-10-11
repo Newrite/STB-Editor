@@ -79,7 +79,13 @@ public sealed class Workspace : IDisposable
     /// The active file when it is not in the profile's load order yet (a plugin the editor just
     /// created in MO2's overwrite): loaded last and active, so its edits are visible.
     /// </param>
-    public static Workspace Open(GameInstall game, IProgress<string>? progress = null, CancellationToken cancel = default, string? extraPlugin = null)
+    /// <param name="only">
+    /// Load just these plugins (and their masters, and the extra plugin) — as the Creation Kit's Data
+    /// dialog. The others stay in the load order (FormID indices as in the game) but are not opened.
+    /// Null: everything.
+    /// </param>
+    public static Workspace Open(GameInstall game, IProgress<string>? progress = null, CancellationToken cancel = default, string? extraPlugin = null,
+        IReadOnlyCollection<string>? only = null)
     {
         progress?.Report("Reading load order");
         var locations = LoadOrderReader.Read(game).ToList();
@@ -116,8 +122,21 @@ public sealed class Workspace : IDisposable
         active = [.. active.Where(p => p.IsMaster), .. active.Where(p => !p.IsMaster)];
         for (var i = 0; i < active.Count; i++) active[i].LoadIndex = i;
 
+        if (only is { Count: > 0 })
+        {
+            var wanted = new HashSet<string>(only, StringComparer.OrdinalIgnoreCase);
+            if (extraPlugin is not null) wanted.Add(Path.GetFileName(extraPlugin));
+            var byName = active.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+            var queue = new Queue<string>(wanted);
+            while (queue.TryDequeue(out var name))
+                if (byName.TryGetValue(name, out var plugin))
+                    foreach (var master in plugin.Header!.Masters)
+                        if (wanted.Add(master)) queue.Enqueue(master);
+            foreach (var plugin in active) plugin.Skipped = !wanted.Contains(plugin.Name);
+        }
+
         var done = 0;
-        Parallel.ForEach(active, new ParallelOptions { CancellationToken = cancel }, plugin =>
+        Parallel.ForEach(active.Where(p => !p.Skipped), new ParallelOptions { CancellationToken = cancel }, plugin =>
         {
             try
             {

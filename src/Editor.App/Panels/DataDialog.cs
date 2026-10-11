@@ -25,6 +25,12 @@ internal sealed class DataDialog
     private string? _detectError;
     private string? _loadError;
 
+    // Plugin selection (as the Creation Kit's Data dialog): the enabled plugins of the profile.
+    private List<(string Name, bool Master)> _plugins = [];
+    private HashSet<string> _checked = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loadAll = true;
+    private string _pluginFilter = string.Empty;
+
     public DataDialog(EditorApp app)
     {
         _app = app;
@@ -33,6 +39,8 @@ internal sealed class DataDialog
         _mo2Mode = settings.Mo2Folder switch { null => 0, "" => 1, _ => 2 };
         _mo2Folder = settings.Mo2Folder ?? string.Empty;
         _profile = settings.Mo2Profile;
+        _loadAll = settings.LoadOnly is null;
+        if (settings.LoadOnly is { } only) _checked = new HashSet<string>(only, StringComparer.OrdinalIgnoreCase);
         Detect();
     }
 
@@ -73,12 +81,59 @@ internal sealed class DataDialog
             _profile = _detected.Mo2?.ProfileName;
             if (_mo2Mode == 0 && _detected.Mo2 is not null) _mo2Folder = _detected.Mo2.Folder;
             _detectError = null;
+            _plugins = LoadOrderReader.Read(_detected).Where(l => l.Enabled && l.Exists)
+                .Select(l => (l.Name, PluginFileName.IsEsm(l.Name) || PluginFileName.IsEsl(l.Name))).ToList();
         }
         catch (Exception ex)
         {
             _detected = null;
             _detectError = ex.Message;
+            _plugins = [];
         }
+    }
+
+    /// <summary>Which plugins to load: all, or the checked ones (their masters load with them).</summary>
+    private void DrawPlugins()
+    {
+        ImGui.SeparatorText(T("Plugins"));
+        if (ImGui.Checkbox(T("Load the whole load order (as the game)"), ref _loadAll) && !_loadAll && _checked.Count == 0)
+            foreach (var p in _plugins.Where(p => p.Master)) _checked.Add(p.Name);
+        if (_loadAll)
+        {
+            ImGui.TextColored(Theme.TextDim, TF($"{_plugins.Count} enabled plugins will load."));
+            return;
+        }
+
+        ImGui.TextColored(Theme.TextDim, T("Only the checked plugins load; the masters they need come along. Fewer plugins: faster loading, less memory."));
+        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.5f);
+        ImGui.InputTextWithHint("##pluginfilter", T("Filter plugins"), ref _pluginFilter, 128);
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("All"))) foreach (var p in _plugins) _checked.Add(p.Name);
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("Masters only"))) { _checked.Clear(); foreach (var p in _plugins.Where(p => p.Master)) _checked.Add(p.Name); }
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("None"))) _checked.Clear();
+        ImGui.SameLine();
+        ImGui.TextColored(Theme.TextDim, TF($"{_checked.Count(c => _plugins.Any(p => p.Name.Equals(c, StringComparison.OrdinalIgnoreCase)))} of {_plugins.Count} checked"));
+
+        if (ImGui.BeginChild("##plugins", new Vector2(0, ImGui.GetTextLineHeightWithSpacing() * 14), ImGuiChildFlags.Borders))
+        {
+            var filter = _pluginFilter.Trim();
+            for (var i = 0; i < _plugins.Count; i++)
+            {
+                var (name, master) = _plugins[i];
+                if (filter.Length > 0 && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+                var on = _checked.Contains(name);
+                ImGui.PushID(i);
+                if (ImGui.Checkbox("##p", ref on)) { if (on) _checked.Add(name); else _checked.Remove(name); }
+                ImGui.SameLine();
+                ImGui.TextColored(Theme.TextDim, $"{i:X2}");
+                ImGui.SameLine();
+                if (master) ImGui.TextColored(Theme.Accent, name); else ImGui.Text(name);
+                ImGui.PopID();
+            }
+        }
+        ImGui.EndChild();
     }
 
     private void Open()
@@ -89,6 +144,7 @@ internal sealed class DataDialog
         settings.GameFolder = _gameFolder;
         settings.Mo2Folder = _mo2Mode switch { 0 => null, 1 => "", _ => _mo2Folder };
         settings.Mo2Profile = _profile;
+        settings.LoadOnly = _loadAll ? null : _checked.Where(c => _plugins.Any(p => p.Name.Equals(c, StringComparison.OrdinalIgnoreCase))).ToList();
         settings.Save();
 
         _loadError = null;
@@ -166,6 +222,8 @@ internal sealed class DataDialog
         {
             ImGui.TextColored(Theme.Warning, T("No MO2 instance found — plain Data folder will be used."));
         }
+
+        DrawPlugins();
 
         ImGui.EndDisabled();
         ImGui.Spacing();

@@ -35,12 +35,16 @@ Console.WriteLine($"{game.DisplayName} | {game.Release} | lang {game.Language} |
 Console.WriteLine($"MO2: {game.Mo2?.Folder ?? "-"} profile {game.Mo2?.ProfileName ?? "-"} | ini {game.IniFolder}");
 
 var sw = Stopwatch.StartNew();
-using var ws = Workspace.Open(game, new Progress<string>(m => Console.Error.WriteLine(m)));
+// --only a.esp,b.esm: load just these (and their masters), as the editor's Data dialog does.
+var onlyIndex = Array.IndexOf(args, "--only");
+var only = onlyIndex >= 0 && onlyIndex + 1 < args.Length ? args[onlyIndex + 1].Split(',', StringSplitOptions.RemoveEmptyEntries) : null;
+using var ws = Workspace.Open(game, new Progress<string>(m => Console.Error.WriteLine(m)), only: only);
 Console.WriteLine($"opened {ws.Active.Count} active of {ws.Plugins.Count} in {sw.ElapsedMilliseconds} ms, default text {ws.DefaultEncoding}");
 
 switch (command)
 {
     case "plugins":
+        Console.WriteLine($"loaded {ws.Active.Count(p => p.Mod is not null)}, skipped {ws.Active.Count(p => p.Skipped)}");
         foreach (var p in ws.Plugins)
             Console.WriteLine($"{p.IndexLabel,-6} {(p.IsMaster ? "M" : " ")}{(p.IsLight ? "L" : " ")} {p.StringEncoding,-9} {p.Header?.Version,5:0.00} {p.Header?.RecordCount,7} {p.Name}  <{p.Location.Source}> {p.Error}");
         break;
@@ -476,6 +480,14 @@ switch (command)
             }
         }
         Console.WriteLine($"sweep: {sample.Count} cells in {t.ElapsedMilliseconds} ms: ok {ok}, failed {failed}, objects {objects}, markers {noModel}, warnings {warnings}");
+        break;
+    }
+    case "formtest":
+    {
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var perType = args.Length > 3 && int.TryParse(args[3], out var n) ? n : 3;
+        FormTest.Run(ws, game, catalog, args[2], perType, args.Skip(4).ToArray());
         break;
     }
     case "proptest":

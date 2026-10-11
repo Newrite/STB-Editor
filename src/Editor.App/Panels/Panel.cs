@@ -136,7 +136,7 @@ internal static class DefaultLayout
         ImGuiP.DockBuilderDockWindow("###Object Window", left);
         ImGuiP.DockBuilderDockWindow("###Cell View", leftBottom);
         uint rightBottom = 0;
-        ImGuiP.DockBuilderSplitNode(right, ImGuiDir.Down, 0.42f, &rightBottom, &right);
+        ImGuiP.DockBuilderSplitNode(right, ImGuiDir.Down, 0.30f, &rightBottom, &right);
         ImGuiP.DockBuilderDockWindow("###Inspector", right);
         ImGuiP.DockBuilderDockWindow("###Preview", rightBottom);
         ImGuiP.DockBuilderDockWindow("###Landscape", rightBottom);

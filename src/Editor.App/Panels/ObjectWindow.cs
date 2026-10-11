@@ -299,6 +299,8 @@ internal sealed class ObjectWindow : Panel
                 {
                     app.Select(record.FormKey);
                     _scrolledToSelection = app.SelectionVersion;
+                    // As in the Creation Kit: double-click opens the record's form window.
+                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) app.FormWindows.Open(record.FormKey);
                 }
 
                 if (i == scrollTo) ImGui.SetScrollHereY(0.4f);

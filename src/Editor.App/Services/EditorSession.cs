@@ -40,21 +40,21 @@ internal sealed class SessionLoader
     public EditorSession? Result => Task.IsCompletedSuccessfully ? Task.Result : null;
     public Exception? Error => Task.Exception?.GetBaseException();
 
-    public SessionLoader(GameInstall game, string? extraPlugin = null)
+    public SessionLoader(GameInstall game, string? extraPlugin = null, IReadOnlyCollection<string>? only = null)
     {
-        Task = System.Threading.Tasks.Task.Run(() => Load(game, extraPlugin, _cancel.Token));
+        Task = System.Threading.Tasks.Task.Run(() => Load(game, extraPlugin, only, _cancel.Token));
     }
 
     public void Cancel() => _cancel.Cancel();
 
-    private EditorSession Load(GameInstall game, string? extraPlugin, CancellationToken cancel)
+    private EditorSession Load(GameInstall game, string? extraPlugin, IReadOnlyCollection<string>? only, CancellationToken cancel)
     {
         var clock = Stopwatch.StartNew();
         var progress = new Progress(this);
 
         Log.Info($"opening {game.DisplayName} at {game.GameFolder}, MO2 {(game.Mo2 is { } m ? $"{m.Folder} / {m.ProfileName}" : "none")}, language {game.Language}");
 
-        var workspace = Workspace.Open(game, progress, cancel, extraPlugin);
+        var workspace = Workspace.Open(game, progress, cancel, extraPlugin, only);
         try
         {
             foreach (var plugin in workspace.Plugins.Where(p => p.Error is not null))

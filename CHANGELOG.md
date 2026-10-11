@@ -2,6 +2,10 @@
 
 Each `## <version>` section is the release description on GitHub (see `docs/DEVELOPING.md`, «Релиз»).
 
+## 0.5.2
+
+- Новая иконка STB Editor (exe и окно).
+
 ## 0.5.1
 
 - Поля-ссылки ищут при вводе: под полем список подходящих записей нужного типа (EditorID, название или

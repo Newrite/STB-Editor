@@ -62,7 +62,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Регионы (REGN): области на карте, генерация объектов, травы, погоды и звуков | CK: Region Editor | ★ | L |
 | Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
 | Слои (Layers): группы рефов, скрыть/заморозить слой | CK: Layers | ★ | M |
-| ✅ 0.32.0 (карта высот загруженных ячеек: экспорт / импорт .r16; vertex color — нет) Ландшафт: vertex color, импорт/экспорт карты высот | CK: Heightmap Editor | ★ | M |
+| ✅ 0.32.0 / 0.33.0 (карта высот загруженных ячеек: экспорт / импорт .r16; кисть цвета вершин) Ландшафт: vertex color, импорт/экспорт карты высот | CK: Heightmap Editor | ★ | M |
 | Предпросмотр погоды и времени суток в Render Window | CK: Bright Light / Sky | ★ | M |
 | Локальные карты, LOD (террейн / объекты) | CK: Create Local Maps, World LOD; xLODGen / DynDoLOD | ★ (внешние программы) | L |
 

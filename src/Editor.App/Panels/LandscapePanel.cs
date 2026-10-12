@@ -61,6 +61,8 @@ internal sealed class LandscapePanel : Panel
         ImGui.RadioButton(T("Smooth"), ref mode, (int)LandBrushMode.Smooth);
         ImGui.SameLine();
         ImGui.RadioButton(T("Paint"), ref mode, (int)LandBrushMode.Paint);
+        ImGui.SameLine();
+        ImGui.RadioButton(T("Colour"), ref mode, (int)LandBrushMode.Color);
         brush.Mode = (LandBrushMode)mode;
 
         var radius = brush.Radius;
@@ -77,10 +79,19 @@ internal sealed class LandscapePanel : Panel
             LandBrushMode.Raise or LandBrushMode.Lower => T("LMB drag; Shift swaps raise / lower."),
             LandBrushMode.Flatten => T("Levels to the height where the stroke started."),
             LandBrushMode.Smooth => T("Evens out bumps under the brush."),
+            LandBrushMode.Color => T("Tints the land's vertex colours towards the colour below (white = no tint)."),
             _ => T("Paints the texture below; painting a quadrant's base texture erases the others."),
         });
 
         if (brush.Mode == LandBrushMode.Paint) DrawTextures(app, brush);
+        if (brush.Mode == LandBrushMode.Color)
+        {
+            var c = brush.Color;
+            var rgb = new Vector3((c & 0xFF) / 255f, ((c >> 8) & 0xFF) / 255f, ((c >> 16) & 0xFF) / 255f);
+            ImGui.SetNextItemWidth(-ImGui.GetFontSize() * 5);
+            if (ImGui.ColorEdit3(T("Colour") + "##vcolor", ref rgb))
+                brush.Color = (uint)Math.Round(rgb.X * 255) | ((uint)Math.Round(rgb.Y * 255) << 8) | ((uint)Math.Round(rgb.Z * 255) << 16);
+        }
 
         ImGui.Separator();
         ImGui.TextColored(Theme.TextDim, T("Loaded cells without land:"));

@@ -8,7 +8,7 @@ using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
-internal enum LandBrushMode { Raise, Lower, Flatten, Smooth, Paint }
+internal enum LandBrushMode { Raise, Lower, Flatten, Smooth, Paint, Color }
 
 /// <summary>Landscape brush settings, shared by the Landscape panel and the render window.</summary>
 internal sealed class LandscapeBrush
@@ -20,6 +20,9 @@ internal sealed class LandscapeBrush
     public float Strength { get; set; } = 200f;
 
     public FormKey? Texture { get; set; }
+
+    /// <summary>Vertex colour brush (CK: Vertex Color): the colour as LAND keeps it, R | G &lt;&lt; 8 | B &lt;&lt; 16.</summary>
+    public uint Color { get; set; } = 0x5A7896;
 }
 
 /// <summary>
@@ -132,13 +135,22 @@ internal sealed partial class RenderWindow
                         case LandBrushMode.Paint:
                             if (!data.Paint(vx, vy, brush.Texture!.Value, rate)) _strokeFull = true;
                             break;
+                        case LandBrushMode.Color:
+                        {
+                            // Land without colours is white (the game's default); blend each channel towards the brush.
+                            data.Colors ??= Enumerable.Repeat(0xFFFFFFu, TerrainCell.Size * TerrainCell.Size).ToArray();
+                            var c = data.Colors[i];
+                            uint Channel(int shift) => (uint)Math.Clamp(MathF.Round(((c >> shift) & 0xFF) + ((int)((brush.Color >> shift) & 0xFF) - (int)((c >> shift) & 0xFF)) * rate), 0, 255) << shift;
+                            data.Colors[i] = Channel(0) | Channel(8) | Channel(16);
+                            break;
+                        }
                     }
                     changed = true;
                 }
             }
 
             if (!changed) continue;
-            if (mode != LandBrushMode.Paint) data.HeightsEdited = true;
+            if (mode is not (LandBrushMode.Paint or LandBrushMode.Color)) data.HeightsEdited = true;
             touched.Add(t);
         }
 
@@ -151,7 +163,7 @@ internal sealed partial class RenderWindow
             var terrain = scene.Terrain[t];
             if (!_stroke.TryGetValue((terrain.X, terrain.Y), out var entry)) continue;
             var draft = entry.Draft;
-            if (mode != LandBrushMode.Paint) draft.Data.RecomputeNormals();
+            if (mode is not (LandBrushMode.Paint or LandBrushMode.Color)) draft.Data.RecomputeNormals();
             scene.Terrain[t] = builder.TerrainFrom(draft.Data, terrain.X, terrain.Y, draft.Key, draft.Cell);
         }
         _renderer!.Forget(scene);
@@ -224,6 +236,7 @@ internal sealed partial class RenderWindow
         var name = Brush.Mode switch
         {
             LandBrushMode.Paint => T("Paint landscape"),
+            LandBrushMode.Color => T("Paint vertex colour"),
             LandBrushMode.Flatten => T("Flatten landscape"),
             LandBrushMode.Smooth => T("Smooth landscape"),
             _ => T("Sculpt landscape"),
@@ -389,7 +402,7 @@ internal sealed partial class RenderWindow
 
         const int segments = 64;
         var radius = Brush.Radius;
-        var color = Brush.Mode == LandBrushMode.Paint ? 0xFF40C0FFu : 0xFF30E0A0u;
+        var color = Brush.Mode is LandBrushMode.Paint or LandBrushMode.Color ? 0xFF40C0FFu : 0xFF30E0A0u;
         Vector3 At(int i)
         {
             var a = i * MathF.Tau / segments;

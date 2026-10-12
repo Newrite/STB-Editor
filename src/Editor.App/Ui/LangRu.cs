@@ -1255,6 +1255,11 @@ internal static class LangRu
         ["Import heightmap {0}"] = "Импорт карты высот {0}",
         ["{0} cell(s) took their heights from {1}"] = "Ячеек с высотами из {1}: {0}",
 
+        // ---- Vertex colour
+        ["Colour"] = "Цвет",
+        ["Paint vertex colour"] = "Покраска цвета вершин",
+        ["Tints the land's vertex colours towards the colour below (white = no tint)."] = "Подкрашивает цвет вершин земли к цвету ниже (белый — без оттенка).",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

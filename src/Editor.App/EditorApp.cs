@@ -310,6 +310,7 @@ internal sealed class EditorApp : IDisposable
         RunLevelMergeAutotest();
         RunBodyTintAutotest();
         RunHeightmapAutotest();
+        RunVertexColorAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -569,6 +570,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-levelmerge") || _mergeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-bodytint") || _tintStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-heightmap") || _heightStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1623,6 +1625,44 @@ internal sealed class EditorApp : IDisposable
             }
             case 1 when ++_heightFrames > 15:
                 _heightStage = 9;
+                break;
+        }
+    }
+
+    private int _vcolorStage, _vcolorFrames;
+
+    /// <summary>
+    /// --autotest-vcolor (with --cell &lt;exterior&gt;): one stroke of the vertex colour brush (red, radius 1500) at the view's
+    /// focus; the colour under it logged; left in place for the screenshot. Nothing is saved.
+    /// </summary>
+    private void RunVertexColorAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || Session is null || Loader is not null || _vcolorStage == 9) return;
+        var scene = RenderWindow.Scene;
+        switch (_vcolorStage)
+        {
+            case 0 when scene is { IsInterior: false, Terrain.Count: > 0 } && ++_vcolorFrames > 30:
+            {
+                var brush = RenderWindow.Brush;
+                brush.Mode = Panels.LandBrushMode.Color;
+                brush.Color = 0x0000FF;
+                brush.Radius = 1500;
+                brush.Strength = 100;
+                RenderWindow.SetLandscapeMode(true);
+                var point = scene.Focus;
+                var ok = RenderWindow.StrokeForTest(this, point, 1f);
+                var cell = RenderWindow.Scene!.Terrain.FirstOrDefault(t => t.Data?.Colors is not null
+                    && point.X >= t.Origin.X && point.X < t.Origin.X + 4096 && point.Y >= t.Origin.Y && point.Y < t.Origin.Y + 4096);
+                var vx = cell is null ? 0 : (int)MathF.Round((point.X - cell.Origin.X) / StbEditor.Core.LandscapeData.Spacing);
+                var vy = cell is null ? 0 : (int)MathF.Round((point.Y - cell.Origin.Y) / StbEditor.Core.LandscapeData.Spacing);
+                var c = cell?.Data?.Colors?[Math.Clamp(vy, 0, 32) * 33 + Math.Clamp(vx, 0, 32)];
+                Log.Info($"autotest-vcolor: stroke {ok}; colour at the centre {(c is { } v ? $"{v & 0xFF},{(v >> 8) & 0xFF},{(v >> 16) & 0xFF}" : "none")}; pending {Document.PendingCount}, undo '{Document.History.UndoName}'");
+                _vcolorStage = 1;
+                _vcolorFrames = 0;
+                break;
+            }
+            case 1 when ++_vcolorFrames > 20:
+                _vcolorStage = 9;
                 break;
         }
     }

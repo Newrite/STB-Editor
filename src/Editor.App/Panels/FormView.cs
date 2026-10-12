@@ -107,6 +107,15 @@ internal static class FormView
                 "SharedCrimeFactionList", "JailOutfit"]),
             ("Vendor", ["VendorBuySellList", "MerchantContainer", "VendorValues", "VendorLocation", "Conditions"]),
         ],
+        ["QUST"] =
+        [
+            ("Quest Data", ["EditorID", "Name", "Type", "Priority", "Flags", "Event", "Filter", "Description", "TextDisplayGlobals", "NextAliasID"]),
+            ("Dialogue Conditions", ["DialogConditions"]),
+            ("Event Conditions", ["EventConditions"]),
+            ("Quest Stages", ["Stages"]),
+            ("Quest Objectives", ["Objectives"]),
+            ("Quest Aliases", ["Aliases"]),
+        ],
         ["LIGH"] =
         [
             ("Main", ["EditorID", "Name", "Color", "Radius", "FadeValue", "Flags", "FalloffExponent", "FOV", "NearClip", "Time",
@@ -177,8 +186,31 @@ internal static class FormView
 
     public static void DrawTab(EditorApp app, IMajorRecordGetter record, FormTab tab, EditTarget? target)
     {
+        if (record is Mutagen.Bethesda.Skyrim.IQuestGetter quest)
+        {
+            // Conditions of a quest name its aliases; stages, objectives and aliases have their own editors.
+            ConditionsEditor.Aliases = QuestEditor.AliasNames(quest);
+            try
+            {
+                if (QuestEditor.Draws(tab)) QuestEditor.Draw(app, quest, tab, target);
+                else DrawMembers(app, record, tab.Members, [], target, 0);
+            }
+            finally { ConditionsEditor.Aliases = null; }
+            return;
+        }
         var path = new List<object>();
         DrawMembers(app, record, tab.Members, path, target, 0);
+    }
+
+    /// <summary>
+    /// Fields of a part of a record (a quest stage, an alias…) at <paramref name="path"/> from the record,
+    /// drawn as in a form tab: plain fields as a grid, structures and lists below.
+    /// </summary>
+    public static void DrawObject(EditorApp app, object owner, IEnumerable<string> members, IReadOnlyList<object> path, EditTarget? target)
+    {
+        var all = RecordFields.PropertiesOf(owner);
+        var chosen = members.Select(n => all.FirstOrDefault(p => p.Name == n)).OfType<PropertyInfo>().ToList();
+        DrawMembers(app, owner, chosen, path.ToList(), target, 1);
     }
 
     private static void DrawMembers(EditorApp app, object owner, IReadOnlyList<PropertyInfo> members, List<object> path, EditTarget? target, int depth)

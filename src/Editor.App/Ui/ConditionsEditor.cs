@@ -27,6 +27,11 @@ internal static class ConditionsEditor
     public static List<string> LastLines { get; } = [];
     public static int ClipboardCount => _clipboard.Count;
 
+    /// <summary>Alias ID → name of the quest whose conditions are drawn (set by the quest form), for Run On and parameters.</summary>
+    public static Dictionary<int, string>? Aliases { get; set; }
+
+    private static string AliasText(int id) => Aliases is { } names && names.TryGetValue(id, out var name) ? $"{id}: {name}" : id.ToString();
+
     /// <summary>Autotests and screenshots: select this row in the lists drawn next.</summary>
     public static int? ForceSelect { get; set; }
 
@@ -97,7 +102,8 @@ internal static class ConditionsEditor
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
                 ImGui.AlignTextToFramePadding();
-                if (ImGui.Selectable(Conditions.RunOn(condition.Data, Name) + "##row", i == selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap))
+                var runOn = condition.Data.RunOnType == Condition.RunOnType.QuestAlias ? TF($"Alias {AliasText(condition.Data.RunOnTypeIndex)}") : Conditions.RunOn(condition.Data, Name);
+                if (ImGui.Selectable(runOn + "##row", i == selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap))
                     Selected[key] = selected = i == selected ? -1 : i;
                 ImGui.TableNextColumn();
                 var call = Conditions.Call(condition.Data, Name);
@@ -216,6 +222,10 @@ internal static class ConditionsEditor
                 Row(T("Reference"));
                 FieldEditors.Draw(app, target, T("Run on reference"), dataPath.Append("Reference").ToList(), data.Reference, data.Reference.GetType(), true);
                 break;
+            case Condition.RunOnType.QuestAlias when Aliases is not null:
+                Row(T("Alias"));
+                AliasCombo("##runonalias", data.RunOnTypeIndex, target, id => Change(target!, at, index, T("Condition alias"), c => c.Data.RunOnTypeIndex = id));
+                break;
             case Condition.RunOnType.QuestAlias:
             case Condition.RunOnType.PackageData:
                 Row(data.RunOnType == Condition.RunOnType.QuestAlias ? T("Alias index") : T("Package data index"));
@@ -232,7 +242,13 @@ internal static class ConditionsEditor
             if (value is not null && Conditions.IsLinkOrIndex(value.GetType()))
             {
                 // A form, or with "parameters are aliases / package data" an index.
-                if (data.UseAliases || data.UsePackageData)
+                if (data.UseAliases && Aliases is not null)
+                {
+                    var number = value.GetType().GetProperty("Index")?.GetValue(value) as uint? ?? 0;
+                    var indexPath = parameterPath.Append("Index").ToArray();
+                    AliasCombo("##paramalias", (int)number, target, id => target!.Apply(T("Condition parameter alias"), copy => RecordFields.Set(copy, indexPath, (uint)id)));
+                }
+                else if (data.UseAliases || data.UsePackageData)
                 {
                     var number = value.GetType().GetProperty("Index")?.GetValue(value);
                     FieldEditors.Draw(app, target, FieldEditors.Label(parameter.Name), parameterPath.Append("Index").ToList(), number, typeof(uint?), true);
@@ -287,6 +303,17 @@ internal static class ConditionsEditor
 
         ImGui.EndTable();
         ImGui.PopID();
+    }
+
+    /// <summary>A quest alias by name (the quest's own aliases).</summary>
+    private static void AliasCombo(string id, int current, EditTarget? target, Action<int> set)
+    {
+        ImGui.SetNextItemWidth(-1);
+        if (target is null) { ImGui.Text(AliasText(current)); return; }
+        if (!ImGui.BeginCombo(id, AliasText(current))) return;
+        foreach (var (aliasId, _) in Aliases!.OrderBy(a => a.Key))
+            if (ImGui.Selectable(AliasText(aliasId), aliasId == current)) set(aliasId);
+        ImGui.EndCombo();
     }
 
     private static void Row(string label)

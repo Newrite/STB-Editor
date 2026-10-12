@@ -155,7 +155,7 @@ public static class RecordFields
     {
         if (ReadOnlyNames.Contains(name)) return (false, null);
         // Format of the script data (VMAD version / object format): Mutagen writes only the one it read.
-        if (owner is Mutagen.Bethesda.Skyrim.IAVirtualMachineAdapterGetter && name is "Version" or "ObjectFormat") return (false, null);
+        if (owner is Mutagen.Bethesda.Skyrim.IAVirtualMachineAdapterGetter or Mutagen.Bethesda.Skyrim.IQuestFragmentAliasGetter && name is "Version" or "ObjectFormat") return (false, null);
         var property = ClassProperty(owner, name);
         if (property is null) return (false, null);
         var kind = KindOf(value, property.PropertyType);

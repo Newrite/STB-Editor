@@ -17,7 +17,7 @@ using StbEditor.Data.Catalog;
 internal static class FormTest
 {
     /// <summary>Records that are not field-edited in the Inspector (the same list as InspectorPanel).</summary>
-    private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "QUST", "SCEN", "TES4"];
+    private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "SCEN", "TES4"];
 
     public static void Run(Workspace ws, GameInstall game, RecordCatalog catalog, string outDir, int perType, string[] only)
     {

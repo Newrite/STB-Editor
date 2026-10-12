@@ -841,6 +841,19 @@ switch (command)
         Console.WriteLine($"functions: {ok} written and read back, {bad} wrong (of {StbEditor.Core.Conditions.Functions.Count})");
         break;
     }
+    case "enums":
+    {
+        // enums <game> <Mutagen type name...>: the values of the enums nested in those types (flags of quests, aliases…).
+        var asm = typeof(Mutagen.Bethesda.Skyrim.Condition).Assembly;
+        foreach (var name in args.Skip(2))
+        {
+            var type = asm.GetTypes().FirstOrDefault(t => t.Name == name && t.Namespace == "Mutagen.Bethesda.Skyrim");
+            if (type is null) { Console.WriteLine($"{name}: no such type"); continue; }
+            foreach (var nested in type.GetNestedTypes().Where(t => t.IsEnum))
+                Console.WriteLine($"{name}.{nested.Name}: " + string.Join(", ", Enum.GetValues(nested).Cast<object>().Select(v => $"{v}={Convert.ToInt64(v)}")));
+        }
+        break;
+    }
     case "condprobe":
     {
         // condprobe <game>: how Mutagen models conditions (enums, data classes, link-or-index members).

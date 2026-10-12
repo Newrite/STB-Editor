@@ -276,6 +276,7 @@ internal sealed class EditorApp : IDisposable
         RunTogetherAutotest();
         RunRefMoreAutotest();
         RunConditionsAutotest();
+        RunQuestAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -488,7 +489,99 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-together") || _togetherStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-sheet") || _sheetStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || _refMoreStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9);
+
+    private int _questStage, _questFrames;
+    private FormKey _quest;
+
+    /// <summary>
+    /// --autotest-quest [EditorID] (with --inspector-tab "Quest Stages" / "Quest Objectives" / "Quest Aliases"): a quest's form;
+    /// through its edit target a stage with a log entry and a condition, a stage index change (list stays sorted), an
+    /// objective with a target alias, a reference alias filled with a specific reference; the quest written and read back;
+    /// all undone and redone (the screenshot shows the edits); nothing saved.
+    /// </summary>
+    private void RunQuestAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-quest");
+        if (arg < 0 || Session is not { } session || Loader is not null || _questStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        Mutagen.Bethesda.Skyrim.IQuestGetter? Quest() => (Mutagen.Bethesda.Skyrim.IQuestGetter?)StbEditor.Core.OverrideEditing.Override(Document, _quest)?.Record
+            ?? lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(_quest);
+        string Summary(Mutagen.Bethesda.Skyrim.IQuestGetter q) =>
+            $"stages [{string.Join(",", q.Stages.Select(s => s.Index))}], objectives [{string.Join(",", q.Objectives.Select(o => o.Index))}], aliases [{string.Join(",", q.Aliases.Select(a => $"{a.ID}:{a.Name}"))}], next alias {q.NextAliasID}";
+        switch (_questStage)
+        {
+            case 0:
+            {
+                var wanted = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : null;
+                _quest = (wanted is not null
+                    ? session.Catalog.BySignature["QUST"].First(r => string.Equals(r.EditorId, wanted, StringComparison.OrdinalIgnoreCase))
+                    : session.Catalog.BySignature["QUST"].First(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(r.FormKey) is { Stages.Count: >= 3, Objectives.Count: >= 1, Aliases.Count: >= 2 })).FormKey;
+                FormWindows.Open(_quest);
+                Log.Info($"autotest-quest: {session.Catalog.Get(_quest)?.EditorId}: {Summary(Quest()!)}");
+                _questStage = 1;
+                break;
+            }
+            case 1 when ++_questFrames > 15 && FormWindows.FormOf(_quest)?.Target is { } target:
+            {
+                var before = Document.History.UndoName;
+                var q = Quest()!;
+                var newIndex = q.Stages.Max(s => s.Index) / 10 * 10 + 10;
+                target.Apply("add stage", r =>
+                {
+                    var list = (System.Collections.IList)StbEditor.Core.RecordFields.Get(r, ["Stages"])!;
+                    list.Add(new Mutagen.Bethesda.Skyrim.QuestStage { Index = (ushort)newIndex, Flags = Mutagen.Bethesda.Skyrim.QuestStage.Flag.ShutDownStage });
+                });
+                var last = Quest()!.Stages.Count - 1;
+                target.Apply("log entry", r => StbEditor.Core.RecordFields.AddItem(r, ["Stages", last, "LogEntries"]));
+                target.Apply("entry text", r => StbEditor.Core.RecordFields.Set(r, ["Stages", last, "LogEntries", 0, "Entry"], "STB Editor test entry"));
+                target.Apply("entry condition", r => StbEditor.Core.Conditions.ListAt(r, ["Stages", last, "LogEntries", 0, "Conditions"]).Add(StbEditor.Core.Conditions.New()));
+                var firstIndex = Quest()!.Stages[0].Index;
+                target.Apply("stage index", r =>
+                {
+                    StbEditor.Core.RecordFields.Set(r, ["Stages", 0, "Index"], (ushort)(newIndex + 5));
+                    var list = (System.Collections.IList)StbEditor.Core.RecordFields.Get(r, ["Stages"])!;
+                    var sorted = list.Cast<Mutagen.Bethesda.Skyrim.QuestStage>().OrderBy(s => s.Index).ToList();
+                    list.Clear();
+                    foreach (var s in sorted) list.Add(s);
+                });
+                var aliasId = (int)Quest()!.Aliases[0].ID;
+                target.Apply("objective", r => ((Mutagen.Bethesda.Skyrim.Quest)r).Objectives.Add(new Mutagen.Bethesda.Skyrim.QuestObjective { Index = 999, DisplayText = "STB test objective" }));
+                var objective = Quest()!.Objectives.Count - 1;
+                target.Apply("objective target", r => { StbEditor.Core.RecordFields.AddItem(r, ["Objectives", objective, "Targets"]); ((Mutagen.Bethesda.Skyrim.Quest)r).Objectives[objective].Targets[^1].AliasID = aliasId; });
+                var id = Math.Max(Quest()!.NextAliasID ?? 0, Quest()!.Aliases.Max(a => a.ID) + 1);
+                target.Apply("alias", r =>
+                {
+                    var quest = (Mutagen.Bethesda.Skyrim.Quest)r;
+                    var alias = new Mutagen.Bethesda.Skyrim.QuestAlias { ID = id, Name = $"STBTestAlias{id}", Type = Mutagen.Bethesda.Skyrim.QuestAlias.TypeEnum.Reference };
+                    alias.ForcedReference.SetTo(new FormKey(Mutagen.Bethesda.Skyrim.Constants.Skyrim, 0x14));
+                    alias.Flags = Mutagen.Bethesda.Skyrim.QuestAlias.Flag.Optional | Mutagen.Bethesda.Skyrim.QuestAlias.Flag.QuestObject;
+                    quest.Aliases.Add(alias);
+                    quest.NextAliasID = id + 1;
+                });
+                var edited = Quest()!;
+                Log.Info($"autotest-quest: edited: {Summary(edited)}; stage {newIndex} entry '{edited.Stages.First(s => s.Index == newIndex).LogEntries[0].Entry?.String}' with {edited.Stages.First(s => s.Index == newIndex).LogEntries[0].Conditions.Count} condition(s); first stage {firstIndex} now {newIndex + 5}");
+                var back = StbEditor.Core.RecordRoundTrip.Read(edited, session.Game.Release, System.Text.Encoding.UTF8) as Mutagen.Bethesda.Skyrim.IQuestGetter;
+                Log.Info(back is null ? $"autotest-quest: round trip FAILED: {StbEditor.Core.RecordRoundTrip.LastError}" : $"autotest-quest: round trip: {Summary(back)}; alias fill {back.Aliases[^1].ForcedReference.FormKey}");
+                var steps = 0;
+                while (Document.History.UndoName != before && steps < 30) { Document.Undo(); steps++; }
+                Log.Info($"autotest-quest: {steps} undo steps: pending {Document.PendingCount}: {Summary(Quest()!)}");
+                for (var i = 0; i < steps; i++) Document.Redo();
+                StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Stages", Quest()!.Stages.Count - 2);
+                StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Objectives", Quest()!.Objectives.Count - 1);
+                StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Aliases", Quest()!.Aliases.Count - 1);
+                Log.Info($"autotest-quest: redone: pending {Document.PendingCount}");
+                _questStage = 2;
+                _questFrames = 0;
+                break;
+            }
+            case 2 when ++_questFrames > 15:
+                _questStage = 9;
+                break;
+        }
+    }
 
     private int _condStage, _condFrames;
     private FormKey _condPerk, _condOther;

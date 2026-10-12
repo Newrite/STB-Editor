@@ -121,7 +121,7 @@ public static class NewRecords
     /// </summary>
     public static readonly HashSet<string> NotCreatable =
         ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "REFR", "ACHR", "PGRE", "PHZD", "PMIS", "PARW", "PBAR", "PBEA", "PCON", "PFLA",
-         "DIAL", "INFO", "QUST", "SCEN", "DLBR", "DLVW", "TES4", "DOBJ"];
+         "DIAL", "INFO", "SCEN", "DLBR", "DLVW", "TES4", "DOBJ"];
 
     /// <summary>
     /// Classes a new record of a type can be: one for most, several for abstract ones (a global is

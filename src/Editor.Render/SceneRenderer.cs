@@ -490,6 +490,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         if (Options.ShowWater) DrawWater(scene);
         if (Options.ShowNavmesh) DrawNavmeshes(scene);
         if (Options.DrawBlendedPass) DrawBlended();
+        if (Options.ShowMarkers) DrawPrimitives(scene, frustum);
         if (Options.DrawMarkerPass) DrawMarkers();
         DrawSelection(selection);
         DrawLines(scene, selection);
@@ -1107,6 +1108,97 @@ public sealed unsafe class SceneRenderer : IDisposable
     private readonly List<LineVertex> _navEdges = [];
 
     private (Scene? Scene, int Versions, int Count, string Selection) _navCacheKey;
+
+    /// <summary>
+    /// Primitives of references (CK shows them with markers): trigger and room boxes as translucent boxes with
+    /// their edges, activation spheres as three rings, in the reference's own transform.
+    /// </summary>
+    private void DrawPrimitives(Scene scene, Frustum frustum)
+    {
+        var fill = new List<LineVertex>();
+        var edges = new List<LineVertex>();
+        foreach (var obj in scene.Objects)
+        {
+            if (obj.Primitive is not { } primitive || obj.IsDeleted || Options.Hides(obj)) continue;
+            var reach = primitive.Type == 2 ? primitive.Bounds.X : primitive.Bounds.Length();
+            if (!frustum.Intersects(obj.Position, reach * Math.Max(obj.Scale, 0.01f))) continue;
+            var line = primitive.Color;
+            var tint = (line & 0x00FFFFFF) | 0x22000000u;
+            // Rooms, portals, multibounds and occlusion planes enclose whole areas: their edges only.
+            var outline = primitive.Type == 3 || obj.BaseEditorId is { } baseId
+                && (baseId.Contains("Room", StringComparison.OrdinalIgnoreCase) || baseId.Contains("Portal", StringComparison.OrdinalIgnoreCase)
+                    || baseId.Contains("MultiBound", StringComparison.OrdinalIgnoreCase) || baseId.Contains("Occlusion", StringComparison.OrdinalIgnoreCase));
+            if (primitive.Type == 2)
+            {
+                // Sphere: three great circles.
+                const int segments = 32;
+                var r = primitive.Bounds.X;
+                for (var axis = 0; axis < 3; axis++)
+                    for (var i = 0; i < segments; i++)
+                    {
+                        Vector3 Point(int k)
+                        {
+                            var t = k * MathF.Tau / segments;
+                            var (s, c) = (MathF.Sin(t) * r, MathF.Cos(t) * r);
+                            return axis switch { 0 => new Vector3(c, s, 0), 1 => new Vector3(c, 0, s), _ => new Vector3(0, c, s) };
+                        }
+                        edges.Add(new LineVertex(Vector3.Transform(Point(i), obj.World), line));
+                        edges.Add(new LineVertex(Vector3.Transform(Point(i + 1), obj.World), line));
+                    }
+                continue;
+            }
+            var e = primitive.Bounds;
+            // From inside a box its faces would cover the whole view: edges only then.
+            if (_camera is { } eye && Matrix4x4.Invert(obj.World, out var toLocal))
+            {
+                var local = Vector3.Transform(eye.Position, toLocal);
+                if (Math.Abs(local.X) <= e.X && Math.Abs(local.Y) <= e.Y && Math.Abs(local.Z) <= e.Z) outline = true;
+            }
+            Vector3 Corner(int i) => Vector3.Transform(new Vector3((i & 1) != 0 ? e.X : -e.X, (i & 2) != 0 ? e.Y : -e.Y, (i & 4) != 0 ? e.Z : -e.Z), obj.World);
+            var corners = Enumerable.Range(0, 8).Select(Corner).ToArray();
+            int[][] faces = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]];
+            foreach (var f in outline ? [] : faces)
+            {
+                fill.Add(new LineVertex(corners[f[0]], tint)); fill.Add(new LineVertex(corners[f[1]], tint)); fill.Add(new LineVertex(corners[f[2]], tint));
+                fill.Add(new LineVertex(corners[f[0]], tint)); fill.Add(new LineVertex(corners[f[2]], tint)); fill.Add(new LineVertex(corners[f[3]], tint));
+            }
+            int[][] sides = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+            foreach (var s in sides)
+            {
+                edges.Add(new LineVertex(corners[s[0]], line));
+                edges.Add(new LineVertex(corners[s[1]], line));
+            }
+        }
+        PrimitiveCount = scene.Objects.Count(o => o.Primitive is not null);
+        if (fill.Count == 0 && edges.Count == 0) return;
+
+        var ctx = _context;
+        ctx.IASetInputLayout(_lineLayout);
+        ctx.VSSetShader(_lineVs);
+        ctx.PSSetShader(_linePs);
+        ctx.RSSetState(_cullNone);
+        ctx.OMSetDepthStencilState(_depthRead);
+        ctx.OMSetBlendState(_alphaBlend);
+        if (fill.Count > 0)
+        {
+            UploadLines(fill);
+            ctx.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+            ctx.IASetVertexBuffers(0, 1, [_lineBuffer], [(uint)sizeof(LineVertex)], [0u]);
+            ctx.Draw((uint)fill.Count, 0);
+        }
+        if (edges.Count > 0)
+        {
+            UploadLines(edges);
+            ctx.IASetPrimitiveTopology(PrimitiveTopology.LineList);
+            ctx.IASetVertexBuffers(0, 1, [_lineBuffer], [(uint)sizeof(LineVertex)], [0u]);
+            ctx.Draw((uint)edges.Count, 0);
+        }
+        ctx.OMSetBlendState(_opaque);
+        Stats.DrawCalls += 2;
+    }
+
+    /// <summary>References with a primitive in the last frame's scene (autotests).</summary>
+    public int PrimitiveCount { get; private set; }
 
     private void DrawNavmeshes(Scene scene)
     {

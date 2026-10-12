@@ -79,6 +79,12 @@ public sealed class SceneObject
 
     public SceneLight? Light { get; init; }
     public bool InitiallyDisabled { get; init; }
+
+    /// <summary>
+    /// The reference's primitive (XPRM: trigger box, activation sphere, room or portal bounds): half extents
+    /// (box) or radius (sphere, X), kind (1 box, 2 sphere, 3 portal box) and colour (0xAABBGGRR).
+    /// </summary>
+    public (Vector3 Bounds, int Type, uint Color)? Primitive { get; set; }
     public bool IsPersistent { get; init; }
 
     /// <summary>For static collection parts: index of the part placement, -1 otherwise.</summary>

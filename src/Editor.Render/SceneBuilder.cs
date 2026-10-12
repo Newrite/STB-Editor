@@ -362,6 +362,12 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
             IsPersistent = persistent || (flags & PersistentFlag) != 0,
             CollectionPart = part,
         };
+        if (placed is IPlacedObjectGetter { Primitive: { } primitive } && primitive.Type != PlacedPrimitive.TypeEnum.None)
+        {
+            var c = primitive.Color;
+            obj.Primitive = (new Vector3(primitive.Bounds.X, primitive.Bounds.Y, primitive.Bounds.Z), (int)primitive.Type,
+                0xFF000000u | ((uint)c.B << 16) | ((uint)c.G << 8) | c.R);
+        }
         obj.UpdateBounds();
         return obj;
     }

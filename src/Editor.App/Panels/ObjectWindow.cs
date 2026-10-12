@@ -160,6 +160,12 @@ internal sealed class ObjectWindow : Panel
             ImGui.SameLine();
             ImGui.TextColored(Theme.Warning, TF($"checking: {_scan.Checked:N0} done, {_scan.Pending:N0} left"));
         }
+        if (SpreadsheetWindow.Has(_type))
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Table"))) app.Spreadsheets.Show(_type);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("All records of this type as a sortable table, edited in place"));
+        }
         if (_type != AllTypes && NewFormDialog.CanCreate(_type))
         {
             ImGui.SameLine();
@@ -184,7 +190,7 @@ internal sealed class ObjectWindow : Panel
     private void DrawPluginFilter(EditorApp app, float em)
     {
         // Fills the row, leaving room for the count and «+ New».
-        var reserve = em * (_type != AllTypes && NewFormDialog.CanCreate(_type) ? 8.5f : 4f);
+        var reserve = em * ((_type != AllTypes && NewFormDialog.CanCreate(_type) ? 8.5f : 4f) + (SpreadsheetWindow.Has(_type) ? 3.5f : 0f));
         ImGui.SetNextItemWidth(Math.Max(em * 6, ImGui.GetContentRegionAvail().X - reserve));
         if (!ImGui.BeginCombo("##plugin", _plugin ?? T("Any plugin"), ImGuiComboFlags.HeightLarge))
         {
@@ -464,7 +470,7 @@ internal sealed class ObjectWindow : Panel
                     var removal = RecordActions.RemovalOf(app, record.FormKey);
                     if (ImGui.MenuItem(RecordActions.Label(app, removal), "Del", false, removal != RecordActions.Removal.None))
                         RecordActions.Remove(app, record.FormKey);
-                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(RecordActions.Tooltip(app, removal));
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(RecordActions.Tooltip(app, removal, record.FormKey));
                     ImGui.Separator();
                     if (_picked.Count > 1 && _picked.Contains(record.FormKey))
                     {
@@ -476,6 +482,21 @@ internal sealed class ObjectWindow : Panel
                     {
                         app.Compare.OpenRecords([other, record.FormKey]);
                     }
+                    if (ImGui.MenuItem(T("Use Info"))) app.UseInfo.Open(record.FormKey);
+                    if (_picked.Count > 1 && _picked.Contains(record.FormKey))
+                    {
+                        var together = Picked;
+                        var sameType = together.All(k => app.Session!.Catalog.Get(k)?.Signature == record.Signature);
+                        if (ImGui.MenuItem(TF($"Edit together ({together.Count})"), (string?)null, false, sameType)) app.FormWindows.OpenBatch(together);
+                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                            ImGui.SetTooltip(sameType ? T("One form: a field you change is set on every selected record (xEdit: Copy to selected records)") : T("Only records of one type can be edited together"));
+                    }
+                    var copyKeys = _picked.Count > 1 && _picked.Contains(record.FormKey) ? Picked : [record.FormKey];
+                    var copyable = RecordActions.CopyableAsOverride(app, copyKeys).Count;
+                    if (ImGui.MenuItem(app.ActivePlugin is { } activeFile ? TF($"Copy as override into {activeFile.Name} ({copyable})") : T("Copy as override into the active file"), (string?)null, false, copyable > 0))
+                        RecordActions.CopyAsOverride(app, copyKeys);
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                        ImGui.SetTooltip(T("The winning version goes into the active file unchanged (xEdit: Copy as override). Already there, cells, quests and dialogue are skipped."));
                     if (ImGui.MenuItem(TF($"Compare versions ({record.Plugins.Count})"), (string?)null, false, record.Plugins.Count > 1))
                         app.Compare.OpenVersions(record.FormKey);
                     ImGui.Separator();

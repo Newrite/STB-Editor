@@ -1,4 +1,6 @@
+using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
 using StbEditor.App.Services;
 using StbEditor.Core;
 using static StbEditor.App.Ui.Loc;
@@ -50,6 +52,15 @@ internal static class RecordActions
         _ => T("Delete"),
     };
 
+    /// <summary>Tooltip, with how many records and references point at an own record about to be deleted.</summary>
+    public static string Tooltip(EditorApp app, Removal removal, FormKey key)
+    {
+        var text = Tooltip(app, removal);
+        if (removal == Removal.OwnRecord && app.Session?.Uses is { IsCompletedSuccessfully: true } uses && uses.Result.CountOf(key) is > 0 and var n)
+            text += Environment.NewLine + TF($"Up to {n} link(s) point at it — check Use Info first.");
+        return text;
+    }
+
     public static string Tooltip(EditorApp app, Removal removal) => removal switch
     {
         Removal.NewRecord => T("The record created in this session goes (Ctrl+Z brings it back)"),
@@ -60,6 +71,34 @@ internal static class RecordActions
             ? T("Choose the active file first (File → Active File)")
             : T("Not in the active file. Records of other plugins are not deleted (it breaks what uses them)."),
     };
+
+    /// <summary>Types copied as overrides (cells, worlds, quests and dialogue carry children or need their own tools).</summary>
+    private static readonly HashSet<string> NotCopyable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "QUST", "SCEN", "TES4"];
+
+    /// <summary>Records that "Copy as override" would put into the active file (not already there, copyable types).</summary>
+    public static List<FormKey> CopyableAsOverride(EditorApp app, IEnumerable<FormKey> keys)
+    {
+        if (app.Session is not { } session || app.ActivePlugin is not { } active) return [];
+        return keys.Where(k => session.Catalog.Get(k) is { IsTransient: false } r && !NotCopyable.Contains(r.Signature)
+            && !r.Plugins.Any(p => p.ModKey == active.ModKey) && app.Document.Draft(k) is null).ToList();
+    }
+
+    /// <summary>
+    /// xEdit's "Copy as override into…": the winning version goes into the active file unchanged, as
+    /// one undo step — to edit it there or to carry it forward over later plugins.
+    /// </summary>
+    public static void CopyAsOverride(EditorApp app, IReadOnlyList<FormKey> keys)
+    {
+        var edits = new List<(Mutagen.Bethesda.Plugins.Records.IMajorRecord, RecordPlace, RefContext?)>();
+        foreach (var key in CopyableAsOverride(app, keys))
+        {
+            if (CompareWindows.Versions(app, key).FirstOrDefault().Record is not { } winner) continue;
+            edits.Add(((Mutagen.Bethesda.Plugins.Records.IMajorRecord)winner.DeepCopy(), RecordPlace.TopLevel, null));
+        }
+        if (edits.Count == 0) return;
+        app.Document.CommitEdits(edits.Count == 1 ? TF($"Copy {edits[0].Item1.EditorID} as override") : TF($"Copy {edits.Count} records as overrides"), edits);
+        Log.Info($"copied {edits.Count} record(s) as override(s) into {app.ActivePlugin!.Name}");
+    }
 
     public static void Remove(EditorApp app, FormKey key)
     {
@@ -75,6 +114,8 @@ internal static class RecordActions
             _ => TF($"Delete {id}"),
         };
         app.Document.RemoveRecord(name, key, signature, id, inPlugin: removal is Removal.OwnRecord or Removal.Override, ownRecord: removal == Removal.OwnRecord);
+        if (removal == Removal.OwnRecord && session.Uses is { IsCompletedSuccessfully: true } uses && uses.Result.CountOf(key) is > 0 and var n)
+            Log.Warn($"{id} is deleted on save, but up to {n} link(s) point at it (Use Info lists them); Ctrl+Z brings it back");
         Log.Info($"remove record: {removal} {id} {key}");
     }
 }

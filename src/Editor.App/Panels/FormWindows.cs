@@ -24,6 +24,17 @@ internal sealed class FormWindows
 
     public void CloseAll() => _open.Clear();
 
+    public RecordForm? FormOf(FormKey key) => _open.FirstOrDefault(w => w.Key == key).Form;
+
+    /// <summary>One form for several records of a type (Object Window: Edit together): changes go to all of them.</summary>
+    public void OpenBatch(IReadOnlyList<FormKey> keys)
+    {
+        if (keys.Count == 0) return;
+        _open.RemoveAll(w => w.Key == keys[0]);
+        _open.Add((keys[0], new RecordForm { Batch = keys }));
+        _focus = keys[0];
+    }
+
     public void Draw(EditorApp app)
     {
         if (app.Session is not { } session) return;

@@ -153,8 +153,10 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
     /// A scene object for a reference that exists only in the editor so far (placed from the
     /// Object Window, duplicated). Same rules as loaded references: model, light, actor marker.
     /// </summary>
-    public SceneObject CreatePlaced(FormKey reference, FormKey baseKey, Vector3 position, Vector3 rotation, float scale, FormKey cell, bool persistent)
+    public SceneObject CreatePlaced(FormKey reference, FormKey baseKey, Vector3 position, Vector3 rotation, float scale, FormKey cell, bool persistent,
+        IMajorRecordGetter? referenceRecord = null, string? sourcePlugin = null)
     {
+        var refRecord = referenceRecord;
         var (record, signature) = Base(baseKey);
         var isActor = signature is "NPC_" or "LVLN";
         var look = isActor ? Appearance.Resolve(baseKey) : null;
@@ -186,6 +188,8 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
             World = transform.ToMatrix(),
             Light = light,
             IsPersistent = persistent,
+            Record = refRecord,
+            SourcePlugin = sourcePlugin,
         };
         obj.UpdateBounds();
         return obj;

@@ -62,28 +62,37 @@ internal static class ReferenceProperties
         if (current is null) return;
 
         var edited = document.Override(key) is not null;
+        // Several references selected: what is set here goes to all of them (CK's Reference Batch Action).
+        var others = app.RenderWindow.IsSelected(obj)
+            ? app.RenderWindow.SelectedObjects.Where(o => o != obj && !o.IsDeleted).ToList()
+            : [];
+        var batch = others.Count > 0;
         ImGui.SeparatorText(edited ? T("Reference  (changed)") : T("Reference"));
+        if (batch) ImGui.TextColored(Theme.Warning, TF($"Changes apply to all {others.Count + 1} selected objects."));
         if (app.ActivePlugin is null) ImGui.TextColored(Theme.TextDim, T("Changes are saved into the active file (Ctrl+S asks for one)."));
 
-        void Edit(string name, Action<IPlaced> change)
-        {
-            var copy = (IPlaced)document.WorkingCopy(key, current);
-            change(copy);
-            document.CommitEdit(name, copy, RecordPlace.Reference, context);
-        }
+        void Edit(string name, Action<IPlaced> change) => Apply(app, batch ? [obj, .. others] : [obj], name, change);
 
+        DrawBase(app, obj, current, Edit);
         DrawFlags(current, Edit);
         DrawEnableParent(app, current, Edit);
         DrawOwnership(app, current, Edit);
         if (current is IPlacedObjectGetter placed)
         {
             if (obj.BaseSignature is "DOOR" or "CONT" or "ACTI" or "FURN") DrawLock(app, placed, Edit);
-            if (obj.BaseSignature == "DOOR") DrawTeleport(app, obj, context, placed, Edit);
+            if (obj.BaseSignature == "DOOR" && !batch) DrawTeleport(app, obj, context, placed, Edit);
             DrawExtra(placed, obj, Edit);
         }
-        DrawLinkedRefs(app, current, Edit);
-        if (ScriptsEditor.Supports(current))
-            ScriptsEditor.Draw(app, current, (name, change) => Edit(name, r => change(r)));
+        if (!batch)
+        {
+            DrawLinkedRefs(app, current, Edit);
+            if (ScriptsEditor.Supports(current))
+                ScriptsEditor.Draw(app, current, (name, change) => Edit(name, r => change(r)));
+        }
+        else
+        {
+            ImGui.TextColored(Theme.TextDim, T("Teleport, linked references and scripts are edited one object at a time."));
+        }
 
         if (edited && ImGui.SmallButton(T("Revert reference properties")))
         {
@@ -91,6 +100,37 @@ internal static class ReferenceProperties
             document.Record(new RevertCommand(before));
         }
         ImGui.Spacing();
+    }
+
+    /// <summary>
+    /// One change applied to each object's edited copy, as one undo step (one object, or a batch of the
+    /// selection). Objects the change does not fit (no lock, an actor for an object-only field) are skipped.
+    /// </summary>
+    public static void Apply(EditorApp app, IReadOnlyList<SceneObject> targets, string name, Action<IPlaced> change)
+    {
+        if (app.Session is not { } session) return;
+        var document = app.Document;
+        var edits = new List<(IMajorRecord, RecordPlace, RefContext?)>();
+        var skipped = 0;
+        foreach (var target in targets)
+        {
+            var targetContext = app.RenderWindow.RefContextOf(target);
+            document.RegisterContext(target.Reference, targetContext);
+            var record = document.Override(target.Reference)?.Record as IPlacedGetter ?? target.Record as IPlacedGetter ?? NewRecord(session, target);
+            if (record is null) { skipped++; continue; }
+            var copy = (IPlaced)document.WorkingCopy(target.Reference, record);
+            try
+            {
+                change(copy);
+                edits.Add((copy, RecordPlace.Reference, targetContext));
+            }
+            catch (Exception ex) when (ex is InvalidCastException or NullReferenceException)
+            {
+                skipped++;
+            }
+        }
+        document.CommitEdits(targets.Count > 1 ? TF($"{name} ({edits.Count} objects)") : name, edits);
+        if (skipped > 0) Log.Info($"{name}: {skipped} selected object(s) skipped (the change does not apply to them)");
     }
 
     /// <summary>A reference made in this session has no record yet: start from an empty one with its base.</summary>
@@ -107,6 +147,42 @@ internal static class ReferenceProperties
         return placed;
     }
 
+    /// <summary>
+    /// The base object, replaceable (CK: Search &amp; Replace / Reference Batch Action): objects keep their
+    /// placement and properties and show the new base's model. Actors take actors, objects take objects.
+    /// </summary>
+    private static void DrawBase(EditorApp app, SceneObject obj, IPlacedGetter current, Action<string, Action<IPlaced>> edit)
+    {
+        var actor = current is IPlacedNpcGetter;
+        FormKey? baseKey = current switch
+        {
+            IPlacedObjectGetter o => o.Base.FormKeyNullable,
+            IPlacedNpcGetter n => n.Base.FormKeyNullable,
+            _ => obj.Base,
+        };
+        string[] signatures = actor
+            ? ["NPC_", "LVLN"]
+            : ["ACTI", "TACT", "CONT", "DOOR", "FLOR", "FURN", "LIGH", "MSTT", "STAT", "SCOL", "TREE", "IDLM", "ADDN", "HAZD", "ARTO",
+               "SOUN", "AMMO", "ARMO", "BOOK", "INGR", "KEYM", "MISC", "ALCH", "SCRL", "SLGM", "WEAP"];
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(Theme.TextDim, T("Base object"));
+        ImGui.SameLine();
+        var before = baseKey;
+        if (FormField.Draw(app, "base", ref baseKey, signatures) && baseKey is { } newBase && newBase != before)
+        {
+            edit(TF($"Replace base with {app.Session!.Catalog.Get(newBase)?.EditorId}"), r =>
+            {
+                switch (r)
+                {
+                    case PlacedObject o: o.Base.SetTo(newBase); break;
+                    case PlacedNpc n: n.Base.SetTo(newBase); break;
+                    default: throw new InvalidCastException();
+                }
+            });
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Replace what is placed here, keeping position and properties (CK: Search & Replace)"));
+    }
+
     private static void DrawFlags(IPlacedGetter current, Action<string, Action<IPlaced>> edit)
     {
         var raw = (uint)current.MajorRecordFlagsRaw;
@@ -116,7 +192,8 @@ internal static class ReferenceProperties
             var on = (raw & bit) != 0;
             if (i % 2 == 1) ImGui.SameLine(ImGui.GetContentRegionAvail().X * 0.5f + ImGui.GetCursorPosX() * 0);
             if (ImGui.Checkbox(T(label), ref on))
-                edit(on ? TF($"Set {T(label)}") : TF($"Clear {T(label)}"), r => r.MajorRecordFlagsRaw = (int)(on ? raw | bit : raw & ~bit));
+                // Each record keeps its own other flags (a batch change touches only this bit).
+                edit(on ? TF($"Set {T(label)}") : TF($"Clear {T(label)}"), r => r.MajorRecordFlagsRaw = (int)(on ? (uint)r.MajorRecordFlagsRaw | bit : (uint)r.MajorRecordFlagsRaw & ~bit));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T(tip));
         }
     }

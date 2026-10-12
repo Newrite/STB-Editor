@@ -41,7 +41,7 @@ internal sealed class EditorApp : IDisposable
     /// <summary>Bumped on every selection change so panels can scroll to it once.</summary>
     public int SelectionVersion { get; private set; }
 
-    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning
+    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
         || Thumbnails?.HasPending == true || Saver.IsBusy;
     public uint IdleWaitMilliseconds => 500;
 
@@ -66,6 +66,8 @@ internal sealed class EditorApp : IDisposable
     /// <summary>Records open in their own form windows.</summary>
     public FormWindows FormWindows { get; } = new();
     public CompareWindows Compare { get; } = new();
+    public UseInfoWindows UseInfo { get; } = new();
+    public SpreadsheetWindow Spreadsheets { get; } = new();
     public NewFormDialog NewForm { get; private set; } = null!;
 
     public EditorApp(Settings settings, ImGuiLayer imgui, GraphicsDevice graphics, CommandLine options)
@@ -148,6 +150,7 @@ internal sealed class EditorApp : IDisposable
         Session = null;
         FormWindows.CloseAll();
         Compare.CloseAll();
+        UseInfo.CloseAll();
         RenderWindow.DropScene();
     }
 
@@ -268,6 +271,10 @@ internal sealed class EditorApp : IDisposable
         RunOpsAutotest();
         RunFilterAutotest();
         RunMastersAutotest();
+        RunUseInfoAutotest();
+        RunBatchAutotest();
+        RunTogetherAutotest();
+        RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
@@ -305,6 +312,8 @@ internal sealed class EditorApp : IDisposable
         _mastersWindow.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
+        UseInfo.Draw(this);
+        Spreadsheets.Draw(this);
         NewForm.Draw();
         _newRecordDialog.Draw();
         HandleShortcuts();
@@ -328,6 +337,7 @@ internal sealed class EditorApp : IDisposable
             Thumbnails = null;
             foreach (var panel in _panels) panel.OnSessionChanged(this);
             _ = session.Doors; // door → cell index for going through doors, built in the background
+            _ = session.Uses; // Use Info index, built in the background (seconds; cached on disk)
             if (RenderWindow.Meshes is { } meshes && RenderWindow.Textures is { } textures)
             {
                 Preview = new ObjectPreview(_graphics.Device, _graphics.Context, meshes, textures) { Document = Document };
@@ -470,7 +480,164 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-savecheck") || _saveCheckStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-ops") || _opsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-filter") || _filterStage == 2)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-masters") || _mastersStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-masters") || _mastersStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-useinfo") || _useStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-batch") || _batchStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-together") || _togetherStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-sheet") || _sheetStage == 9);
+
+    private int _sheetStage, _sheetFrames;
+
+    /// <summary>--autotest-sheet &lt;SIG&gt;: the spreadsheet of a type; logs rows, empty cells per column, first rows; edits one weight (undone).</summary>
+    private void RunSheetAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-sheet");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session || Loader is not null || _sheetStage == 9) return;
+        switch (_sheetStage)
+        {
+            case 0:
+                Spreadsheets.Show(cli[i + 1]);
+                _sheetStage = 1;
+                break;
+            case 1 when ++_sheetFrames > 10:
+                Log.Info($"autotest-sheet: {cli[i + 1]}: {Spreadsheets.RowCount} rows; empty: {Spreadsheets.EmptyCounts}");
+                foreach (var line in Spreadsheets.FirstRows(4)) Log.Info($"autotest-sheet:   {line}");
+                var first = session.Catalog.BySignature[cli[i + 1]].First(r => r.EditorId?.StartsWith("Iron", StringComparison.Ordinal) == true || r.EditorId?.StartsWith("Armor", StringComparison.Ordinal) == true);
+                object[] path = cli[i + 1] == "WEAP" ? ["BasicStats", "Weight"] : ["Weight"];
+                var ok = Spreadsheets.EditForTest(this, first.FormKey, path, 12.5f);
+                Log.Info($"autotest-sheet: edit {first.EditorId} weight: {ok}, undo: {Document.History.UndoName}, pending {Document.PendingCount}");
+                Document.Undo();
+                _sheetStage = 9;
+                break;
+        }
+    }
+
+    private int _togetherStage, _togetherFrames;
+    private FormKey[] _together = [];
+
+    /// <summary>--autotest-together: three armors edited together through one form (weight 9.5 on all); undo checked; nothing saved.</summary>
+    private void RunTogetherAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-together") || Session is not { } session || Loader is not null || _togetherStage == 9) return;
+        float? Weight(FormKey k) => ((Mutagen.Bethesda.Skyrim.IArmorGetter?)StbEditor.Core.OverrideEditing.Override(Document, k)?.Record
+            ?? new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.IArmorGetter>(k))?.Weight;
+        switch (_togetherStage)
+        {
+            case 0:
+                _together = new[] { "ArmorIronHelmet", "ArmorIronBoots", "ArmorIronGauntlets" }
+                    .Select(id => session.Catalog.BySignature["ARMO"].First(r => r.EditorId == id).FormKey).ToArray();
+                FormWindows.OpenBatch(_together);
+                _togetherStage = 1;
+                break;
+            case 1 when ++_togetherFrames > 5 && FormWindows.FormOf(_together[0])?.Target is { } target:
+                var before = string.Join(", ", _together.Select(Weight));
+                target.Apply("Weight", r => StbEditor.Core.RecordFields.Set(r, ["Weight"], 9.5f));
+                var after = string.Join(", ", _together.Select(Weight));
+                var undoName = Document.History.UndoName;
+                Document.Undo();
+                Log.Info($"autotest-together: {target.Count} records; weights {before} -> {after} ({undoName}); after Ctrl+Z {string.Join(", ", _together.Select(Weight))}");
+                _togetherStage = 9;
+                break;
+        }
+    }
+
+    private int _batchStage, _batchFrames;
+    private FormKey[] _batchRefs = [];
+    private FormKey _batchBase, _batchMisc;
+
+    /// <summary>
+    /// --autotest-batch &lt;folder&gt; (with --cell of an interior): Persistent set on three references at once
+    /// (Ctrl+Z / Ctrl+Y checked), the first one's base replaced (scene model swaps), a MISC copied as override;
+    /// save into a new plugin, reload, check.
+    /// </summary>
+    private void RunBatchAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-batch");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session || Loader is not null || _batchStage == 9) return;
+        bool Persistent(FormKey k) => RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == k) is { } o
+            && ((StbEditor.Core.OverrideEditing.Override(Document, k)?.Record ?? o.Record) as Mutagen.Bethesda.Skyrim.IPlacedGetter) is { } r && (r.MajorRecordFlagsRaw & 0x400) != 0;
+        switch (_batchStage)
+        {
+            case 0 when RenderWindow.IsSettled && RenderWindow.Scene is { IsInterior: true } scene:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorBatchAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var objects = scene.Objects.Where(o => o.Kind == StbEditor.Render.SceneObjectKind.Mesh && o.Record is Mutagen.Bethesda.Skyrim.IPlacedObjectGetter r && (r.MajorRecordFlagsRaw & 0x400) == 0 && !o.IsPersistent).Take(3).ToArray();
+                _batchRefs = objects.Select(o => o.Reference).ToArray();
+                ReferenceProperties.Apply(this, objects, "Set Persistent", r => r.MajorRecordFlagsRaw |= 0x400);
+                var set = _batchRefs.Count(Persistent);
+                var undoName = Document.History.UndoName;
+                Document.Undo();
+                var undone = _batchRefs.Count(Persistent);
+                Document.Redo();
+                Log.Info($"autotest-batch: Persistent on {set}/3 ({undoName}); after Ctrl+Z {undone}/3, after Ctrl+Y {_batchRefs.Count(Persistent)}/3");
+
+                _batchBase = session.Catalog.BySignature["STAT"].First(r => r.EditorId == "Barrel02Static").FormKey;
+                ReferenceProperties.Apply(this, [objects[0]], "Replace base", r => ((Mutagen.Bethesda.Skyrim.PlacedObject)r).Base.SetTo(_batchBase));
+                _batchMisc = session.Catalog.BySignature["MISC"].First(r => r.EditorId == "BasicFork01").FormKey;
+                RecordActions.CopyAsOverride(this, [_batchMisc]);
+                _batchStage = 1;
+                break;
+            }
+            case 1 when ++_batchFrames > 5:
+                Log.Info($"autotest-batch: replaced base, scene shows {RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == _batchRefs[0])?.BaseEditorId}; MISC override pending: {StbEditor.Core.OverrideEditing.Override(Document, _batchMisc) is not null}; saving");
+                Save();
+                _batchStage = 2;
+                break;
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0 && RenderWindow.IsSettled:
+            {
+                var scene = RenderWindow.Scene!;
+                var first = scene.Objects.FirstOrDefault(o => o.Reference == _batchRefs[0]);
+                Log.Info($"autotest-batch: reloaded; persistent {_batchRefs.Count(Persistent)}/3, first base {first?.BaseEditorId} from {first?.SourcePlugin}; BasicFork01 winner {session.Catalog.Get(_batchMisc)?.WinningPlugin.Name}");
+                _batchStage = 9;
+                break;
+            }
+        }
+    }
+
+    private int _useStage;
+    private int _useFrames;
+    private FormKey _useRef;
+
+    /// <summary>
+    /// --autotest-useinfo &lt;FormID|EditorID&gt; [goto]: opens Use Info, waits for the index and the field
+    /// checks, logs the counts; with goto, opens the cell of the first placed reference and selects it.
+    /// </summary>
+    private void RunUseInfoAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-useinfo");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session || Loader is not null || _useStage == 9) return;
+        switch (_useStage)
+        {
+            case 0:
+            {
+                var key = session.Workspace.ParseFormReference(cli[i + 1])
+                    ?? session.Catalog.ByKey.Values.FirstOrDefault(r => string.Equals(r.EditorId, cli[i + 1], StringComparison.OrdinalIgnoreCase))?.FormKey;
+                if (key is null) { Log.Warn($"autotest-useinfo: {cli[i + 1]} not found"); _useStage = 9; return; }
+                UseInfo.Open(key.Value);
+                _useStage = 1;
+                break;
+            }
+            case 1 when UseInfo.LastCounts is { Pending: 0 } counts:
+                Log.Info($"autotest-useinfo: {counts.Confirmed} record(s) confirmed, {counts.Rejected} rejected raw hit(s), {counts.Placed} placed reference(s); index {session.Uses.Result.Count:N0} links in {session.Uses.Result.BuildTime.TotalSeconds:0.0} s");
+                foreach (var line in UseInfo.LastRecordLines.Take(8)) Log.Info($"autotest-useinfo:   {line}");
+                if (cli.Skip(i + 2).FirstOrDefault() == "goto" && UseInfo.LastPlaced.FirstOrDefault(u => u.Parent is not null) is { Parent: { } cell } first)
+                {
+                    _useRef = first.Source;
+                    RenderWindow.GoToReference(this, first.Source, cell);
+                    Log.Info($"autotest-useinfo: go to {session.Workspace.FormIdText(first.Source)} in {session.Catalog.Get(cell)?.EditorId ?? session.Workspace.FormIdText(cell)}");
+                    _useStage = 2;
+                }
+                else _useStage = 9;
+                break;
+            case 2 when RenderWindow.IsSettled && ++_useFrames > 30:
+                Log.Info($"autotest-useinfo: scene {RenderWindow.Scene?.Title}, selected {(RenderWindow.SingleSelection is { } s ? session.Workspace.FormIdText(s.Reference) + " " + s.BaseEditorId : "-")} (wanted {session.Workspace.FormIdText(_useRef)})");
+                _useStage = 9;
+                break;
+        }
+    }
 
     private int _mastersStage;
     private FormKey _mastersMisc;
@@ -1299,6 +1466,8 @@ internal sealed class EditorApp : IDisposable
             }
             ImGui.Separator();
             if (ImGui.MenuItem(T("Settings..."))) _settingsWindow.Show();
+            if (ImGui.MenuItem(T("Spreadsheets..."), (string?)null, false, Session is not null)) Spreadsheets.Show();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Weapons, armor, ammunition and other items as sortable tables, edited in place (as xEdit's spreadsheets)"));
             if (ImGui.BeginMenu(T("Frame limit")))
             {
                 foreach (var (label, fps) in new[] { ("30 FPS", 30), ("60 FPS", 60), ("120 FPS", 120), (T("Monitor refresh (vsync)"), 0) })

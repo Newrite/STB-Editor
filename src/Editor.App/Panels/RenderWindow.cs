@@ -62,6 +62,8 @@ internal sealed partial class RenderWindow : Panel
 
     public bool IsSelected(SceneObject obj) => _selection.Contains(obj);
 
+    public IReadOnlyCollection<SceneObject> SelectedObjects => _selection;
+
     /// <summary>Selects just these objects (autotests).</summary>
     public void SelectForTest(params SceneObject[] objects)
     {
@@ -144,6 +146,7 @@ internal sealed partial class RenderWindow : Panel
     {
         var session = app.Session;
         if (session is null) return;
+        _pendingFocus = null;
 
         // Cells created in this session.
         if (_document?.Draft(cellKey) is CellDraft draft)
@@ -190,10 +193,75 @@ internal sealed partial class RenderWindow : Panel
         IsOpen = true;
     }
 
+    /// <summary>A reference to select and frame once its cell has loaded (Use Info → go to).</summary>
+    private FormKey? _pendingFocus;
+
+    /// <summary>
+    /// Opens the cell of a placed reference and selects it, with the camera on it (Use Info's
+    /// "go to"). <paramref name="cell"/> is the cell it sits in (a worldspace's persistent cell for
+    /// persistent exterior references, whose grid comes from the reference's own position).
+    /// </summary>
+    public void GoToReference(EditorApp app, FormKey reference, FormKey cell)
+    {
+        if (app.Session is not { } session) return;
+        if (_scene?.Objects.Any(o => o.Reference == reference) == true && _loading is null)
+        {
+            FocusReference(app, reference);
+            return;
+        }
+
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        var placement = session.Catalog.Get(cell)?.Winner.Cell;
+        Vector3? position = null;
+        foreach (var version in Enumerable.Reverse(placement is null ? [] : lookup.CellVersions(cell)))
+        {
+            var found = version.Persistent.Concat(version.Temporary).FirstOrDefault(r => r.FormKey == reference);
+            var p = found switch
+            {
+                Mutagen.Bethesda.Skyrim.IPlacedObjectGetter o => o.Placement?.Position,
+                Mutagen.Bethesda.Skyrim.IPlacedNpcGetter n => n.Placement?.Position,
+                Mutagen.Bethesda.Skyrim.IAPlacedTrapGetter t => t.Placement?.Position,
+                _ => null,
+            };
+            if (p is { } pos) { position = new Vector3(pos.X, pos.Y, pos.Z); break; }
+        }
+
+        var before = _loading;
+        if (placement is { IsInterior: true }) OpenCell(app, cell);
+        else if (placement?.Worldspace is { } world)
+        {
+            var (gx, gy) = position is { } at
+                ? ((int)MathF.Floor(at.X / TerrainCell.CellSize), (int)MathF.Floor(at.Y / TerrainCell.CellSize))
+                : (placement.GridX, placement.GridY);
+            OpenExterior(app, world, gx, gy);
+        }
+        else
+        {
+            Log.Warn($"{session.Workspace.FormIdText(reference)}: its cell {session.Workspace.FormIdText(cell)} cannot be opened");
+        }
+        // Set after opening: opening a cell forgets an earlier go-to that has not landed yet.
+        if (_loading is not null && !ReferenceEquals(_loading, before)) _pendingFocus = reference;
+    }
+
+    private void FocusReference(EditorApp app, FormKey reference)
+    {
+        if (_scene?.Objects.FirstOrDefault(o => o.Reference == reference) is not { } obj)
+        {
+            Log.Warn($"{app.Session?.Workspace.FormIdText(reference)}: not in the loaded cells (disabled or deleted?)");
+            return;
+        }
+        _selection.Clear();
+        _selection.Add(obj);
+        app.Select(reference);
+        _lastSyncedSelection = app.SelectionVersion;
+        FrameSelection();
+    }
+
     /// <summary>Loads the exterior grid of a worldspace around a cell position (also new, empty worldspaces).</summary>
     public void OpenExterior(EditorApp app, FormKey world, int x, int y)
     {
         if (app.Session is not { } session) return;
+        _pendingFocus = null;
         var builder = Builder(session);
         _loadingTitle = $"{(_document?.Draft(world)?.EditorId ?? session.Catalog.Get(world)?.EditorId ?? world.ToString())} [{x}, {y}]";
         _streaming = false;
@@ -319,6 +387,7 @@ internal sealed partial class RenderWindow : Panel
             _terrainDirty = false;
             RefreshTerrain(app);
             RefreshNavmeshes(app);
+            SyncReferenceBases(app);
         }
         StreamExterior(app);
         TrimCaches(app);
@@ -446,6 +515,7 @@ internal sealed partial class RenderWindow : Panel
         else
         {
             Log.Error($"cell load failed: {_loading.Exception?.GetBaseException()}");
+            _pendingFocus = null;
         }
 
         if (_loading.IsCompletedSuccessfully && _pendingRestore is { } restore)
@@ -455,6 +525,12 @@ internal sealed partial class RenderWindow : Panel
             _camera.Pitch = restore.Pitch;
             foreach (var o in _scene!.Objects.Where(o => restore.Selected.Contains(o.Reference))) _selection.Add(o);
             _pendingRestore = null;
+        }
+
+        if (_loading.IsCompletedSuccessfully && _pendingFocus is { } focus)
+        {
+            FocusReference(app, focus);
+            _pendingFocus = null;
         }
 
         if (_loading.IsCompletedSuccessfully && PendingCameraPose is { } pose)

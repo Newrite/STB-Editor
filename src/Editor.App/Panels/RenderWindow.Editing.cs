@@ -89,6 +89,35 @@ internal sealed partial class RenderWindow
 
     private void OnDraftsChanged() => _terrainDirty = true;
 
+    /// <summary>
+    /// A reference whose base was replaced (Replace base object, its undo) gets its scene object
+    /// rebuilt with the new base's model; placement, selection and edit state carry over.
+    /// </summary>
+    private void SyncReferenceBases(EditorApp app)
+    {
+        if (_scene is null || _document is null || app.Session is not { } session) return;
+        var builder = Builder(session);
+        for (var i = 0; i < _scene.Objects.Count; i++)
+        {
+            var obj = _scene.Objects[i];
+            var record = (_document.Override(obj.Reference)?.Record as IPlacedGetter) ?? obj.Record as IPlacedGetter;
+            var baseKey = record switch
+            {
+                IPlacedObjectGetter o => o.Base.FormKeyNullable,
+                IPlacedNpcGetter n => n.Base.FormKeyNullable,
+                _ => null,
+            };
+            if (baseKey is not { IsNull: false } wanted || wanted == obj.Base) continue;
+            var swapped = builder.CreatePlaced(obj.Reference, wanted, obj.Position, obj.Rotation, obj.Scale, obj.Cell, obj.IsPersistent, obj.Record, obj.SourcePlugin);
+            swapped.LoadedState = obj.LoadedState;
+            swapped.IsModified = true;
+            swapped.Apply(obj.State);
+            _scene.Objects[i] = swapped;
+            if (_selection.Remove(obj)) _selection.Add(swapped);
+        }
+        _renderer?.Forget(_scene);
+    }
+
     private void OnDocumentChanged(FormKey key, RefState state)
     {
         if (_scene is null) return;
@@ -1016,6 +1045,7 @@ internal sealed partial class RenderWindow
         _scene = null;
         _selection.Clear();
         _loading = null;
+        _pendingFocus = null;
     }
 
     /// <summary>Transform fields of the selected reference, for the Inspector.</summary>

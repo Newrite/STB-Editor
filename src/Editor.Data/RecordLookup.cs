@@ -75,6 +75,8 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
         var record = catalog.Get(cellKey);
         var result = new List<ICellGetter>();
         if (record?.Winner.Cell is not { } placement) return result;
+        // A worldspace's persistent cell is not in its blocks: it is the world's TopCell.
+        if (placement is { IsPersistentCell: true, Worldspace: { } world }) return PersistentCellVersions(world);
 
         foreach (var plugin in record.Plugins)
         {

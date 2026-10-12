@@ -14,6 +14,12 @@ namespace StbEditor.App.Panels;
 /// </summary>
 internal sealed class RecordForm
 {
+    /// <summary>Records edited together with the shown one (same type): every change goes to all of them.</summary>
+    public IReadOnlyList<FormKey>? Batch { get; set; }
+
+    /// <summary>The edit target of the last drawn frame (autotests apply field changes through it).</summary>
+    public EditTarget? Target { get; private set; }
+
     private FormKey? _loadedFor;
     private List<(string Plugin, IMajorRecordGetter Record)> _versions = [];
     private string? _error;
@@ -56,6 +62,9 @@ internal sealed class RecordForm
             ImGui.SameLine();
         }
         if (ImGui.SmallButton(T("Copy FormKey"))) ImGui.SetClipboardText(key.ToString());
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("Use Info"))) app.UseInfo.Open(key);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Which records use this one and where it is placed in the world (CK: Use Info, xEdit: Referenced By)"));
         if (placedObject is null && editable && _versions.Count > 0)
         {
             ImGui.SameLine();
@@ -66,7 +75,7 @@ internal sealed class RecordForm
         {
             ImGui.SameLine();
             if (ImGui.SmallButton(RecordActions.Label(app, removal))) RecordActions.Remove(app, key);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip(RecordActions.Tooltip(app, removal));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(RecordActions.Tooltip(app, removal, key));
         }
         if (app.Document.Override(key) is not null)
         {
@@ -94,23 +103,34 @@ internal sealed class RecordForm
             var place = placedObject is not null ? RecordPlace.Reference : RecordPlace.TopLevel;
             var context = placedObject is not null ? app.RenderWindow.RefContextOf(placedObject) : null;
             if (context is not null) app.Document.RegisterContext(key, context);
-            target = new EditTarget(
-                () => app.Document.WorkingCopy(key, current),
-                (name, edited) => app.Document.CommitEdit(name, edited, place, context),
-                edited => Validate(app, edited))
+            target = Batch is { Count: > 1 } batch && placedObject is null
+                ? new EditTarget(
+                    batch.Select(k => (Func<IMajorRecord>)(() => app.Document.WorkingCopy(k, k == key ? current : WinningOf(app, k)))).ToList(),
+                    (name, edited) => app.Document.CommitEdits(TF($"{name} ({edited.Count} records)"), edited.Select(e => (e, RecordPlace.TopLevel, (RefContext?)null)).ToList()),
+                    edited => Validate(app, edited))
+                : new EditTarget(
+                    () => app.Document.WorkingCopy(key, current),
+                    (name, edited) => app.Document.CommitEdit(name, edited, place, context),
+                    edited => Validate(app, edited))
+                {
+                    Notes = Notes(app, key),
+                };
+            if (Batch is { Count: > 1 } together)
             {
-                Notes = Notes(app, key),
-            };
+                ImGui.TextColored(Theme.Warning, TF($"Editing {together.Count} records together: values shown are this one's; a change sets that field on all of them."));
+                ImGui.TextColored(Theme.TextDim, string.Join(", ", together.Take(12).Select(k => app.Session!.Catalog.Get(k)?.EditorId ?? k.ToString())) + (together.Count > 12 ? "…" : ""));
+            }
         }
 
+        Target = target;
         if (!ImGui.BeginTabBar("##inspector", ImGuiTabBarFlags.FittingPolicyScroll)) return;
         var signature = placedObject is not null ? (placedObject.Kind == StbEditor.Render.SceneObjectKind.Actor ? "ACHR" : "REFR") : catalog!.Signature;
 
-        if (!inWindow && placedObject is not null && app.RenderWindow.SingleSelection == placedObject && Tab(T("Reference")))
+        if (!inWindow && placedObject is not null && app.RenderWindow.IsSelected(placedObject) && Tab(T("Reference")))
         {
             Body(() =>
             {
-                DrawPlacement(app, placedObject);
+                if (app.RenderWindow.SingleSelection == placedObject) DrawPlacement(app, placedObject);
                 ReferenceProperties.Draw(app, placedObject);
             });
         }
@@ -129,7 +149,7 @@ internal sealed class RecordForm
                 Body(() => FormView.DrawTab(app, current, tab, target));
             }
 
-            if (ScriptsEditor.Supports(current) && Tab(TF($"Scripts ({ScriptsEditor.Count(current)})###scripts")))
+            if (Batch is not { Count: > 1 } && ScriptsEditor.Supports(current) && Tab(TF($"Scripts ({ScriptsEditor.Count(current)})###scripts")))
             {
                 Body(() => ScriptsEditor.Draw(app, current, (name, change) =>
                 {
@@ -175,6 +195,10 @@ internal sealed class RecordForm
     private List<FormTab> _tabs = [];
     private (FormKey Key, int Version) _notesFor;
     private Dictionary<string, string> _notes = [];
+
+    /// <summary>The record as it is now: the unsaved edit, else the winning version.</summary>
+    private static IMajorRecordGetter WinningOf(EditorApp app, FormKey key) =>
+        (IMajorRecordGetter?)app.Document.Override(key)?.Record ?? CompareWindows.Versions(app, key)[0].Record;
 
     /// <summary>Why an edited record would not save (it does not write and read back), or null.</summary>
     private static string? Validate(EditorApp app, IMajorRecord edited)

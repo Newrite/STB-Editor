@@ -110,6 +110,20 @@ public static class OverrideEditing
     public static IMajorRecord WorkingCopy(this EditDocument document, FormKey key, IMajorRecordGetter winning) =>
         (IMajorRecord)(document.Override(key)?.Record ?? winning).DeepCopy();
 
+    /// <summary>Several edited copies (a batch change of selected references) as one undoable step.</summary>
+    public static void CommitEdits(this EditDocument document, string name, IReadOnlyList<(IMajorRecord Edited, RecordPlace Place, RefContext? Reference)> edits)
+    {
+        if (edits.Count == 0) return;
+        var commands = new List<IEditCommand>();
+        foreach (var (edited, place, reference) in edits)
+        {
+            var before = document.Override(edited.FormKey);
+            var after = before is not null ? before.With(edited) : new OverrideDraft(edited, place, reference);
+            commands.Add(new RecordEditCommand(name, before is null ? null : before.With((IMajorRecord)before.Record.DeepCopy()), after));
+        }
+        document.Record(commands.Count == 1 ? commands[0] : new CompositeCommand(name, commands));
+    }
+
     /// <summary>Records an edited copy as one undoable step (no-op when nothing changed).</summary>
     public static void CommitEdit(this EditDocument document, string name, IMajorRecord edited, RecordPlace place,
         RefContext? reference = null, FormKey? cell = null, FormKey? world = null)

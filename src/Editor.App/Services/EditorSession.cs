@@ -25,7 +25,29 @@ internal sealed class EditorSession : IDisposable
         return index;
     });
 
-    public void Dispose() => Workspace.Dispose();
+    private Task<UseIndex>? _uses;
+    private readonly CancellationTokenSource _closing = new();
+
+    /// <summary>Use Info (who points at a record); built in the background after loading, from a per-plugin disk cache when it can.</summary>
+    public Task<UseIndex> Uses => _uses ??= System.Threading.Tasks.Task.Run(() =>
+    {
+        var folder = Path.Combine(AppPaths.Root, "cache", "uses");
+        var index = UseIndex.Build(Workspace, folder, cancel: _closing.Token);
+        Log.Info($"use index: {index.Count:N0} links in {index.BuildTime.TotalSeconds:0.0} s ({index.CachedPlugins} plugins from cache), {Log.Memory()}");
+        return index;
+    }, _closing.Token);
+
+    /// <summary>
+    /// Stops the background index first: it reads plugin files (a save is about to replace one) and
+    /// must not cache what it scans once the plugins are closed.
+    /// </summary>
+    public void Dispose()
+    {
+        _closing.Cancel();
+        try { _uses?.Wait(TimeSpan.FromSeconds(30)); }
+        catch (AggregateException) { } // cancelled or failed: either way it is done
+        Workspace.Dispose();
+    }
 }
 
 /// <summary>Opens a session on a worker thread; the UI polls <see cref="Status"/> and <see cref="Result"/>.</summary>

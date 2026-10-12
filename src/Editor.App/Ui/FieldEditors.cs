@@ -15,32 +15,60 @@ namespace StbEditor.App.Ui;
 /// as one undo step. <see cref="Notes"/>: fields the plugin file stores differently from what was
 /// typed (path → stored value), from <see cref="RecordRoundTrip"/>.
 /// </summary>
-internal sealed class EditTarget(Func<IMajorRecord> copy, Action<string, IMajorRecord> commit, Func<IMajorRecord, string?>? validate = null)
+internal sealed class EditTarget
 {
+    private readonly IReadOnlyList<Func<IMajorRecord>> _copies;
+    private readonly Action<string, IReadOnlyList<IMajorRecord>> _commit;
+    private readonly Func<IMajorRecord, string?>? _validate;
+
+    public EditTarget(Func<IMajorRecord> copy, Action<string, IMajorRecord> commit, Func<IMajorRecord, string?>? validate = null)
+        : this([copy], (name, edited) => commit(name, edited[0]), validate)
+    {
+    }
+
+    /// <summary>Several records edited together (xEdit: copy to selected records): each change goes to every one, one undo step.</summary>
+    public EditTarget(IReadOnlyList<Func<IMajorRecord>> copies, Action<string, IReadOnlyList<IMajorRecord>> commit, Func<IMajorRecord, string?>? validate = null)
+    {
+        _copies = copies;
+        _commit = commit;
+        _validate = validate;
+    }
+
     public IReadOnlyDictionary<string, string> Notes { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>How many records an edit goes to.</summary>
+    public int Count => _copies.Count;
 
     /// <summary>
     /// Applies a change to a fresh working copy and commits it — unless <c>validate</c> finds the
     /// record no longer writes and reads back (an empty row some lists cannot hold): then nothing
     /// changes and the log says why, instead of a plugin the game or the editor cannot read.
+    /// With several records, one that the change does not fit is left out (and logged).
     /// </summary>
     public void Apply(string name, Action<IMajorRecord> change)
     {
-        try
+        var edited = new List<IMajorRecord>(_copies.Count);
+        foreach (var copy in _copies)
         {
-            var working = copy();
-            change(working);
-            if (validate?.Invoke(working) is { } problem)
+            try
             {
-                Services.Log.Warn(TF($"{name}: not applied — the record would not save correctly ({problem})"));
-                return;
+                var working = copy();
+                change(working);
+                if (_validate?.Invoke(working) is { } problem)
+                {
+                    Services.Log.Warn(TF($"{name}: not applied — the record would not save correctly ({problem})"));
+                    if (_copies.Count == 1) return;
+                    continue;
+                }
+                edited.Add(working);
             }
-            commit(name, working);
+            catch (Exception ex)
+            {
+                Services.Log.Warn($"edit {name}: {ex.InnerException?.Message ?? ex.Message}");
+                if (_copies.Count == 1) return;
+            }
         }
-        catch (Exception ex)
-        {
-            Services.Log.Warn($"edit {name}: {ex.InnerException?.Message ?? ex.Message}");
-        }
+        if (edited.Count > 0) _commit(name, edited);
     }
 }
 
@@ -51,8 +79,9 @@ internal sealed class EditTarget(Func<IMajorRecord> copy, Action<string, IMajorR
 /// </summary>
 internal static class FieldEditors
 {
-    private static readonly Dictionary<string, string> Typing = new();
-    private static readonly Dictionary<string, Vector4> Colors = new();
+    /// <summary>Text being typed / colour being dragged, by the widget's ImGui ID (rows of a table share field paths).</summary>
+    private static readonly Dictionary<uint, string> Typing = new();
+    private static readonly Dictionary<uint, Vector4> Colors = new();
 
     public static string PathKey(IReadOnlyList<object> path) => string.Join('/', path);
 
@@ -205,14 +234,15 @@ internal static class FieldEditors
             case FieldKind.Color:
             {
                 var c = value as System.Drawing.Color? ?? System.Drawing.Color.Black;
-                var v = Colors.TryGetValue(key, out var pending) ? pending : new Vector4(c.R, c.G, c.B, c.A) / 255f;
-                if (ImGui.ColorEdit4("##v", ref v, ImGuiColorEditFlags.Uint8 | ImGuiColorEditFlags.AlphaBar)) Colors[key] = v;
-                if (ImGui.IsItemDeactivatedAfterEdit() && Colors.Remove(key, out var done))
+                var colorId = ImGui.GetID("##v");
+                var v = Colors.TryGetValue(colorId, out var pending) ? pending : new Vector4(c.R, c.G, c.B, c.A) / 255f;
+                if (ImGui.ColorEdit4("##v", ref v, ImGuiColorEditFlags.Uint8 | ImGuiColorEditFlags.AlphaBar)) Colors[colorId] = v;
+                if (ImGui.IsItemDeactivatedAfterEdit() && Colors.Remove(colorId, out var done))
                 {
                     var b = done * 255f;
                     Set(target, label, path, System.Drawing.Color.FromArgb((int)MathF.Round(b.W), (int)MathF.Round(b.X), (int)MathF.Round(b.Y), (int)MathF.Round(b.Z)));
                 }
-                if (!ImGui.IsItemActive()) Colors.Remove(key);
+                if (!ImGui.IsItemActive()) Colors.Remove(colorId);
                 break;
             }
             default:
@@ -228,17 +258,18 @@ internal static class FieldEditors
     /// <summary>A text box that reports its text once editing ends (focus left / Enter), not on every key.</summary>
     public static bool TextBox(string key, string value, bool multiline, out string result)
     {
-        var text = Typing.TryGetValue(key, out var typing) ? typing : value;
+        var id = ImGui.GetID("##v");
+        var text = Typing.TryGetValue(id, out var typing) ? typing : value;
         var changed = multiline
             ? ImGui.InputTextMultiline("##v", ref text, 8192, new Vector2(ImGui.CalcItemWidth(), ImGui.GetTextLineHeight() * 4.5f))
             : ImGui.InputText("##v", ref text, 1024);
-        if (changed) Typing[key] = text;
-        if (ImGui.IsItemDeactivatedAfterEdit() && Typing.Remove(key, out var done) && done != value)
+        if (changed) Typing[id] = text;
+        if (ImGui.IsItemDeactivatedAfterEdit() && Typing.Remove(id, out var done) && done != value)
         {
             result = done;
             return true;
         }
-        if (!ImGui.IsItemActive()) Typing.Remove(key);
+        if (!ImGui.IsItemActive()) Typing.Remove(id);
         result = value;
         return false;
     }

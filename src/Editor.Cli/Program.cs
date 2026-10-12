@@ -719,6 +719,58 @@ switch (command)
         Console.WriteLine($"  expected: moved {moved.Reference} to {mstate.Position}, disabled {deleted.Reference}, new {newKey}");
         break;
     }
+    case "usetest":
+    {
+        // usetest <game> <EditorID|FormID>...: build the Use Info index (cold or from cache), list who uses
+        // each record, and check every non-placed hit with Mutagen's own link list.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var useDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "uses");
+        var before = GC.GetTotalMemory(true);
+        var index = StbEditor.Data.UseIndex.Build(ws, useDir, new Progress<string>(m => Console.Error.WriteLine(m)));
+        Console.WriteLine($"use index: {index.Count:N0} links in {index.BuildTime.TotalSeconds:0.0} s ({index.CachedPlugins} plugins from cache), memory +{(GC.GetTotalMemory(true) - before) / 1048576} MB");
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        foreach (var text in args.Skip(2))
+        {
+            var key = ws.ParseFormReference(text) ?? catalog.ByKey.Values.FirstOrDefault(r => string.Equals(r.EditorId, text, StringComparison.OrdinalIgnoreCase))?.FormKey;
+            if (key is not { } target) { Console.WriteLine($"{text}: not found"); continue; }
+            var uses = index.UsesOf(target);
+            int verified = 0, rejected = 0, unchecked_ = 0;
+            var lines = new List<string>();
+            foreach (var use in uses)
+            {
+                string verdict;
+                if (use.IsPlaced) { verdict = "ref"; unchecked_++; }
+                else if (catalog.Get(use.Source) is null && !(use.Type == "INFO" && use.Parent is { } t && use.Plugin.Mod is { } m && m.DialogTopics.ContainsKey(t)))
+                { verdict = "?"; unchecked_++; }
+                else
+                {
+                    // Dialogue lines: from the plugin whose version wins (later topic overrides hold only their own lines).
+                    var record = catalog.Get(use.Source) is not null
+                        ? lookup.Resolve(use.Source)
+                        : use.Plugin.Mod!.DialogTopics[use.Parent!.Value].Responses.FirstOrDefault(r => r.FormKey == use.Source);
+                    var ok = record?.EnumerateFormLinks().Any(l => l.FormKey == target) == true;
+                    if (ok) verified++; else rejected++;
+                    verdict = ok ? "ok" : "FALSE";
+                }
+                if (lines.Count < 25 || verdict == "FALSE")
+                    lines.Add($"    {verdict,-5} {use.Type} {catalog.Get(use.Source)?.EditorId ?? ws.FormIdText(use.Source)} via {use.Subrecord} in {use.Plugin.Name}{(use.Parent is { } p ? $" (in {catalog.Get(p)?.EditorId ?? ws.FormIdText(p)})" : "")}");
+            }
+            Console.WriteLine($"{catalog.Get(target)?.EditorId ?? text}: {uses.Count} use(s): {verified} verified, {rejected} FALSE, {unchecked_} placed/unchecked");
+            Console.WriteLine("    placed by subrecord: " + string.Join(", ", uses.Where(u => u.IsPlaced).GroupBy(u => u.Type + "." + u.Subrecord).Select(g => $"{g.Key} {g.Count()}")));
+            foreach (var line in lines.Take(40)) Console.WriteLine(line);
+        }
+        break;
+    }
+    case "members":
+    {
+        // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.
+        var type = typeof(Mutagen.Bethesda.Skyrim.ISkyrimModGetter).Assembly.GetTypes().First(t => t.Name == args[2]);
+        foreach (var p in StbEditor.Core.RecordFields.PropertiesOf(System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+            type.Assembly.GetType(type.Namespace + "." + type.Name[1..^6])!)))
+            Console.WriteLine($"{p.Name}: {p.PropertyType.Name}");
+        break;
+    }
     case "strtest":
     {
         // strtest <game> <EditorID>: the record's Name in every plugin that has it (localized string lookup).

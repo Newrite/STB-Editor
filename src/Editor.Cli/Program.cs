@@ -547,6 +547,26 @@ switch (command)
         Console.WriteLine($"written: deleted {fixedRef.IsDeleted}, flags 0x{fixedRef.MajorRecordFlagsRaw:X}, z {fixedRef.Placement?.Position.Z}, base {fixedRef.Base.FormKey}, enable parent {fixedRef.EnableParent?.Reference.FormKey} {fixedRef.EnableParent?.Flags}");
         break;
     }
+    case "looksprobe":
+    {
+        // looksprobe <game> <npc EditorID>: the looks fields of each version of an NPC, to see what differs.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var npcKey = catalog.BySignature["NPC_"].First(r => r.EditorId == args[2]).FormKey;
+        foreach (var version in ws.LinkCache.ResolveAllSimpleContexts<Mutagen.Bethesda.Skyrim.INpcGetter>(npcKey).Reverse())
+        {
+            Console.WriteLine($"== {version.ModKey}");
+            foreach (var name in new[] { "Race", "HeadParts", "HairColor", "HeadTexture", "FaceMorph", "FaceParts", "TintLayers", "Weight", "TextureLighting" })
+            {
+                var value = StbEditor.Core.RecordFields.PropertiesOf(version.Record).FirstOrDefault(p => p.Name == name)?.GetValue(version.Record);
+                var text = value is null ? "null" : StbEditor.Core.RecordFields.IsComposite(value)
+                    ? string.Join(",", StbEditor.Core.RecordFields.Leaves(value, 8, int.MaxValue).Select(l => l.PathText + "=" + StbEditor.Core.RecordFields.Repr(l.Value)))
+                    : StbEditor.Core.RecordFields.Repr(value);
+                Console.WriteLine($"  {name}: {(text.Length > 150 ? text[..150] : text)}");
+            }
+        }
+        break;
+    }
     case "checktest":
     {
         // checktest <game> <plugin>: Check for Errors over one plugin, issues grouped by message kind.
@@ -557,7 +577,7 @@ switch (command)
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var facegen = assets.Enumerate($@"meshes\actors\character\facegendata\facegeom\{plugin.Name}\", ".nif").ToList();
         Console.WriteLine($"facegen meshes of {plugin.Name}: {facegen.Count}, e.g. {facegen.FirstOrDefault()}");
-        var issues = StbEditor.Core.PluginChecks.Errors(ws, catalog, plugin, assets.Exists);
+        var issues = StbEditor.Core.PluginChecks.Errors(ws, catalog, plugin, assets.Exists, assetOrigin: path => assets.Find(path) is { } source ? source.LoosePath ?? source.ArchivePath : null);
         Console.WriteLine($"{plugin.Name}: {issues.Count(i => i.Error)} error(s), {issues.Count(i => !i.Error)} warning(s) in {clock.Elapsed.TotalSeconds:0.0} s");
         foreach (var group in issues.GroupBy(i => System.Text.RegularExpressions.Regex.Replace(i.Message, @"[0-9A-F]{6}:\S+|\S+ \[\w{4}\]", "X")).OrderByDescending(g => g.Count()).Take(10))
             Console.WriteLine($"  {group.Count(),5} x {group.Key}   e.g. {group.First().Signature} {group.First().EditorId ?? group.First().Key.ToString()}: {group.First().Message}");

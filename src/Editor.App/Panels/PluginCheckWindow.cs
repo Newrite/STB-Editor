@@ -48,7 +48,8 @@ internal sealed class PluginCheckWindow
         var progress = new Progress<string>(m => _progress = m);
         _task = Task.Run(() =>
         {
-            var issues = PluginChecks.Errors(session.Workspace, session.Catalog, plugin, session.Assets.Exists, progress);
+            var issues = PluginChecks.Errors(session.Workspace, session.Catalog, plugin, session.Assets.Exists, progress,
+                assetOrigin: path => session.Assets.Find(path) is { } source ? source.LoosePath ?? source.ArchivePath : null);
             var clean = PluginChecks.Clean(session.Workspace, session.Catalog, plugin, progress);
             return (issues, clean);
         });

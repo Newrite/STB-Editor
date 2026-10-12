@@ -98,8 +98,10 @@ public static class PluginChecks
     /// a FaceGen head (dark face in game), records that cannot be read.
     /// </summary>
     public static List<CheckIssue> Errors(Workspace workspace, RecordCatalog catalog, PluginInfo plugin, Func<string, bool> assetExists,
-        IProgress<string>? progress = null, CancellationToken cancel = default)
+        IProgress<string>? progress = null, CancellationToken cancel = default, Func<string, string?>? assetOrigin = null)
     {
+        var pluginFolder = Path.GetDirectoryName(Path.GetFullPath(plugin.Location.Path))!;
+        var pluginStem = Path.GetFileNameWithoutExtension(plugin.Name);
         var issues = new List<CheckIssue>();
         if (plugin.Mod is not { } mod) return issues;
         var lookup = new RecordLookup(workspace, catalog);
@@ -162,6 +164,20 @@ public static class PluginChecks
                 && lookup.Resolve<IRaceGetter>(npc.Race.FormKey) is { } race && race.Flags.HasFlag(Race.Flag.FaceGenHead)
                 && !assetExists($@"meshes\actors\character\facegendata\facegeom\{npc.FormKey.ModKey.FileName}\{npc.FormKey.ID:X8}.nif"))
                 issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, "no FaceGen head (meshes\\actors\\character\\facegendata): dark face in game"));
+
+            // Another plugin's NPC whose looks this plugin changes needs the head re-exported with this plugin.
+            if (record is INpcGetter changed && changed.FormKey.ModKey != plugin.ModKey && assetOrigin is not null
+                && !(changed.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Traits) && !changed.Template.IsNull)
+                && lookup.Resolve<IRaceGetter>(changed.Race.FormKey) is { } changedRace && changedRace.Flags.HasFlag(Race.Flag.FaceGenHead)
+                && LooksChanged(workspace, plugin, changed) is { } master)
+            {
+                var path = $@"meshes\actors\character\facegendata\facegeom\{changed.FormKey.ModKey.FileName}\{changed.FormKey.ID:X8}.nif";
+                var origin = assetOrigin(path);
+                var own = origin is not null && (origin.StartsWith(pluginFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    || Path.GetFileName(origin).StartsWith(pluginStem, StringComparison.OrdinalIgnoreCase));
+                if (!own)
+                    issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, $"changes the face, hair or skin set in {master}, but its FaceGen head comes from another plugin: the face may look dark or wrong (re-export FaceGen in the CK, Ctrl+F4)"));
+            }
         }
 
         // Leveled lists that contain themselves (through other lists): the game hangs resolving them.
@@ -172,6 +188,39 @@ public static class PluginChecks
                 issues.Add(new CheckIssue(true, list.FormKey, list.Signature, list.EditorId, $"contains itself: {string.Join(" > ", cycle.Select(k => catalog.Get(k)?.EditorId ?? k.ToString()))}"));
         }
         return issues;
+    }
+
+    private static readonly string[] Looks = ["Race", "HeadParts", "HairColor", "HeadTexture", "FaceMorph", "FaceParts", "TintLayers", "Weight", "TextureLighting"];
+
+    /// <summary>The master whose version of the NPC looks different from the plugin's (face, hair, tints, race, weight, sex), or null.</summary>
+    private static string? LooksChanged(Workspace workspace, PluginInfo plugin, INpcGetter npc)
+    {
+        List<Mutagen.Bethesda.Plugins.Cache.IModContext<INpcGetter>> versions;
+        try { versions = workspace.LinkCache.ResolveAllSimpleContexts<INpcGetter>(npc.FormKey).Reverse().ToList(); }
+        catch { return null; }
+        var at = versions.FindIndex(v => v.ModKey == plugin.ModKey);
+        var masters = (plugin.Header?.Masters ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var previous = at > 0 ? versions.Take(at).LastOrDefault(v => masters.Contains(v.ModKey.FileName.String)) : null;
+        if (previous is null) return null;
+        string Print(INpcGetter n) => string.Join("|", Looks.Select(name =>
+        {
+            var property = RecordFields.PropertiesOf(n).FirstOrDefault(p => p.Name == name);
+            var value = property?.GetValue(n);
+            string Text(object item) => RecordFields.IsComposite(item)
+                ? string.Join(",", RecordFields.Leaves(item, 8, int.MaxValue).Where(l => !l.PathText.EndsWith("FormKeyNullable", StringComparison.Ordinal)).Select(l => l.PathText + "=" + Value(l.Value)))
+                : Value(item);
+            // Face sliders re-saved by the CK differ in the last float digits (-0.39999998 / -0.4): same face.
+            static string Value(object? v) => v is float f ? (MathF.Round(f, 3) + 0f).ToString(System.Globalization.CultureInfo.InvariantCulture) : RecordFields.Repr(v);
+            // Lists (head parts, tint layers) as sets: their order does not change the face.
+            return value switch
+            {
+                null => "",
+                System.Collections.IEnumerable list and not string when !RecordFields.IsGendered(value) =>
+                    string.Join(";", list.Cast<object?>().Select(i => i is null ? "" : Text(i)).Order(StringComparer.Ordinal)),
+                _ => Text(value),
+            };
+        })) + "|" + n.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female);
+        return Print(npc) != Print(previous.Record) ? previous.ModKey.FileName.String : null;
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> CataloguedTypes = new();

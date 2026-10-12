@@ -30,6 +30,39 @@ public sealed class RenderOptions
     public bool ShowWater { get; set; } = true;
     public bool ShowInitiallyDisabled { get; set; } = true;
     public bool ShowLightRadius { get; set; } = true;
+
+    /// <summary>Kinds of objects not drawn or picked (CK: Show/Hide), by <see cref="Group"/>.</summary>
+    public HashSet<string> HiddenGroups { get; } = [];
+
+    /// <summary>Outdoors: only the centre cell's objects (CK: Current Cell Only).</summary>
+    public bool CurrentCellOnly { get; set; }
+    public Mutagen.Bethesda.Plugins.FormKey? CurrentCell { get; set; }
+
+    /// <summary>The Show/Hide group of a base record type.</summary>
+    public static string Group(string signature) => signature switch
+    {
+        "STAT" or "MSTT" or "SCOL" or "TXST" => "Statics",
+        "FURN" => "Furniture",
+        "CONT" => "Containers",
+        "DOOR" => "Doors",
+        "LIGH" => "Lights",
+        "NPC_" or "LVLN" or "ACHR" => "Actors",
+        "ACTI" or "TACT" => "Activators",
+        "FLOR" or "TREE" or "GRAS" => "Flora and trees",
+        "MISC" or "WEAP" or "ARMO" or "AMMO" or "ALCH" or "BOOK" or "INGR" or "KEYM" or "SCRL" or "SLGM" or "LVLI" => "Items",
+        "SOUN" => "Sounds",
+        "HAZD" or "EXPL" or "PROJ" or "ARTO" or "EFSH" => "Effects",
+        "IDLM" => "Idle markers",
+        _ => "Other",
+    };
+
+    public static readonly string[] Groups = ["Statics", "Furniture", "Containers", "Doors", "Lights", "Actors", "Activators", "Flora and trees", "Items", "Sounds", "Effects", "Idle markers", "Other"];
+
+    /// <summary>Whether an object is left out of drawing and picking by the view options.</summary>
+    public bool Hides(SceneObject obj) =>
+        (obj.InitiallyDisabled && !ShowInitiallyDisabled)
+        || (HiddenGroups.Count > 0 && HiddenGroups.Contains(Group(obj.BaseSignature)))
+        || (CurrentCellOnly && CurrentCell is { } cell && obj.Cell != cell);
     public bool Fog { get; set; } = true;
     public bool CellBorders { get; set; }
 
@@ -482,7 +515,7 @@ public sealed unsafe class SceneRenderer : IDisposable
 
         // Point lights: the nearest visible ones to the camera.
         var lights = scene.Objects
-            .Where(o => o.Light is not null && (Options.ShowInitiallyDisabled || !o.InitiallyDisabled) && frustum.Intersects(o.Position, o.Light!.Radius))
+            .Where(o => o.Light is not null && !Options.Hides(o) && frustum.Intersects(o.Position, o.Light!.Radius))
             .OrderBy(o => Vector3.DistanceSquared(o.Position, camera.Position))
             .Take(Shaders.MaxLights)
             .ToList();
@@ -524,7 +557,7 @@ public sealed unsafe class SceneRenderer : IDisposable
                 else _meshes.Get(held.Path);
             }
             if (obj.IsDeleted) continue;
-            if (obj.InitiallyDisabled && !Options.ShowInitiallyDisabled) continue;
+            if (Options.Hides(obj)) continue;
 
             if (obj.Kind is SceneObjectKind.Mesh or SceneObjectKind.Actor && obj.ModelPath is not null && obj.Model is null && !obj.ModelFailed)
             {

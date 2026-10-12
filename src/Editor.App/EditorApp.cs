@@ -443,6 +443,9 @@ internal sealed class EditorApp : IDisposable
             RenderWindow.PendingCameraPose = _options.CameraPose;
             RenderWindow.PendingPick = _options.PickAt;
             if (Environment.GetCommandLineArgs().Contains("--no-markers")) RenderWindow.HideMarkers();
+            // --hide Statics,Lights and --current-cell-only: the Show/Hide options for screenshots.
+            if (Environment.GetCommandLineArgs().SkipWhile(a => a != "--hide").Skip(1).FirstOrDefault() is { } hide) RenderWindow.HideGroups(hide.Split(','));
+            if (Environment.GetCommandLineArgs().Contains("--current-cell-only")) RenderWindow.HideGroups([], currentCellOnly: true);
             var cli = Environment.GetCommandLineArgs();
             var renderIndex = Array.IndexOf(cli, "--render");
             if (renderIndex >= 0 && renderIndex + 1 < cli.Length) RenderWindow.ApplyRenderDebug(cli[renderIndex + 1]);

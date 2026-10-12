@@ -18,7 +18,7 @@ public static class Picking
 
         foreach (var obj in scene.Objects)
         {
-            if (obj.IsDeleted || (obj.InitiallyDisabled && !options.ShowInitiallyDisabled)) continue;
+            if (obj.IsDeleted || options.Hides(obj)) continue;
             if (!RaySphere(origin, direction, obj.BoundsCenter, obj.BoundsRadius, out var sphereDistance)) continue;
             if (best is { } b && sphereDistance > b.Distance) continue;
 

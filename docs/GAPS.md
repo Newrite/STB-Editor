@@ -41,7 +41,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
-| **FaceGen**: экспорт лица NPC (меш + тинт), иначе «тёмное лицо» после правок внешности | CK: Ctrl+F4 | ★★★ | L |
+| **FaceGen**: экспорт лица NPC (меш + тинт), иначе «тёмное лицо» после правок внешности. 0.15.0 / 0.20.0: проверка находит NPC без FaceGen и с устаревшим FaceGen; сам экспорт — нет (нужны запись NIF, морфы TRI, слои тинта; у CK нет экспорта из командной строки) | CK: Ctrl+F4 | ★★★ | L |
 | Лицо: ползунки морфов, части головы, слои тинта с превью | CK: Actor → Character Gen Parts / Face | ★★ | L |
 | Дерево перков (AVIF) графически | CK: Actor Values; xEdit-скрипт PerkTreeUI | ★ | M |
 | Дерево idle-анимаций (IDLE) | CK: Animations | ★ | M |
@@ -58,7 +58,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.8.0 Reference Batch Action: поменять что-то у всех выделенных рефов; замена базы | CK | ★★ | S |
 | Run Havok Sim — «уронить» clutter физикой, а не только F (на землю) | CK: Alt+H | ★★ | M |
 | ✅ 0.9.0 Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |
-| Show/Hide по типам, Current Cell Only, световые и звуковые маркеры, радиус света, коллизия (F4), изометрия | CK: View | ★ | S |
+| ✅ 0.20.0 (Show/Hide по типам, Current Cell Only; радиус света был; коллизия и изометрия — нет) Show/Hide по типам, Current Cell Only, световые и звуковые маркеры, радиус света, коллизия (F4), изометрия | CK: View | ★ | S |
 | Регионы (REGN): области на карте, генерация объектов, травы, погоды и звуков | CK: Region Editor | ★ | L |
 | Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
 | Слои (Layers): группы рефов, скрыть/заморозить слой | CK: Layers | ★ | M |

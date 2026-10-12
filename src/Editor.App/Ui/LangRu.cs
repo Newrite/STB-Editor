@@ -930,6 +930,21 @@ internal static class LangRu
         ["Replace \"{0}\" with \"{1}\""] = "Замена «{0}» на «{1}»",
         ["replaced in {0} record(s)"] = "заменено в записях: {0}",
 
+        // ---- render show and hide
+        ["Show ({0} off)"] = "Показ ({0} скрыто)",
+        ["Show"] = "Показ",
+        ["Kinds of objects shown and picked (CK: Show/Hide)"] = "Какие объекты показываются и выбираются (CK: Show/Hide)",
+        ["Current cell only"] = "Только текущая ячейка",
+        ["Outdoors: only the objects of the cell in the middle of the loaded grid"] = "Снаружи: только объекты ячейки в центре загруженной сетки",
+        ["Show all"] = "Показать всё",
+        ["Statics"] = "Статика",
+        ["Containers"] = "Контейнеры",
+        ["Doors"] = "Двери",
+        ["Lights"] = "Свет",
+        ["Activators"] = "Активаторы",
+        ["Flora and trees"] = "Флора и деревья",
+        ["Idle markers"] = "Маркеры ожидания",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

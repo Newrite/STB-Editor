@@ -89,6 +89,13 @@ internal sealed partial class RenderWindow : Panel
 
     public string? PendingCameraPose { get; set; }
 
+    public void HideGroups(IEnumerable<string> groups, bool currentCellOnly = false)
+    {
+        if (_renderer is null) return;
+        foreach (var group in groups) _renderer.Options.HiddenGroups.Add(group.Trim());
+        if (currentCellOnly) _renderer.Options.CurrentCellOnly = true;
+    }
+
     public void HideMarkers()
     {
         if (_renderer is not null) _renderer.Options.ShowMarkers = false;
@@ -382,6 +389,7 @@ internal sealed partial class RenderWindow : Panel
 
         PollLoading(app);
         PollDoor(app);
+        if (_renderer is not null) _renderer.Options.CurrentCell = CentreCell(app);
         if (_terrainDirty && _loading is null)
         {
             _terrainDirty = false;
@@ -466,6 +474,49 @@ internal sealed partial class RenderWindow : Panel
         DrawDoorQuestion(app);
         DrawOverlay(drawList, origin, size);
         AcceptDrop(app, origin, size);
+    }
+
+    private (Scene Scene, FormKey? Cell)? _centre;
+
+    /// <summary>Outdoors: the cell in the middle of the loaded grid (it moves with the camera).</summary>
+    private FormKey? CentreCell(EditorApp app)
+    {
+        if (_scene is not { IsInterior: false, Worldspace: { } world } scene || app.Session is not { } session) return null;
+        if (_centre is { } c && ReferenceEquals(c.Scene, scene)) return c.Cell;
+        var cell = Builder(session).CellAt(world, scene.CenterCell.X, scene.CenterCell.Y);
+        _centre = (scene, cell);
+        return cell;
+    }
+
+    /// <summary>CK's Show/Hide: kinds of objects, and outdoors the centre cell only.</summary>
+    private void DrawShowHide(RenderOptions options)
+    {
+        ImGui.SameLine();
+        var hidden = options.HiddenGroups.Count + (options.CurrentCellOnly ? 1 : 0);
+        if (hidden > 0) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
+        if (ImGui.Button((hidden > 0 ? TF($"Show ({hidden} off)") : T("Show")) + "###showhide")) ImGui.OpenPopup("##showhidepopup");
+        if (hidden > 0) ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Kinds of objects shown and picked (CK: Show/Hide)"));
+        if (!ImGui.BeginPopup("##showhidepopup")) return;
+        foreach (var group in RenderOptions.Groups)
+        {
+            var on = !options.HiddenGroups.Contains(group);
+            if (ImGui.Checkbox(T(group), ref on))
+            {
+                if (on) options.HiddenGroups.Remove(group);
+                else options.HiddenGroups.Add(group);
+            }
+        }
+        ImGui.Separator();
+        var only = options.CurrentCellOnly;
+        if (ImGui.Checkbox(T("Current cell only"), ref only)) options.CurrentCellOnly = only;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Outdoors: only the objects of the cell in the middle of the loaded grid"));
+        if (ImGui.SmallButton(T("Show all")))
+        {
+            options.HiddenGroups.Clear();
+            options.CurrentCellOnly = false;
+        }
+        ImGui.EndPopup();
     }
 
     private void PollLoading(EditorApp app)
@@ -560,6 +611,7 @@ internal sealed partial class RenderWindow : Panel
         Toggle(T("Wire"), () => options.Wireframe, v => options.Wireframe = v, T("Wireframe (CK: W)"));
         Toggle(T("Markers"), () => options.ShowMarkers, v => options.ShowMarkers = v, T("Editor markers, model-less lights, actors (CK: M)"));
         Toggle(T("Disabled"), () => options.ShowInitiallyDisabled, v => options.ShowInitiallyDisabled = v, T("Initially disabled references (tinted purple)"));
+        DrawShowHide(options);
         Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
         Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);

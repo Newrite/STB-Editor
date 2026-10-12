@@ -313,6 +313,7 @@ internal sealed class EditorApp : IDisposable
         RunVertexColorAutotest();
         RunPaletteAutotest();
         RunLayersAutotest();
+        RunStoryManagerAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -366,6 +367,7 @@ internal sealed class EditorApp : IDisposable
         LeveledMergeWindow.Draw(this);
         PaletteWindow.Draw(this);
         LayersWindow.Draw(this);
+        StoryManagerWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -538,6 +540,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.LeveledMergeWindow LeveledMergeWindow { get; } = new();
     public Panels.PaletteWindow PaletteWindow { get; } = new();
     public Panels.LayersWindow LayersWindow { get; } = new();
+    public Panels.StoryManagerWindow StoryManagerWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -579,6 +582,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1755,6 +1759,32 @@ internal sealed class EditorApp : IDisposable
         }
     }
 
+    private int _smStage, _smFrames;
+
+    /// <summary>--autotest-storymanager [filter]: the Story Manager tree built and shown (filtered); its size logged.</summary>
+    private void RunStoryManagerAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-storymanager");
+        if (arg < 0 || Session is null || Loader is not null || _smStage == 9) return;
+        switch (_smStage)
+        {
+            case 0:
+            {
+                StoryManagerWindow.Show(this);
+                static int Count(IEnumerable<StbEditor.Core.StoryNode> nodes) => nodes.Sum(n => 1 + Count(n.Children));
+                var tree = StoryManagerWindow.Tree ?? [];
+                Log.Info($"autotest-storymanager: {tree.Count} root(s), {Count(tree)} node(s), {tree.Sum(Quests)} quest slot(s); events: {string.Join(", ", tree.Where(r => r.Signature == "SMEN").Take(8).Select(r => $"{r.EditorId}[{r.Detail}]:{r.Children.Count}"))}");
+                static int Quests(StbEditor.Core.StoryNode n) => n.Quests.Count + n.Children.Sum(Quests);
+                _smStage = 1;
+                break;
+            }
+            case 1 when ++_smFrames > 15:
+                _smStage = 9;
+                break;
+        }
+    }
+
     private int _condStage, _condFrames;
     private FormKey _condPerk, _condOther;
 
@@ -2834,6 +2864,7 @@ internal sealed class EditorApp : IDisposable
             ImGui.Separator();
             if (ImGui.MenuItem(T("Object palette..."), (string?)null, false, ready)) PaletteWindow.Show();
             if (ImGui.MenuItem(T("Layers..."), (string?)null, false, ready)) LayersWindow.Show();
+            if (ImGui.MenuItem(T("Story Manager..."), (string?)null, false, ready)) StoryManagerWindow.Show(this);
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

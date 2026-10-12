@@ -1292,6 +1292,16 @@ internal static class LangRu
         ["Select its references that are loaded"] = "Выбрать его загруженные рефы",
         ["No layers yet: select objects in the Render Window, name a layer and create it."] = "Слоёв пока нет: выбери объекты в окне рендера, назови слой и создай его.",
 
+        // ---- Story Manager
+        ["Story Manager..."] = "Story Manager...",
+        ["Story Manager"] = "Story Manager",
+        ["Filter: node or quest"] = "Фильтр: узел или квест",
+        ["Nodes under an event in the order the game tries them; a click opens the form."] = "Узлы под событием — в том порядке, в каком их перебирает игра; щелчок открывает форму.",
+        ["event"] = "событие",
+        ["branch"] = "ветка",
+        ["quests"] = "квесты",
+        ["  {0} condition(s)"] = "  условий: {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

@@ -17,6 +17,38 @@ public enum RecordPlace
 
     /// <summary>A dialogue line (INFO) under its topic; the draft's <c>Cell</c> is the topic (DIAL).</summary>
     DialogInfo,
+
+    /// <summary>
+    /// The header of a cell or worldspace (lighting, water, owner, flags…, without its references): the
+    /// draft's <c>Cell</c> is the cell and <c>World</c> its worldspace (null for interiors and worldspaces).
+    /// </summary>
+    Header,
+}
+
+/// <summary>Copies of cells and worldspaces without their contents (references, navmeshes, land, sub-cells).</summary>
+public static class HeaderCopies
+{
+    public static readonly Mutagen.Bethesda.Skyrim.Cell.TranslationMask Cell = new(defaultOn: true)
+    {
+        Persistent = false,
+        Temporary = false,
+        Landscape = false,
+        NavigationMeshes = false,
+    };
+
+    public static readonly Mutagen.Bethesda.Skyrim.Worldspace.TranslationMask World = new(defaultOn: true)
+    {
+        TopCell = false,
+        SubCells = false,
+    };
+
+    /// <summary>A header-only copy of a cell or worldspace; null for other records.</summary>
+    public static IMajorRecord? Of(IMajorRecordGetter record) => record switch
+    {
+        Mutagen.Bethesda.Skyrim.ICellGetter cell => cell.DeepCopy(Cell),
+        Mutagen.Bethesda.Skyrim.IWorldspaceGetter world => world.DeepCopy(World),
+        _ => null,
+    };
 }
 
 /// <summary>
@@ -110,8 +142,12 @@ public static class OverrideEditing
     /// A working copy to edit: the current edit, else a fresh copy of <paramref name="winning"/>.
     /// Changes become a step with <see cref="CommitEdit"/>.
     /// </summary>
-    public static IMajorRecord WorkingCopy(this EditDocument document, FormKey key, IMajorRecordGetter winning) =>
-        (IMajorRecord)(document.Override(key)?.Record ?? winning).DeepCopy();
+    public static IMajorRecord WorkingCopy(this EditDocument document, FormKey key, IMajorRecordGetter winning)
+    {
+        var source = document.Override(key)?.Record ?? winning;
+        // Cells and worldspaces: their header only (a copy with every reference would be huge and is never edited here).
+        return HeaderCopies.Of(source) ?? (IMajorRecord)source.DeepCopy();
+    }
 
     /// <summary>Several edited copies (a batch change of selected references) as one undoable step.</summary>
     public static void CommitEdits(this EditDocument document, string name, IReadOnlyList<(IMajorRecord Edited, RecordPlace Place, RefContext? Reference)> edits)

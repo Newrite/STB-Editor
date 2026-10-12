@@ -42,7 +42,7 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
         {
             Title = cell?.EditorID ?? workspace.FormIdText(cellKey),
             IsInterior = true,
-            Lighting = InteriorLighting(cell),
+            Lighting = InteriorLighting(HeaderOf(cellKey) ?? cell),
         };
 
         var interiorVersions = CellVersions(cellKey);
@@ -418,6 +418,14 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
     private T? Resolve<T>(FormKey key) where T : class, IMajorRecordGetter => _lookup.Resolve<T>(key);
 
     // ---------------------------------------------------------------- lighting
+
+    /// <summary>An edited cell header (lighting, water…), if there is one.</summary>
+    private ICellGetter? HeaderOf(FormKey cellKey) =>
+        Document?.Draft(cellKey) is Core.OverrideDraft { Place: Core.RecordPlace.Header, Record: ICellGetter header } ? header : null;
+
+    /// <summary>The interior's lighting as it is now (its edited header, else the plugins' cell).</summary>
+    public SceneLighting InteriorLightingOf(FormKey cellKey) =>
+        InteriorLighting(HeaderOf(cellKey) ?? (Document?.Draft(cellKey) is Core.CellDraft draft ? draft.Cell : Resolve<ICellGetter>(cellKey)));
 
     private SceneLighting InteriorLighting(ICellGetter? cell)
     {

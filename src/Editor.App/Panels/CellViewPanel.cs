@@ -256,7 +256,14 @@ internal sealed class CellViewPanel : Panel
                     app.Select(cell.FormKey);
                     if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !placement.IsPersistentCell) app.RenderWindow.OpenCell(app, cell.FormKey);
                 }
-                if (ImGui.IsItemHovered() && !placement.IsPersistentCell) ImGui.SetTooltip(T("Double-click to load in the Render Window"));
+                if (ImGui.IsItemHovered() && !placement.IsPersistentCell) ImGui.SetTooltip(T("Double-click to load in the Render Window; right-click: properties"));
+                if (!placement.IsPersistentCell && ImGui.BeginPopupContextItem("##cellmenu"))
+                {
+                    if (ImGui.MenuItem(T("Cell properties..."))) app.PlaceProperties.Open(cell.FormKey);
+                    if (!placement.IsInterior && placement.Worldspace is { } world && ImGui.MenuItem(T("Worldspace properties..."))) app.PlaceProperties.Open(world);
+                    if (ImGui.MenuItem(T("Load in the Render Window"))) app.RenderWindow.OpenCell(app, cell.FormKey);
+                    ImGui.EndPopup();
+                }
                 ImGui.PopID();
 
                 ImGui.TableNextColumn();

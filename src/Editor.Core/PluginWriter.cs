@@ -257,6 +257,42 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 touched.Add(key);
             }
 
+            // Cell and worldspace headers (lighting, water, owner…): onto the plugin's copy, contents kept.
+            foreach (var edit in document.Drafts.Values.OfType<OverrideDraft>().Where(d => d.Place == RecordPlace.Header))
+            {
+                switch (edit.Record)
+                {
+                    case Cell header:
+                    {
+                        var interior = edit.World is null;
+                        var target = new CellTarget(edit.Key, edit.World, false, interior);
+                        var cell = interior ? InteriorCell(mod, edit.Key) : ExteriorCell(mod, target);
+                        if (cell is null)
+                        {
+                            warnings.Add($"{edit.EditorId}: cell not found, its properties skipped");
+                            continue;
+                        }
+                        cell.DeepCopyIn(header, HeaderCopies.Cell);
+                        break;
+                    }
+                    case Worldspace header:
+                    {
+                        if (WorldFor(mod, edit.Key) is not { } world)
+                        {
+                            warnings.Add($"{edit.EditorId}: worldspace not found, its properties skipped");
+                            continue;
+                        }
+                        world.DeepCopyIn(header, HeaderCopies.World);
+                        break;
+                    }
+                    default:
+                        warnings.Add($"{edit.EditorId}: not a cell or worldspace, skipped");
+                        continue;
+                }
+                touched.Add(edit.Key);
+                overridden++;
+            }
+
             touched.UnionWith(_autoCells.Values);
             mod.ModHeader.Stats.NextFormID = active.NextObjectId;
             mod.ModHeader.Stats.Version = active.HeaderVersion;

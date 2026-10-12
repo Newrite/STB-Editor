@@ -388,6 +388,8 @@ internal sealed partial class RenderWindow : Panel
             RefreshTerrain(app);
             RefreshNavmeshes(app);
             SyncReferenceBases(app);
+            // An edited interior lighting shows at once.
+            if (_scene is { IsInterior: true } scene && _cell is { } cellKey && app.Session is { } lit) scene.Lighting = Builder(lit).InteriorLightingOf(cellKey);
         }
         StreamExterior(app);
         TrimCaches(app);

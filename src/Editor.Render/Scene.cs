@@ -197,7 +197,8 @@ public sealed class Scene
     public List<TerrainCell> Terrain { get; } = [];
     public List<WaterPlane> Water { get; } = [];
     public List<NavmeshView> Navmeshes { get; } = [];
-    public required SceneLighting Lighting { get; init; }
+    /// <summary>Set again when the cell's lighting is edited.</summary>
+    public required SceneLighting Lighting { get; set; }
     public List<string> Warnings { get; } = [];
 
     /// <summary>Where to put the camera first.</summary>

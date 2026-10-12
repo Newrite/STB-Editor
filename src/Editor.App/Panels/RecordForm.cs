@@ -146,6 +146,7 @@ internal sealed class RecordForm
             {
                 if (!Tab(T(tab.Title) + "###" + tab.Title)) continue;
                 if (!editable) ImGui.TextColored(Theme.TextDim, T("Cells, worldspaces, dialogue and navmesh have their own tools"));
+                if (!editable && catalog?.Signature is "CELL" or "WRLD" && ImGui.SmallButton(T("Properties...") + "##place")) app.PlaceProperties.Open(key);
                 Body(() => FormView.DrawTab(app, current, tab, target));
             }
 

@@ -44,6 +44,9 @@ internal sealed class EditorApp : IDisposable
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
         || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy;
 
+    /// <summary>Cell and worldspace property windows.</summary>
+    public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
+
     /// <summary>Papyrus source windows (Scripts tab: Source / New script).</summary>
     public Panels.ScriptSourceWindows ScriptSources { get; } = new();
 
@@ -299,6 +302,7 @@ internal sealed class EditorApp : IDisposable
         RunQuestAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
+        RunCellPropsAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -339,6 +343,7 @@ internal sealed class EditorApp : IDisposable
         Compare.Draw(this);
         UseInfo.Draw(this);
         ScriptSources.Draw(this);
+        PlaceProperties.Draw(this);
         Spreadsheets.Draw(this);
         NewForm.Draw();
         _newRecordDialog.Draw();
@@ -515,7 +520,70 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9);
+
+    private int _cellPropsStage, _cellPropsFrames;
+    private FormKey _cellPropsCell, _cellPropsWorld;
+    private System.Numerics.Vector3 _cellPropsAmbient;
+
+    /// <summary>
+    /// --autotest-cellprops &lt;dir&gt; (with --cell of an interior): a new plugin in &lt;dir&gt; is the active file; the cell's
+    /// properties window; ambient light, music, owner, a flag and the name changed (the view's light follows), Tamriel's
+    /// climate changed; save, reload: the plugin has both as headers only (no references), with the new values.
+    /// </summary>
+    private void RunCellPropsAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-cellprops");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _cellPropsStage == 9) return;
+        var path = Path.Combine(cli[arg + 1], "STBEditorCellPropsAutotest.esp");
+        switch (_cellPropsStage)
+        {
+            case 0 when RenderWindow.IsSettled && RenderWindow.Scene is { IsInterior: true } scene:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(path, false, false, session.Game, session.Workspace.DefaultEncoding));
+                _cellPropsCell = session.Catalog.BySignature["CELL"].First(c => c.EditorId == scene.Title).FormKey;
+                _cellPropsWorld = session.Catalog.BySignature["WRLD"].First(w => w.EditorId == "Tamriel").FormKey;
+                _cellPropsAmbient = scene.Lighting.Ambient;
+                PlaceProperties.Open(_cellPropsCell);
+                var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+                var cell = lookup.CellVersions(_cellPropsCell).Last();
+                var target = Panels.PlacePropertiesWindows.TargetFor(this, _cellPropsCell, cell);
+                var music = session.Catalog.BySignature["MUSC"].First().FormKey;
+                var faction = session.Catalog.BySignature["FACT"].First(f => f.EditorId == "PlayerFaction").FormKey;
+                target.Apply("ambient", r => { var c = (Mutagen.Bethesda.Skyrim.Cell)r; c.Lighting ??= new Mutagen.Bethesda.Skyrim.CellLighting(); c.Lighting.AmbientColor = System.Drawing.Color.FromArgb(255, 200, 40, 40); });
+                target.Apply("music", r => StbEditor.Core.RecordFields.Set(r, ["Music"], music));
+                target.Apply("owner", r => StbEditor.Core.RecordFields.Set(r, ["Owner"], faction));
+                target.Apply("flag", r => ((Mutagen.Bethesda.Skyrim.Cell)r).Flags |= Mutagen.Bethesda.Skyrim.Cell.Flag.PublicArea);
+                target.Apply("name", r => StbEditor.Core.RecordFields.Set(r, ["Name"], "STB cell props test"));
+                var world = lookup.Resolve<Mutagen.Bethesda.Skyrim.IWorldspaceGetter>(_cellPropsWorld)!;
+                var climate = session.Catalog.BySignature["CLMT"].First(c => c.FormKey != world.Climate.FormKeyNullable).FormKey;
+                Panels.PlacePropertiesWindows.TargetFor(this, _cellPropsWorld, world).Apply("climate", r => StbEditor.Core.RecordFields.Set(r, ["Climate"], climate));
+                Log.Info($"autotest-cellprops: {scene.Title}: pending {Document.PendingCount}; header copy refs {((Mutagen.Bethesda.Skyrim.ICellGetter)StbEditor.Core.OverrideEditing.Override(Document, _cellPropsCell)!.Record).Temporary.Count}");
+                _cellPropsStage = 1;
+                break;
+            }
+            case 1 when ++_cellPropsFrames > 5:
+                Log.Info($"autotest-cellprops: view ambient {_cellPropsAmbient} -> {RenderWindow.Scene?.Lighting.Ambient}");
+                Save();
+                _cellPropsStage = 2;
+                break;
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0 && Loader is null && RenderWindow.IsSettled:
+            {
+                using (var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(path, session.Game.Release))
+                {
+                    var cell = check.Cells.Records.SelectMany(b => b.SubBlocks).SelectMany(sb => sb.Cells).FirstOrDefault(c => c.FormKey == _cellPropsCell);
+                    Log.Info(cell is null ? "autotest-cellprops: cell missing!" : $"autotest-cellprops: file cell '{cell.Name?.String}' flags {cell.Flags} ambient {cell.Lighting?.AmbientColor} music {cell.Music.FormKeyNullable} owner {cell.Owner.FormKeyNullable}; refs {cell.Temporary.Count}+{cell.Persistent.Count}");
+                    var world = check.Worldspaces.FirstOrDefault(w => w.FormKey == _cellPropsWorld);
+                    Log.Info(world is null ? "autotest-cellprops: world missing!" : $"autotest-cellprops: file world {world.EditorID} climate {world.Climate.FormKeyNullable}; sub-cell blocks {world.SubCells.Count}, persistent cell {(world.TopCell is null ? "none" : "present")}");
+                }
+                Log.Info($"autotest-cellprops: reloaded view ambient {RenderWindow.Scene?.Lighting.Ambient}");
+                _cellPropsStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _dialStage, _dialFrames;
     private FormKey _dialQuest, _dialTopic, _dialNewTopic, _dialNewLine;

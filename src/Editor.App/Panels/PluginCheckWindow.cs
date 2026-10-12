@@ -105,7 +105,19 @@ internal sealed class PluginCheckWindow
         var errors = result.Issues.Where(i => i.Error).ToList();
         var warnings = result.Issues.Where(i => !i.Error).ToList();
         if (ImGui.BeginTabItem(TF($"Errors ({errors.Count})###errors"))) { DrawIssues(app, session, errors); ImGui.EndTabItem(); }
-        if (ImGui.BeginTabItem(TF($"Warnings ({warnings.Count})###warnings"))) { DrawIssues(app, session, warnings); ImGui.EndTabItem(); }
+        if (ImGui.BeginTabItem(TF($"Warnings ({warnings.Count})###warnings")))
+        {
+            var tints = warnings.Where(w => w.Fix == "BodyTint").ToList();
+            if (tints.Count > 0)
+            {
+                ImGui.BeginDisabled(!isActive);
+                if (ImGui.Button(TF($"Update {tints.Count} body tint(s)"))) FixBodyTints(app, session, tints);
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(T("Body tint from the skin tone, as the CK's Update NPC Body Tint Colors (one undo step)"));
+            }
+            DrawIssues(app, session, warnings);
+            ImGui.EndTabItem();
+        }
         if (ImGui.BeginTabItem(TF($"ITM ({result.Clean.Itm.Count})###itm")))
         {
             ImGui.TextColored(Theme.TextDim, TF($"Overrides identical to the master's version ({result.Clean.Compared:N0} compared). Cells, worldspaces and topics stay (they hold other records)."));
@@ -126,6 +138,24 @@ internal sealed class PluginCheckWindow
             ImGui.EndTabItem();
         }
         ImGui.EndTabBar();
+    }
+
+    /// <summary>The NPCs' body tint set from their skin tone (CK: Update NPC Body Tint Colors), one undo step; returns how many.</summary>
+    public static int FixBodyTints(EditorApp app, EditorSession session, IReadOnlyList<CheckIssue> issues)
+    {
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        var edits = new TextEdits(app, T("Update NPC body tints"));
+        foreach (var issue in issues.Where(i => i.Fix == "BodyTint"))
+            edits.Edit(issue.Key, null, copy =>
+            {
+                if (copy is not Mutagen.Bethesda.Skyrim.Npc npc || lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(npc.Race.FormKey) is not { } race
+                    || BodyTint.Expected(npc, race) is not { } color) return false;
+                npc.TextureLighting = color;
+                return true;
+            });
+        edits.Commit();
+        Log.Info($"body tints updated: {edits.Records}");
+        return edits.Records;
     }
 
     private static void DrawIssues(EditorApp app, EditorSession session, List<CheckIssue> issues) =>

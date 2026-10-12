@@ -2,6 +2,13 @@
 
 Each `## <version>` section is the release description on GitHub (see `docs/DEVELOPING.md`, «Релиз»).
 
+## 0.31.0
+
+- **Тинт тела NPC** (CK: Update NPC Body Tint Colors): «Проверка и очистка» предупреждает о NPC, у которых цвет тела
+  (QNAM) не совпадает с тоном кожи лица — это шов на шее; кнопка «Обновить тинт тела» исправляет их в активном файле
+  одним шагом отмены. Формула CK (серый, смешанный с цветом слоя «тон кожи» по его интерполяции) выведена из данных и
+  совпадает у всех 2168 NPC Skyrim.esm и 213 Dawnguard.esm; в STB.esp таких NPC два (`tintprobe`).
+
 ## 0.30.0
 
 - **Слить левел-листы** (Файл; xEdit: Create Merged Patch / Wrye Bash, Mator Smash): находит предметные, NPC- и

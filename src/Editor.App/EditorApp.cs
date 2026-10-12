@@ -308,6 +308,7 @@ internal sealed class EditorApp : IDisposable
         RunNavSplitAutotest();
         RunCompareFileAutotest();
         RunLevelMergeAutotest();
+        RunBodyTintAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -565,6 +566,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navsplit") || _navSplitStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-comparefile") || _compareFileStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-levelmerge") || _mergeStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-bodytint") || _tintStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1541,6 +1543,43 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_mergeFrames > 15:
                 _mergeStage = 9;
+                break;
+        }
+    }
+
+    private int _tintStage, _tintFrames;
+
+    /// <summary>
+    /// --autotest-bodytint &lt;dir&gt; [NPC EditorID]: a scratch active file in &lt;dir&gt;; the NPC's body tint warning (default
+    /// aaMZa_Imp_Fire of STB.esp) fixed through the check window's fix; the override's tint logged; undone. Nothing saved.
+    /// </summary>
+    private void RunBodyTintAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-bodytint");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _tintStage == 9) return;
+        switch (_tintStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorTintAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var name = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "aaMZa_Imp_Fire";
+                var record = session.Catalog.BySignature["NPC_"].First(r => string.Equals(r.EditorId, name, StringComparison.OrdinalIgnoreCase));
+                var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+                var npc = lookup.Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(record.FormKey)!;
+                var race = lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(npc.Race.FormKey)!;
+                var stale = StbEditor.Core.BodyTint.Stale(npc, race, out var wanted);
+                Log.Info($"autotest-bodytint: {name}: tint {npc.TextureLighting}, expected {wanted}, stale {stale}");
+                var fixedCount = Panels.PluginCheckWindow.FixBodyTints(this, session, [new StbEditor.Core.CheckIssue(false, record.FormKey, "NPC_", name, "", "BodyTint")]);
+                var edited = StbEditor.Core.OverrideEditing.Override(Document, record.FormKey)?.Record as Mutagen.Bethesda.Skyrim.INpcGetter;
+                Log.Info($"autotest-bodytint: fixed {fixedCount}; override tint {edited?.TextureLighting}; stale now {(edited is null ? "-" : StbEditor.Core.BodyTint.Stale(edited, race, out _).ToString())}; pending {Document.PendingCount}");
+                Document.Undo();
+                Log.Info($"autotest-bodytint: undone: pending {Document.PendingCount}");
+                _tintStage = 1;
+                break;
+            }
+            case 1 when ++_tintFrames > 10:
+                _tintStage = 9;
                 break;
         }
     }

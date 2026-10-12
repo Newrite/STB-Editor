@@ -14,7 +14,8 @@ public readonly record struct ItmRecord(FormKey Key, string Signature, string? E
 public readonly record struct DeletedReference(FormKey Key, string Signature, FormKey Cell, bool Override, bool Persistent);
 
 /// <summary>A problem Check for Errors found: what, where, how bad.</summary>
-public readonly record struct CheckIssue(bool Error, FormKey Key, string Signature, string? EditorId, string Message);
+/// <param name="Fix">A fix the check window offers for this kind of issue ("BodyTint"), or null.</param>
+public readonly record struct CheckIssue(bool Error, FormKey Key, string Signature, string? EditorId, string Message, string? Fix = null);
 
 public sealed class CleanReport
 {
@@ -164,6 +165,13 @@ public static class PluginChecks
                 && lookup.Resolve<IRaceGetter>(npc.Race.FormKey) is { } race && race.Flags.HasFlag(Race.Flag.FaceGenHead)
                 && !assetExists($@"meshes\actors\character\facegendata\facegeom\{npc.FormKey.ModKey.FileName}\{npc.FormKey.ID:X8}.nif"))
                 issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, "no FaceGen head (meshes\\actors\\character\\facegendata): dark face in game"));
+
+            // The body's tint must follow the skin tone, or the neck shows a seam.
+            if (record is INpcGetter tinted && tinted.TintLayers.Count > 0
+                && !(tinted.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Traits) && !tinted.Template.IsNull)
+                && lookup.Resolve<IRaceGetter>(tinted.Race.FormKey) is { } tintRace && BodyTint.Stale(tinted, tintRace, out var wanted))
+                issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId,
+                    $"body tint {(tinted.TextureLighting is { } q ? $"{q.R},{q.G},{q.B}" : "none")} is not the skin tone's ({wanted.R},{wanted.G},{wanted.B}): a seam at the neck (CK: Update NPC Body Tint Colors)", "BodyTint"));
 
             // Another plugin's NPC whose looks this plugin changes needs the head re-exported with this plugin.
             if (record is INpcGetter changed && changed.FormKey.ModKey != plugin.ModKey && assetOrigin is not null

@@ -2014,6 +2014,36 @@ switch (command)
                 Console.WriteLine($"  {d.Kind} {d.Signature} {d.EditorId} {d.Key}{(d.Fields.Count > 0 ? ": " + string.Join(", ", d.Fields) : "")}");
         break;
     }
+    case "tintprobe":
+    {
+        // tintprobe <game> [plugin]: how the CK's body tint (QNAM, texture lighting) relates to the NPC's skin tone tint layer.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var plugin = args.Length > 2 ? args[2] : "Skyrim.esm";
+        var stats = new Dictionary<string, int>();
+        var samples = new List<string>();
+        foreach (var r in catalog.BySignature["NPC_"].Where(r => r.Plugins.Any(p => p.Name == plugin)))
+        {
+            var npc = ws.LinkCache.ResolveAllSimpleContexts<Mutagen.Bethesda.Skyrim.INpcGetter>(r.FormKey).FirstOrDefault(c => c.ModKey.FileName == plugin)?.Record;
+            if (npc is null || npc.TintLayers.Count == 0 || npc.TextureLighting is not { } light) continue;
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(npc.Race.FormKey) is not { } race) continue;
+            var female = npc.Configuration.Flags.HasFlag(Mutagen.Bethesda.Skyrim.NpcConfiguration.Flag.Female);
+            var head = female ? race.HeadData?.Female : race.HeadData?.Male;
+            var skin = head?.TintMasks.FirstOrDefault(t => t.MaskType == Mutagen.Bethesda.Skyrim.TintAssets.TintMaskType.SkinTone);
+            var layer = skin is null ? null : npc.TintLayers.FirstOrDefault(l => l.Index == skin.Index);
+            if (layer?.Color is not { } c) { stats["no skin layer"] = stats.GetValueOrDefault("no skin layer") + 1; continue; }
+            var i = layer.InterpolationValue ?? 1f;
+            bool Near(System.Drawing.Color a, double r2, double g2, double b2) => Math.Abs(a.R - r2) <= 1 && Math.Abs(a.G - g2) <= 1 && Math.Abs(a.B - b2) <= 1;
+            double Mix(byte v) => Math.Floor(127.5 + (v - 127.5) * i);
+            var kind = Near(light, Mix(c.R), Mix(c.G), Mix(c.B)) ? "= grey mixed with the skin tone by interpolation" : "other";
+            stats[kind] = stats.GetValueOrDefault(kind) + 1;
+            if (kind == "other" && samples.Count < 5) samples.Add($"{npc.EditorID}: light {light.R},{light.G},{light.B} skin {c.R},{c.G},{c.B} a{c.A} i {i}");
+        }
+        Console.WriteLine(string.Join(", ", stats.Select(kv => $"{kv.Key} {kv.Value}")));
+        foreach (var s in samples) Console.WriteLine("  " + s);
+        break;
+    }
     case "mergeshow":
     {
         // mergeshow <game> <leveled item EditorID>: every version's entries and the merged ones.

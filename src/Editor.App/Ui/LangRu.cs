@@ -1237,6 +1237,11 @@ internal static class LangRu
         ["No leveled list needs merging."] = "Ни один левел-лист не нуждается в слиянии.",
         ["Merge adds / removes against the winner"] = "Слияние добавляет / убирает относительно победителя",
 
+        // ---- Body tint
+        ["Update {0} body tint(s)"] = "Обновить тинт тела: {0}",
+        ["Body tint from the skin tone, as the CK's Update NPC Body Tint Colors (one undo step)"] = "Тинт тела по тону кожи, как Update NPC Body Tint Colors в CK (один шаг отмены)",
+        ["Update NPC body tints"] = "Обновить тинт тела NPC",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

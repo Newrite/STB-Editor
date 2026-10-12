@@ -1222,6 +1222,21 @@ internal static class LangRu
         // ---- Compare with another file 2
         ["changed record"] = "изменена",
 
+        // ---- Merge leveled lists
+        ["Merge leveled lists..."] = "Слить левел-листы...",
+        ["Merged lists go into the active file — choose it first."] = "Слитые списки пишутся в активный файл — сначала выбери его.",
+        ["{0} loads before some of these plugins: move it to the end of the load order first."] = "{0} загружается раньше некоторых из этих плагинов: сначала перенеси его в конец порядка загрузки.",
+        ["Merge {0} leveled list(s)"] = "Слить левел-листы: {0}",
+        ["{0} merged list(s) put into {1} — save to keep them."] = "Слитых списков: {0} в {1} — сохрани, чтобы они остались.",
+        ["Search failed: {0}"] = "Поиск не удался: {0}",
+        ["Merge leveled lists"] = "Слить левел-листы",
+        ["When several plugins change one leveled list, only the last one counts in the game. Merging keeps each plugin's change, item by item: for every item the entries of the last plugin that changed it win. Check the additions and removals: a plugin may have left something out on purpose."] = "Когда один левел-лист меняют несколько плагинов, в игре действует только последний. Слияние сохраняет изменения каждого, предмет за предметом: для каждого предмета побеждают записи последнего плагина, который его менял. Проверь добавления и удаления: плагин мог убрать что-то намеренно.",
+        ["Find lists to merge"] = "Найти списки для слияния",
+        ["Put {0} into {1}"] = "Записать {0} в {1}",
+        ["Put into the active file"] = "Записать в активный файл",
+        ["No leveled list needs merging."] = "Ни один левел-лист не нуждается в слиянии.",
+        ["Merge adds / removes against the winner"] = "Слияние добавляет / убирает относительно победителя",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

@@ -307,6 +307,7 @@ internal sealed class EditorApp : IDisposable
         RunTextsAutotest();
         RunNavSplitAutotest();
         RunCompareFileAutotest();
+        RunLevelMergeAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -357,6 +358,7 @@ internal sealed class EditorApp : IDisposable
         Compact.Draw(this);
         Texts.Draw(this);
         CompareFile.Draw(this);
+        LeveledMergeWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -526,6 +528,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.CompactWindow Compact { get; } = new();
     public Panels.TextsWindow Texts { get; } = new();
     public Panels.CompareFileWindow CompareFile { get; } = new();
+    public Panels.LeveledMergeWindow LeveledMergeWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -561,6 +564,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-texts") || _textsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navsplit") || _navSplitStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-comparefile") || _compareFileStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-levelmerge") || _mergeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1499,6 +1503,44 @@ internal sealed class EditorApp : IDisposable
                 break;
             case 2 when ++_compareFileFrames > 15:
                 _compareFileStage = 9;
+                break;
+        }
+    }
+
+    private int _mergeStage, _mergeFrames;
+
+    /// <summary>
+    /// --autotest-levelmerge &lt;dir&gt;: a scratch active file in &lt;dir&gt;; the leveled lists to merge are found and put into it
+    /// (one undo step); undone and redone; the window stays open for the screenshot. Nothing is saved.
+    /// </summary>
+    private void RunLevelMergeAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-levelmerge");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _mergeStage == 9) return;
+        switch (_mergeStage)
+        {
+            case 0:
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorMergeAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                LeveledMergeWindow.Show();
+                LeveledMergeWindow.Start(this);
+                _mergeStage = 1;
+                break;
+            case 1 when !LeveledMergeWindow.IsBusy && ++_mergeFrames > 2:
+            {
+                var found = LeveledMergeWindow.Result?.Count ?? -1;
+                var put = LeveledMergeWindow.Apply(this);
+                Log.Info($"autotest-levelmerge: {found} list(s) found, {put} put into the active file; pending {Document.PendingCount}, undo '{Document.History.UndoName}'");
+                Document.Undo();
+                Log.Info($"autotest-levelmerge: undone: pending {Document.PendingCount}");
+                Document.Redo();
+                Log.Info($"autotest-levelmerge: redone: pending {Document.PendingCount}");
+                _mergeStage = 2;
+                _mergeFrames = 0;
+                break;
+            }
+            case 2 when ++_mergeFrames > 15:
+                _mergeStage = 9;
                 break;
         }
     }
@@ -2543,6 +2585,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
             if (ImGui.MenuItem(T("Texts for translation..."), (string?)null, false, Session is not null)) Texts.Show(this);
             if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
+            if (ImGui.MenuItem(T("Merge leveled lists..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));

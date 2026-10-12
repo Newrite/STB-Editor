@@ -2014,6 +2014,60 @@ switch (command)
                 Console.WriteLine($"  {d.Kind} {d.Signature} {d.EditorId} {d.Key}{(d.Fields.Count > 0 ? ": " + string.Join(", ", d.Fields) : "")}");
         break;
     }
+    case "mergeshow":
+    {
+        // mergeshow <game> <leveled item EditorID>: every version's entries and the merged ones.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var rec = catalog.BySignature["LVLI"].First(r => string.Equals(r.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var versions = ws.LinkCache.ResolveAllSimpleContexts<Mutagen.Bethesda.Skyrim.ILeveledItemGetter>(rec.FormKey).Reverse().ToList();
+        string Text(Mutagen.Bethesda.Skyrim.ILeveledItemGetter l) => string.Join(" ", (l.Entries ?? []).Select(e => $"{catalog.Get(e.Data!.Reference.FormKey)?.EditorId ?? e.Data.Reference.FormKey.ToString()}@{e.Data.Level}x{e.Data.Count}").OrderBy(x => x));
+        foreach (var v in versions) Console.WriteLine($"{v.ModKey}: {Text(v.Record)}\n");
+        if (StbEditor.Core.LeveledMerge.Merge(versions.Select(v => (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter)v.Record).ToList()) is Mutagen.Bethesda.Skyrim.ILeveledItemGetter merged)
+            Console.WriteLine($"merged: {Text(merged)}");
+        break;
+    }
+    case "mergetest":
+    {
+        // mergetest <game> [patch plugin | -] [out folder]: leveled lists changed by two or more plugins merged over the whole load order
+        // (the patch plugin, when given, left out as if regenerated); every merged list keeps each plugin's additions
+        // against the original and reads back after writing.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var clock = Stopwatch.StartNew();
+        var lists = new[] { "LVLI", "LVLN", "LVSP" }.SelectMany(s => catalog.BySignature.GetValueOrDefault(s) ?? []).ToList();
+        var skip = args.Length > 2 && args[2] != "-" ? new HashSet<Mutagen.Bethesda.Plugins.ModKey> { Mutagen.Bethesda.Plugins.ModKey.FromFileName(args[2]) } : null;
+        var results = StbEditor.Core.LeveledMerge.Plan(ws, lists.Select(l => l.FormKey), k => catalog.Get(k)!.Signature, skip);
+        Console.WriteLine($"{lists.Count} leveled lists, {results.Count} to merge in {clock.Elapsed.TotalSeconds:0.0} s: " + string.Join(", ", results.GroupBy(r => r.Signature).Select(g => $"{g.Key} {g.Count()}"))
+            + $"; entries added {results.Sum(r => r.Added)}, removed {results.Sum(r => r.Removed)}");
+        foreach (var r in results.OrderByDescending(r => r.Added).Take(6))
+            Console.WriteLine($"  {r.Signature} {r.EditorId}: +{r.Added} -{r.Removed} from {string.Join(" > ", r.Plugins)}: "
+                + string.Join(", ", r.AddedEntries.Take(4).Select(a => $"+{catalog.Get(a.Item)?.EditorId}@{a.Level}x{a.Count}").Concat(r.RemovedEntries.Take(4).Select(a => $"-{catalog.Get(a.Item)?.EditorId}@{a.Level}x{a.Count}"))));
+        var failures = 0;
+        foreach (var r in results.Take(300))
+            if (StbEditor.Core.RecordRoundTrip.Read(r.Merged, game.Release, System.Text.Encoding.UTF8) is null) { failures++; if (failures < 4) Console.WriteLine($"  round trip FAILED {r.EditorId}: {StbEditor.Core.RecordRoundTrip.LastError}"); }
+        if (args.Length > 3)
+        {
+            // The patch written as the editor would: a new plugin in <out folder>, read back.
+            Directory.CreateDirectory(args[3]);
+            var active = ActivePlugin.ForNew(Path.Combine(args[3], "STBEditorMergedPatch.esp"), light: false, master: false, game, ws.DefaultEncoding);
+            var doc = new EditDocument();
+            doc.CommitEdits("merge", results.Select(r => (r.Merged, RecordPlace.TopLevel, (RefContext?)null)).ToList());
+            var written = new PluginWriter(ws, catalog).Prepare(active, doc);
+            Console.WriteLine($"patch: success={written.Success} error={written.Error}");
+            if (written.Success)
+            {
+                File.Move(written.TempPath!, active.Path, overwrite: true);
+                var back = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(active.Path, game.Release);
+                var count = back.LeveledItems.Count + back.LeveledNpcs.Count + back.LeveledSpells.Count;
+                Console.WriteLine($"patch read back: {count} list(s), masters {string.Join(", ", back.ModHeader.MasterReferences.Select(m => m.Master.FileName))}");
+                if (count != results.Count) failures++;
+            }
+            else failures++;
+        }
+        Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

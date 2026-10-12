@@ -1277,6 +1277,21 @@ internal static class LangRu
         ["Sink into the ground"] = "Утопить в землю",
         ["The object palette is empty: add objects to it first (World → Object palette)"] = "Палитра объектов пуста: сначала добавь в неё объекты (Мир → Палитра объектов)",
 
+        // ---- Layers
+        ["Layers..."] = "Слои...",
+        ["Layers"] = "Слои",
+        ["Groups of references to hide or freeze while you work; kept by the editor, not in the plugin."] = "Группы рефов, которые можно скрыть или заморозить на время работы; хранит редактор, не плагин.",
+        ["new layer name"] = "имя нового слоя",
+        ["Create with {0} selected"] = "Создать из выбранных: {0}",
+        ["Layer"] = "Слой",
+        ["Objects"] = "Объекты",
+        ["Frozen"] = "Заморожен",
+        ["+ selected"] = "+ выбранные",
+        ["- selected"] = "- выбранные",
+        ["select"] = "выбрать",
+        ["Select its references that are loaded"] = "Выбрать его загруженные рефы",
+        ["No layers yet: select objects in the Render Window, name a layer and create it."] = "Слоёв пока нет: выбери объекты в окне рендера, назови слой и создай его.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

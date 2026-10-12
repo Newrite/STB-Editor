@@ -34,6 +34,12 @@ public sealed class RenderOptions
     /// <summary>Kinds of objects not drawn or picked (CK: Show/Hide), by <see cref="Group"/>.</summary>
     public HashSet<string> HiddenGroups { get; } = [];
 
+    /// <summary>References of hidden layers: neither drawn nor picked.</summary>
+    public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenReferences { get; } = [];
+
+    /// <summary>References of frozen layers: drawn, but a click does not select them (they still catch placed objects).</summary>
+    public HashSet<Mutagen.Bethesda.Plugins.FormKey> FrozenReferences { get; } = [];
+
     /// <summary>Outdoors: only the centre cell's objects (CK: Current Cell Only).</summary>
     public bool CurrentCellOnly { get; set; }
     public Mutagen.Bethesda.Plugins.FormKey? CurrentCell { get; set; }
@@ -62,7 +68,8 @@ public sealed class RenderOptions
     public bool Hides(SceneObject obj) =>
         (obj.InitiallyDisabled && !ShowInitiallyDisabled)
         || (HiddenGroups.Count > 0 && HiddenGroups.Contains(Group(obj.BaseSignature)))
-        || (CurrentCellOnly && CurrentCell is { } cell && obj.Cell != cell);
+        || (CurrentCellOnly && CurrentCell is { } cell && obj.Cell != cell)
+        || (HiddenReferences.Count > 0 && HiddenReferences.Contains(obj.Reference));
     public bool Fog { get; set; } = true;
     public bool CellBorders { get; set; }
 

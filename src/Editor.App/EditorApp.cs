@@ -312,6 +312,7 @@ internal sealed class EditorApp : IDisposable
         RunHeightmapAutotest();
         RunVertexColorAutotest();
         RunPaletteAutotest();
+        RunLayersAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -364,6 +365,7 @@ internal sealed class EditorApp : IDisposable
         CompareFile.Draw(this);
         LeveledMergeWindow.Draw(this);
         PaletteWindow.Draw(this);
+        LayersWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -535,6 +537,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.CompareFileWindow CompareFile { get; } = new();
     public Panels.LeveledMergeWindow LeveledMergeWindow { get; } = new();
     public Panels.PaletteWindow PaletteWindow { get; } = new();
+    public Panels.LayersWindow LayersWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -575,6 +578,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-heightmap") || _heightStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1711,6 +1715,46 @@ internal sealed class EditorApp : IDisposable
         }
     }
 
+    private int _layersStage, _layersFrames;
+    private Panels.Layer? _testLayer;
+
+    /// <summary>
+    /// --autotest-layers (with --cell): a layer of the cell's first 40 statics is made, hidden (they leave drawing and
+    /// picking), then shown and frozen (drawn, not selectable); the window stays open with the layer hidden for the
+    /// screenshot; the test layer is removed at the end (layers.json keeps the user's own).
+    /// </summary>
+    private void RunLayersAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || Session is null || Loader is not null || _layersStage == 9) return;
+        var scene = RenderWindow.Scene;
+        switch (_layersStage)
+        {
+            case 0 when scene is not null && RenderWindow.Options is { } options && ++_layersFrames > 30:
+            {
+                var statics = scene.Objects.Where(o => o.BaseSignature == "STAT" && !options.Hides(o)).Take(40).ToList();
+                _testLayer = LayersWindow.Add("STB autotest layer", statics.Select(o => o.Reference));
+                LayersWindow.Set(_testLayer, hidden: true);
+                LayersWindow.Draw(this);
+                var hidden = statics.Count(o => options.Hides(o));
+                LayersWindow.Set(_testLayer, hidden: false, frozen: true);
+                LayersWindow.Draw(this);
+                var shown = statics.Count(o => !options.Hides(o));
+                var frozen = statics.Count(o => options.FrozenReferences.Contains(o.Reference));
+                Log.Info($"autotest-layers: {statics.Count} statics in the layer; hidden {hidden}; shown again {shown}, frozen {frozen}");
+                LayersWindow.Set(_testLayer, hidden: true, frozen: false);
+                LayersWindow.Show();
+                _layersStage = 1;
+                _layersFrames = 0;
+                break;
+            }
+            case 1 when ++_layersFrames > 20:
+                if (_testLayer is not null) LayersWindow.Remove(_testLayer);
+                Log.Info($"autotest-layers: test layer removed, {LayersWindow.Layers.Count} layer(s) left");
+                _layersStage = 9;
+                break;
+        }
+    }
+
     private int _condStage, _condFrames;
     private FormKey _condPerk, _condOther;
 
@@ -2789,6 +2833,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("New Worldspace..."), (string?)null, false, ready)) _newRecordDialog.ShowWorldspace();
             ImGui.Separator();
             if (ImGui.MenuItem(T("Object palette..."), (string?)null, false, ready)) PaletteWindow.Show();
+            if (ImGui.MenuItem(T("Layers..."), (string?)null, false, ready)) LayersWindow.Show();
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

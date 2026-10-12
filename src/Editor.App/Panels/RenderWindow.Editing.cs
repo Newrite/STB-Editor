@@ -387,11 +387,26 @@ internal sealed partial class RenderWindow
         _camera.Position = center + new Vector3(0, -height * 0.0175f, height);
     }
 
+    /// <summary>The view options (layers put their hidden and frozen references here); null before the first frame.</summary>
+    public RenderOptions? Options => _renderer?.Options;
+
+    /// <summary>Selects the loaded references among <paramref name="keys"/> (Layers → select).</summary>
+    public void SelectReferences(EditorApp app, IEnumerable<FormKey> keys)
+    {
+        if (_scene is null) return;
+        var wanted = keys.ToHashSet();
+        _selection.Clear();
+        foreach (var obj in _scene.Objects)
+            if (wanted.Contains(obj.Reference)) _selection.Add(obj);
+        if (_selection.FirstOrDefault() is { } first) app.Select(first.Reference);
+        _lastSyncedSelection = app.SelectionVersion;
+    }
+
     private PickHit? PickAt(Vector2 mouse, Vector2 size)
     {
         if (_scene is null) return null;
         var (origin, direction) = _camera.Ray(mouse, size);
-        return Picking.Pick(_scene, origin, direction, _renderer!.Options);
+        return Picking.Pick(_scene, origin, direction, _renderer!.Options, selecting: true);
     }
 
     // ------------------------------------------------------------------ CK-style drags

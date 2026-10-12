@@ -12,13 +12,15 @@ public readonly record struct PickHit(SceneObject Object, float Distance, Vector
 /// </summary>
 public static class Picking
 {
-    public static PickHit? Pick(Scene scene, Vector3 origin, Vector3 direction, RenderOptions options)
+    /// <param name="selecting">A click that selects: frozen layers' references are passed over.</param>
+    public static PickHit? Pick(Scene scene, Vector3 origin, Vector3 direction, RenderOptions options, bool selecting = false)
     {
         PickHit? best = null;
 
         foreach (var obj in scene.Objects)
         {
             if (obj.IsDeleted || options.Hides(obj)) continue;
+            if (selecting && options.FrozenReferences.Count > 0 && options.FrozenReferences.Contains(obj.Reference)) continue;
             if (!RaySphere(origin, direction, obj.BoundsCenter, obj.BoundsRadius, out var sphereDistance)) continue;
             if (best is { } b && sphereDistance > b.Distance) continue;
 

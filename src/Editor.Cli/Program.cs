@@ -1484,6 +1484,140 @@ switch (command)
         foreach (var g in param) Console.WriteLine($"  [{g.Key}] x{g.Count()}: {string.Join(" ", g.Take(4).Select(x => x.Name))}");
         break;
     }
+    case "packprobe":
+    {
+        // packprobe <game> [EditorID...]: AI package classes and, for each named package, its template chain,
+        // data inputs (key, class, name, flags), procedure tree and schedule.
+        var asm = typeof(Mutagen.Bethesda.Skyrim.Package).Assembly;
+        foreach (var t in asm.GetTypes().Where(t => t.IsClass && !t.IsAbstract && typeof(Mutagen.Bethesda.Skyrim.APackageData).IsAssignableFrom(t)))
+            Console.WriteLine($"data class {t.Name}: " + string.Join(", ", t.GetProperties().Where(p => p.DeclaringType != typeof(object)).Select(p => $"{p.Name}:{p.PropertyType.Name}")));
+        foreach (var basis in new[] { typeof(Mutagen.Bethesda.Skyrim.APackageTarget), typeof(Mutagen.Bethesda.Skyrim.ALocationTarget) })
+            foreach (var t in asm.GetTypes().Where(t => t.IsClass && !t.IsAbstract && basis.IsAssignableFrom(t) && !t.Name.Contains("Overlay")))
+                Console.WriteLine($"{basis.Name} {t.Name}: " + string.Join(", ", StbEditor.Core.RecordFields.PropertiesOf(Activator.CreateInstance(t)!).Select(p => $"{p.Name}:{p.PropertyType.Name}")));
+        foreach (var t in new[] { typeof(Mutagen.Bethesda.Skyrim.PackageDataTarget), typeof(Mutagen.Bethesda.Skyrim.PackageTargetObjectType), typeof(Mutagen.Bethesda.Skyrim.LocationTargetRadius), typeof(Mutagen.Bethesda.Skyrim.PackageIdles) })
+            foreach (var p in t.GetProperties().Where(p => p.PropertyType.IsEnum))
+                Console.WriteLine($"{t.Name}.{p.Name}: " + string.Join(", ", Enum.GetValues(p.PropertyType).Cast<object>().Select(v => $"{v}={Convert.ToInt64(v)}")));
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var all = catalog.ByKey.Values.Where(r => r.Signature == "PACK").ToList();
+        int templated = 0, templates = 0, named = 0, entries = 0;
+        var procedures = new Dictionary<string, int>();
+        foreach (var r in all)
+        {
+            if (!ws.LinkCache.TryResolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey, out var p)) continue;
+            if (!p.PackageTemplate.IsNull) templated++;
+            if (p.Type == Mutagen.Bethesda.Skyrim.Package.Types.PackageTemplate) templates++;
+            foreach (var d in p.Data.Values) { entries++; if (!string.IsNullOrEmpty(d.Name)) named++; }
+            foreach (var b in p.ProcedureTree) procedures[b.ProcedureType ?? b.BranchType ?? "?"] = procedures.GetValueOrDefault(b.ProcedureType ?? b.BranchType ?? "?") + 1;
+        }
+        Console.WriteLine($"{all.Count} packages, {templated} with a template, {templates} templates; data entries {entries}, named {named}");
+        Console.WriteLine("procedures: " + string.Join(", ", procedures.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}")));
+        foreach (var id in args.Skip(2))
+        {
+            var rec = all.FirstOrDefault(r => string.Equals(r.EditorId, id, StringComparison.OrdinalIgnoreCase));
+            if (rec is null || !ws.LinkCache.TryResolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(rec.FormKey, out var pack)) { Console.WriteLine($"{id}: not found"); continue; }
+            Console.WriteLine($"== {pack.EditorID} {pack.FormKey} type {pack.Type} flags {pack.Flags} speed {pack.PreferredSpeed} interrupt {pack.InterruptOverride} iflags {pack.InterruptFlags}");
+            Console.WriteLine($"   schedule month {pack.ScheduleMonth} day {pack.ScheduleDayOfWeek} date {pack.ScheduleDate} hour {pack.ScheduleHour} minute {pack.ScheduleMinute} duration {pack.ScheduleDurationInMinutes}");
+            Console.WriteLine($"   template {pack.PackageTemplate.FormKey} dataver {pack.DataInputVersion} xnam {pack.XnamMarker.Length} owner {pack.OwnerQuest.FormKeyNullable} idles {pack.IdleAnimations?.Animations.Count} conds {pack.Conditions.Count}");
+            foreach (var (key, d) in pack.Data)
+                Console.WriteLine($"   data {key}: {d.GetType().Name.Replace("BinaryOverlay", "")} name '{d.Name}' flags {d.Flags}");
+            for (var i = 0; i < pack.ProcedureTree.Count; i++)
+            {
+                var b = pack.ProcedureTree[i];
+                Console.WriteLine($"   branch {i}: {b.BranchType} proc '{b.ProcedureType}' root {b.Root?.BranchCount}/{b.Root?.Flags} flags {b.Flags} inputs [{string.Join(",", b.DataInputIndices)}] conds {b.Conditions.Count} override {(b.FlagsOverride is null ? "-" : "yes")} unknown {b.Unknown.Count}");
+            }
+            foreach (var (name, e) in new[] { ("begin", pack.OnBegin), ("end", pack.OnEnd), ("change", pack.OnChange) })
+                if (e is not null) Console.WriteLine($"   on {name}: idle {e.Idle.FormKey} topics {e.Topics.Count}");
+            if (pack.VirtualMachineAdapter is { } vm) Console.WriteLine($"   scripts {vm.Scripts.Count} fragments {(vm.ScriptFragments is null ? "-" : vm.ScriptFragments.FileName)}");
+            if (!pack.PackageTemplate.IsNull && ws.LinkCache.TryResolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(pack.PackageTemplate.FormKey, out var tpl))
+            {
+                Console.WriteLine($"   template {tpl.EditorID}: type {tpl.Type}, own template {tpl.PackageTemplate.FormKey}");
+                foreach (var (key, d) in tpl.Data) Console.WriteLine($"     tdata {key}: {d.GetType().Name.Replace("BinaryOverlay", "")} name '{d.Name}' flags {d.Flags}");
+            }
+        }
+        break;
+    }
+    case "packtest":
+    {
+        // packtest <game> <out folder>: a new package from the Sandbox template (as the editor's template picker
+        // does), saved into a new plugin; its subrecords must follow a vanilla Sandbox package's. Also: every
+        // template's procedure tree must parse into one tree that uses every branch, and the flag bit fix.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var failures = 0;
+        var outDir = args[2];
+        Directory.CreateDirectory(outDir);
+
+        var bits = StbEditor.Core.RecordFields.FlagBits(typeof(Mutagen.Bethesda.Skyrim.Package.Flag));
+        var wear = bits.FirstOrDefault(b => b.Name == "WearSleepOutfit").Bit;
+        Console.WriteLine($"flag bits {bits.Count}, WearSleepOutfit 0x{wear:X}");
+        if (wear != 0x20000000) failures++;
+
+        // Procedure trees of every template (and of packages that have their own).
+        int trees = 0, odd = 0;
+        foreach (var r in catalog.BySignature["PACK"])
+        {
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey) is not { ProcedureTree.Count: > 0 } p) continue;
+            trees++;
+            var nodes = StbEditor.Core.Packages.Tree(p.ProcedureTree);
+            var roots = nodes.Count(n => n.Depth == 0);
+            if (nodes.Count != p.ProcedureTree.Count || roots != 1)
+            {
+                odd++;
+                if (odd <= 5) Console.WriteLine($"  tree {p.EditorID}: {p.ProcedureTree.Count} branches, {nodes.Count} nodes, {roots} roots");
+            }
+        }
+        Console.WriteLine($"procedure trees {trees}, not a single tree {odd}");
+
+        var template = lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(Mutagen.Bethesda.Plugins.FormKey.Factory("01C254:Skyrim.esm"))!;
+        var vanilla = lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(Mutagen.Bethesda.Plugins.FormKey.Factory("0956B8:Skyrim.esm"))!;
+        var active = ActivePlugin.ForNew(Path.Combine(outDir, "STBEditorPackTest.esp"), light: true, master: false, game, ws.DefaultEncoding);
+        var doc = new EditDocument();
+        var pack = (Mutagen.Bethesda.Skyrim.Package)NewRecords.Blank(typeof(Mutagen.Bethesda.Skyrim.Package), active.Allocate(), game.Release, "STBTestSandboxPackage");
+        StbEditor.Core.Packages.UseTemplate(pack, template);
+        // As the form would: one input changed, the location made «near self».
+        ((Mutagen.Bethesda.Skyrim.PackageDataBool)pack.Data[1]).Data = true;
+        var location = ((Mutagen.Bethesda.Skyrim.PackageDataLocation)pack.Data[0]).Location;
+        Console.WriteLine($"inputs {pack.Data.Count}: " + string.Join(", ", StbEditor.Core.Packages.Inputs(pack, template).Select(i => $"{i.Key} {i.Name} {StbEditor.Core.Packages.KindOf(i.Data)}")));
+        Console.WriteLine($"location kind {location.Target.GetType().Name}, radius {location.Radius}");
+        if (pack.Data.Count != vanilla.Data.Count) { Console.WriteLine($"  inputs: {pack.Data.Count} vs vanilla {vanilla.Data.Count}"); failures++; }
+        foreach (var (key, data) in vanilla.Data)
+            if (!pack.Data.TryGetValue(key, out var mine) || StbEditor.Core.Packages.KindOf(mine) != StbEditor.Core.Packages.KindOf(data))
+            { Console.WriteLine($"  input {key}: {StbEditor.Core.Packages.KindOf(data)} in vanilla, {(mine is null ? "missing" : StbEditor.Core.Packages.KindOf(mine))} here"); failures++; }
+        doc.CommitEdit("New package", pack, RecordPlace.TopLevel);
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}");
+        if (!result.Success) { Console.WriteLine("FAILED"); break; }
+        File.Move(result.TempPath!, active.Path, overwrite: true);
+
+        // Subrecord sequence against the vanilla package (Skyrim.esm as it is on disk).
+        static IEnumerable<string> Sequence(ReadOnlyMemory<byte> body) => StbEditor.Data.Raw.RawFormat.Subrecords(body).Select(s => s.Type);
+        var written = StbEditor.Data.Raw.RawFormat.Records(File.ReadAllBytes(active.Path), t => t == "PACK").Single();
+        var esm = ws.Active.First(p => p.Name.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase)).Location.Path;
+        var original = StbEditor.Data.Raw.RawFormat.Records(File.ReadAllBytes(esm), t => t == "PACK").First(r => (r.FormId & 0xFFFFFF) == 0x0956B8);
+        var mineSeq = string.Join(" ", Sequence(written.Data).Where(t => t != "EDID"));
+        var theirs = string.Join(" ", Sequence(original.Data).Where(t => t != "EDID"));
+        // Bytes of each subrecord against vanilla: only what the test changed may differ (PKDT interrupt flags, Allow Eating, Location).
+        var mineSubs = StbEditor.Data.Raw.RawFormat.Subrecords(written.Data).Where(s => s.Type != "EDID").ToList();
+        var theirSubs = StbEditor.Data.Raw.RawFormat.Subrecords(original.Data).Where(s => s.Type != "EDID").ToList();
+        for (var i = 0; i < Math.Min(mineSubs.Count, theirSubs.Count); i++)
+            if (!mineSubs[i].Data.Span.SequenceEqual(theirSubs[i].Data.Span))
+                Console.WriteLine($"  {i} {mineSubs[i].Type}: new {Convert.ToHexString(mineSubs[i].Data.Span)} vanilla {Convert.ToHexString(theirSubs[i].Data.Span)}");
+        // Expected differences: PKDT (vanilla's unknown byte C4, interrupt flags), PLDT (the package's own location),
+        // one CNAM (vanilla allows wandering) and XNAM (a marker that varies among vanilla packages of one template:
+        // 0x20, the template's own, is the most common and what a new one gets).
+        Console.WriteLine($"new:     {mineSeq}");
+        Console.WriteLine($"vanilla: {theirs}");
+        if (mineSeq != theirs) { Console.WriteLine("  subrecords differ"); failures++; }
+
+        // Read back.
+        var back = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(active.Path, game.Release).Packages.Single();
+        Console.WriteLine($"read back: template {back.PackageTemplate.FormKey}, inputs {back.Data.Count}, allow eating {((Mutagen.Bethesda.Skyrim.IPackageDataBoolGetter)back.Data[1]).Data}");
+        if (back.PackageTemplate.FormKey != template.FormKey || back.Data.Count != pack.Data.Count || !((Mutagen.Bethesda.Skyrim.IPackageDataBoolGetter)back.Data[1]).Data) failures++;
+        Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

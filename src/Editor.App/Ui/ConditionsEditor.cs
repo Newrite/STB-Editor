@@ -30,7 +30,10 @@ internal static class ConditionsEditor
     /// <summary>Alias ID → name of the quest whose conditions are drawn (set by the quest form), for Run On and parameters.</summary>
     public static Dictionary<int, string>? Aliases { get; set; }
 
-    private static string AliasText(int id) => Aliases is { } names && names.TryGetValue(id, out var name) ? $"{id}: {name}" : id.ToString();
+    /// <summary>Data inputs of the package whose conditions are drawn (key → name), for «package data» indices.</summary>
+    public static Dictionary<int, string>? PackageData { get; set; }
+
+    private static string IndexText(int id, IReadOnlyDictionary<int, string>? names) => names is not null && names.TryGetValue(id, out var name) ? $"{id}: {name}" : id.ToString();
 
     /// <summary>Autotests and screenshots: select this row in the lists drawn next.</summary>
     public static int? ForceSelect { get; set; }
@@ -102,7 +105,12 @@ internal static class ConditionsEditor
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
                 ImGui.AlignTextToFramePadding();
-                var runOn = condition.Data.RunOnType == Condition.RunOnType.QuestAlias ? TF($"Alias {AliasText(condition.Data.RunOnTypeIndex)}") : Conditions.RunOn(condition.Data, Name);
+                var runOn = condition.Data.RunOnType switch
+                {
+                    Condition.RunOnType.QuestAlias => TF($"Alias {IndexText(condition.Data.RunOnTypeIndex, Aliases)}"),
+                    Condition.RunOnType.PackageData when PackageData is not null => TF($"Package data {IndexText(condition.Data.RunOnTypeIndex, PackageData)}"),
+                    _ => Conditions.RunOn(condition.Data, Name),
+                };
                 if (ImGui.Selectable(runOn + "##row", i == selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap))
                     Selected[key] = selected = i == selected ? -1 : i;
                 ImGui.TableNextColumn();
@@ -224,7 +232,11 @@ internal static class ConditionsEditor
                 break;
             case Condition.RunOnType.QuestAlias when Aliases is not null:
                 Row(T("Alias"));
-                AliasCombo("##runonalias", data.RunOnTypeIndex, target, id => Change(target!, at, index, T("Condition alias"), c => c.Data.RunOnTypeIndex = id));
+                IndexCombo("##runonalias", data.RunOnTypeIndex, Aliases, target, id => Change(target!, at, index, T("Condition alias"), c => c.Data.RunOnTypeIndex = id));
+                break;
+            case Condition.RunOnType.PackageData when PackageData is not null:
+                Row(T("Package data"));
+                IndexCombo("##runondata", data.RunOnTypeIndex, PackageData, target, id => Change(target!, at, index, T("Condition package data"), c => c.Data.RunOnTypeIndex = id));
                 break;
             case Condition.RunOnType.QuestAlias:
             case Condition.RunOnType.PackageData:
@@ -246,7 +258,13 @@ internal static class ConditionsEditor
                 {
                     var number = value.GetType().GetProperty("Index")?.GetValue(value) as uint? ?? 0;
                     var indexPath = parameterPath.Append("Index").ToArray();
-                    AliasCombo("##paramalias", (int)number, target, id => target!.Apply(T("Condition parameter alias"), copy => RecordFields.Set(copy, indexPath, (uint)id)));
+                    IndexCombo("##paramalias", (int)number, Aliases, target, id => target!.Apply(T("Condition parameter alias"), copy => RecordFields.Set(copy, indexPath, (uint)id)));
+                }
+                else if (data.UsePackageData && PackageData is not null)
+                {
+                    var number = value.GetType().GetProperty("Index")?.GetValue(value) as uint? ?? 0;
+                    var indexPath = parameterPath.Append("Index").ToArray();
+                    IndexCombo("##paramdata", (int)number, PackageData, target, id => target!.Apply(T("Condition parameter package data"), copy => RecordFields.Set(copy, indexPath, (uint)id)));
                 }
                 else if (data.UseAliases || data.UsePackageData)
                 {
@@ -305,14 +323,14 @@ internal static class ConditionsEditor
         ImGui.PopID();
     }
 
-    /// <summary>A quest alias by name (the quest's own aliases).</summary>
-    private static void AliasCombo(string id, int current, EditTarget? target, Action<int> set)
+    /// <summary>A quest alias or a package data input by name (<paramref name="names"/>: index → name).</summary>
+    public static void IndexCombo(string id, int current, IReadOnlyDictionary<int, string>? names, EditTarget? target, Action<int> set)
     {
         ImGui.SetNextItemWidth(-1);
-        if (target is null) { ImGui.Text(AliasText(current)); return; }
-        if (!ImGui.BeginCombo(id, AliasText(current))) return;
-        foreach (var (aliasId, _) in Aliases!.OrderBy(a => a.Key))
-            if (ImGui.Selectable(AliasText(aliasId), aliasId == current)) set(aliasId);
+        if (target is null || names is null) { ImGui.Text(IndexText(current, names)); return; }
+        if (!ImGui.BeginCombo(id, IndexText(current, names))) return;
+        foreach (var (index, _) in names.OrderBy(a => a.Key))
+            if (ImGui.Selectable(IndexText(index, names), index == current)) set(index);
         ImGui.EndCombo();
     }
 

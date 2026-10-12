@@ -116,6 +116,17 @@ internal static class FormView
             ("Quest Objectives", ["Objectives"]),
             ("Quest Aliases", ["Aliases"]),
         ],
+        ["PACK"] =
+        [
+            // «Package Data» and «Schedule» draw these members their own way (PackageEditor).
+            ("Package Data", ["EditorID", "Type", "PackageTemplate", "OwnerQuest", "CombatStyle", "PreferredSpeed", "InterruptOverride",
+                "Flags", "InterruptFlags", "Data"]),
+            ("Schedule", ["ScheduleMonth", "ScheduleDayOfWeek", "ScheduleDate", "ScheduleHour", "ScheduleMinute", "ScheduleDurationInMinutes"]),
+            ("Conditions", ["Conditions"]),
+            ("Idle Animations", ["IdleAnimations"]),
+            ("Begin / End / Change", ["OnBegin", "OnEnd", "OnChange"]),
+            ("Procedure Tree", ["ProcedureTree"]),
+        ],
         ["LIGH"] =
         [
             ("Main", ["EditorID", "Name", "Color", "Radius", "FadeValue", "Flags", "FalloffExponent", "FOV", "NearClip", "Time",
@@ -196,6 +207,18 @@ internal static class FormView
                 else DrawMembers(app, record, tab.Members, [], target, 0);
             }
             finally { ConditionsEditor.Aliases = null; }
+            return;
+        }
+        if (record is Mutagen.Bethesda.Skyrim.IPackageGetter package)
+        {
+            // Conditions of a package name its owner quest's aliases and its data inputs.
+            (ConditionsEditor.Aliases, ConditionsEditor.PackageData) = PackageEditor.Context(app, package);
+            try
+            {
+                if (PackageEditor.Draws(tab)) PackageEditor.Draw(app, package, tab, target);
+                else DrawMembers(app, record, tab.Members, [], target, 0);
+            }
+            finally { ConditionsEditor.Aliases = null; ConditionsEditor.PackageData = null; }
             return;
         }
         var path = new List<object>();

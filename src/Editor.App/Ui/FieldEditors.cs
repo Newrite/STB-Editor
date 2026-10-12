@@ -196,12 +196,10 @@ internal static class FieldEditors
             {
                 var raw = value is null ? 0L : Convert.ToInt64(value, CultureInfo.InvariantCulture);
                 if (!ImGui.BeginCombo("##v", raw == 0 ? T("(none)") : value!.ToString())) break;
-                foreach (var flag in Enum.GetValues(type!).Cast<object>())
+                foreach (var (name, bit) in RecordFields.FlagBits(type!))
                 {
-                    var bit = Convert.ToInt64(flag, CultureInfo.InvariantCulture);
-                    if (bit == 0) continue;
                     var on = (raw & bit) == bit;
-                    if (ImGui.Checkbox(flag.ToString(), ref on))
+                    if (ImGui.Checkbox(name, ref on))
                         Set(target, label, path, Enum.ToObject(type!, on ? raw | bit : raw & ~bit));
                 }
                 ImGui.EndCombo();

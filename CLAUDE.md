@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.21.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.22.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -47,6 +47,8 @@ v0.18.0: copy a field between compare columns (`Core/MemberCopy.cs`, `CompareVie
 v0.19.0: Find text / replace (`Core/TextSearch.cs`, `Panels/FindTextWindow.cs`; replace only display strings).
 v0.20.0: render Show/Hide groups + current cell only (`RenderOptions.Hides`), stale FaceGen warning (`PluginChecks.LooksChanged`).
 v0.21.0: reference primitives drawn with markers (`SceneObject.Primitive`, `SceneRenderer.DrawPrimitives`).
+v0.22.0: AI packages (`Core/Packages.cs`: template inputs by name, `UseTemplate`, procedure tree from the flat list;
+`Panels/PackageEditor.cs`; `NewRecords.PackageDefaults` — vanilla defaults; `RecordFields.FlagBits` fixes Mutagen's WearSleepOutfit).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

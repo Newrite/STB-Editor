@@ -166,6 +166,20 @@ public static class RecordFields
 
     /// <summary>Key → value maps (an NPC's skill values): edited per key, not as a list.</summary>
     /// <summary>A list rows can be added to (arrays such as a weather's four cloud layers cannot).</summary>
+    private static readonly ConcurrentDictionary<Type, (string Name, long Bit)[]> FlagCache = new();
+
+    /// <summary>
+    /// The single bits of a flags enum, by name, for checkboxes. Combined values are left out, and Mutagen's
+    /// wrong values are corrected: Package.Flag.WearSleepOutfit is 20000000 decimal there (eight bits), bit 29
+    /// (0x20000000) in the game and xEdit.
+    /// </summary>
+    public static IReadOnlyList<(string Name, long Bit)> FlagBits(Type enumType) => FlagCache.GetOrAdd(enumType, type =>
+        Enum.GetValues(type).Cast<object>()
+            .Select(v => (Name: v.ToString()!, Bit: Convert.ToInt64(v, CultureInfo.InvariantCulture)))
+            .Select(f => type == typeof(Mutagen.Bethesda.Skyrim.Package.Flag) && f.Name == "WearSleepOutfit" ? (f.Name, Bit: 0x20000000L) : f)
+            .Where(f => f.Bit != 0 && (f.Bit & (f.Bit - 1)) == 0)
+            .ToArray());
+
     public static bool CanGrow(object? list) => list is IList { IsFixedSize: false, IsReadOnly: false } || (list is not IList && list is IEnumerable and not string);
 
     public static bool IsDictionary(object? value) =>

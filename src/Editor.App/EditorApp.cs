@@ -300,6 +300,7 @@ internal sealed class EditorApp : IDisposable
         RunRefMoreAutotest();
         RunConditionsAutotest();
         RunQuestAutotest();
+        RunPackageAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -544,6 +545,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || _refMoreStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-package") || _packStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1143,6 +1145,85 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_questFrames > 15:
                 _questStage = 9;
+                break;
+        }
+    }
+
+    private int _packStage, _packFrames;
+    private FormKey _pack;
+
+    /// <summary>
+    /// --autotest-package &lt;dir&gt; [EditorID] (with --inspector-tab "Package Data" / "Schedule" / "Procedure Tree"): a new
+    /// package in a scratch active file (&lt;dir&gt;) gets the Sandbox template through the form's template picker logic,
+    /// a schedule, an input value, a location kind and the Wear Sleep Outfit flag; read back; undone and redone. With an
+    /// EditorID that package's form opens too (the screenshot shows it). Nothing is saved.
+    /// </summary>
+    private void RunPackageAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-package");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _packStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        Mutagen.Bethesda.Skyrim.IPackageGetter? Pack() => (Mutagen.Bethesda.Skyrim.IPackageGetter?)StbEditor.Core.OverrideEditing.Override(Document, _pack)?.Record;
+        string Summary(Mutagen.Bethesda.Skyrim.IPackageGetter p) =>
+            $"type {p.Type}, template {p.PackageTemplate.FormKey}, flags 0x{(uint)p.Flags:X}, schedule '{StbEditor.App.Panels.PackageEditor.Summary(p)}', inputs [" +
+            string.Join(", ", StbEditor.Core.Packages.Inputs(p, StbEditor.App.Panels.PackageEditor.Template(this, p)).Select(i => $"{i.Key} {i.Name} {StbEditor.Core.Packages.KindOf(i.Data)}" +
+                (i.Data is Mutagen.Bethesda.Skyrim.IPackageDataBoolGetter b ? $"={b.Data}" : i.Data is Mutagen.Bethesda.Skyrim.IPackageDataLocationGetter l ? $"={l.Location?.Target.GetType().Name.Replace("BinaryOverlay", "")}" : ""))) + "]";
+        switch (_packStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorPackageAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _pack = NewForm.CreateForTest("PACK", 0, "STBTestPackage", "") ?? default;
+                if (_pack.IsNull) { Log.Warn("autotest-package: package not created"); _packStage = 9; return; }
+                FormWindows.Open(_pack);
+                Log.Info($"autotest-package: new: {Summary(Pack()!)}");
+                _packStage = 1;
+                break;
+            }
+            case 1 when ++_packFrames > 10 && FormWindows.FormOf(_pack)?.Target is { } target:
+            {
+                var before = Document.History.UndoName;
+                StbEditor.App.Panels.PackageEditor.SetTemplate(this, target, Mutagen.Bethesda.Plugins.FormKey.Factory("01C254:Skyrim.esm"));
+                Log.Info($"autotest-package: template: {Summary(Pack()!)}");
+                target.Apply("schedule", r =>
+                {
+                    StbEditor.Core.RecordFields.Set(r, ["ScheduleDayOfWeek"], Mutagen.Bethesda.Skyrim.Package.DayOfWeek.Weekdays);
+                    StbEditor.Core.RecordFields.Set(r, ["ScheduleHour"], (sbyte)8);
+                    StbEditor.Core.RecordFields.Set(r, ["ScheduleMinute"], (sbyte)30);
+                    StbEditor.Core.RecordFields.Set(r, ["ScheduleDurationInMinutes"], 600);
+                });
+                target.Apply("input", r => StbEditor.Core.RecordFields.Set(r, ["Data", (sbyte)1, "Data"], true));
+                target.Apply("location kind", r =>
+                {
+                    var near = new Mutagen.Bethesda.Skyrim.LocationTarget();
+                    near.Link.SetTo(FormField.PlayerRef);
+                    StbEditor.Core.RecordFields.Set(r, ["Data", (sbyte)0, "Location", "Target"], near);
+                });
+                var bit = StbEditor.Core.RecordFields.FlagBits(typeof(Mutagen.Bethesda.Skyrim.Package.Flag)).First(f => f.Name == "WearSleepOutfit").Bit;
+                target.Apply("flag", r => StbEditor.Core.RecordFields.Set(r, ["Flags"], Enum.ToObject(typeof(Mutagen.Bethesda.Skyrim.Package.Flag), bit)));
+                var edited = Pack()!;
+                Log.Info($"autotest-package: edited: {Summary(edited)}");
+                var back = StbEditor.Core.RecordRoundTrip.Read(edited, session.Game.Release, System.Text.Encoding.UTF8) as Mutagen.Bethesda.Skyrim.IPackageGetter;
+                Log.Info(back is null ? $"autotest-package: round trip FAILED: {StbEditor.Core.RecordRoundTrip.LastError}" : $"autotest-package: round trip: {Summary(back)}");
+                var steps = 0;
+                while (Document.History.UndoName != before && steps < 30) { Document.Undo(); steps++; }
+                Log.Info($"autotest-package: {steps} undo steps: {Summary(Pack()!)}");
+                for (var i = 0; i < steps; i++) Document.Redo();
+                Log.Info($"autotest-package: redone: {Summary(Pack()!)}");
+                if (arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal)
+                    && session.Catalog.BySignature["PACK"].FirstOrDefault(r => string.Equals(r.EditorId, cli[arg + 2], StringComparison.OrdinalIgnoreCase)) is { } shown)
+                {
+                    FormWindows.Open(shown.FormKey);
+                    StbEditor.App.Panels.PackageEditor.SelectForTest(shown.FormKey, 1);
+                    if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(shown.FormKey) is { } p) Log.Info($"autotest-package: {shown.EditorId}: {Summary(p)}");
+                }
+                _packStage = 2;
+                _packFrames = 0;
+                break;
+            }
+            case 2 when ++_packFrames > 15:
+                _packStage = 9;
                 break;
         }
     }

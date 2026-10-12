@@ -152,7 +152,36 @@ public static class NewRecords
         // A global's value subrecord is required (FLTV): 0, as the CK starts it.
         if (record is Global && cls.GetProperty("Data") is { } data && Nullable.GetUnderlyingType(data.PropertyType) is { } valueType)
             data.SetValue(record, System.Activator.CreateInstance(valueType));
+        if (record is Package package) PackageDefaults(package);
         return record;
+    }
+
+    /// <summary>
+    /// A new package as vanilla ones are: any time (Mutagen's zeros would mean January, Sundays, 0:00), run,
+    /// every interrupt allowed, and the begin / end / change events present with an empty script header
+    /// and a null topic (POBA INAM SCHR PDTO…).
+    /// </summary>
+    private static void PackageDefaults(Package package)
+    {
+        package.Type = Package.Types.Package;
+        package.ScheduleMonth = -1;
+        package.ScheduleDayOfWeek = Package.DayOfWeek.Any;
+        package.ScheduleDate = 0;
+        package.ScheduleHour = -1;
+        package.ScheduleMinute = -1;
+        package.PreferredSpeed = Package.Speed.Run;
+        package.InterruptFlags = (Package.InterruptFlag)0xFFFF;
+        PackageEvent Event()
+        {
+            var header = new byte[20];
+            header[18] = 1;
+            var e = new PackageEvent { SCHR = header };
+            e.Topics.Add(new TopicReference());
+            return e;
+        }
+        package.OnBegin ??= Event();
+        package.OnEnd ??= Event();
+        package.OnChange ??= Event();
     }
 
     /// <summary>Game settings name their kind by the EditorID's first letter (fJumpHeight, iLevel, sName, bFlag).</summary>

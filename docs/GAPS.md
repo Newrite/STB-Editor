@@ -33,7 +33,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.11.0 (компиляция, новые скрипты, фрагменты стадий квеста; фрагменты реплик, пакетов, сцен, перков — нет) **Компиляция Papyrus и фрагменты** (стадий квеста, реплик, пакетов, сцен, перков): без этого квест или диалог со скриптом не сделать. Компилятор уже лежит в `C:\Skyrim\Papyrus Compiler` | CK: Papyrus Manager, Compile, Edit Papyrus Script | ★★★ | M |
 | ✅ 0.11.0 **SEQ-файл** для квестов «Start Game Enabled» с диалогами (без него диалоги не работают) | xEdit: Create SEQ File | ★★ | S |
 | Сцены (SCEN): фазы, актёры, действия (Dialogue / Package / Timer) на таймлайне | CK: Scene Data, Phase, Dialogue Scene Action | ★★ | L |
-| AI-пакеты: шаблон, дерево процедур, расписание, цели | CK: Package, Package Target, Choose Procedure | ★★ | M |
+| ✅ 0.22.0 (шаблон и его входы, расписание, цели, дерево процедур — просмотр и поля веток; добавлять ветки в дерево, фрагменты пакета — нет) AI-пакеты: шаблон, дерево процедур, расписание, цели | CK: Package, Package Target, Choose Procedure | ★★ | M |
 | Story Manager: дерево веток и событий (SMBN / SMQN / SMEN) | CK: Story Manager | ★ | M |
 | Голос и LIP: список нужных звуковых файлов по актёрам, генерация .lip, Export Dialogue | CK: Quest Voice Assets, Export Dialogue | ★ | M |
 

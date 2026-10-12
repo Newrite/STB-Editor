@@ -46,7 +46,7 @@ internal static partial class QuestEditor
     // ------------------------------------------------------------------ layout
 
     /// <summary>A list on the left (its buttons above it), the selected item on the right.</summary>
-    private static void Split(string id, Action left, Action right)
+    internal static void Split(string id, Action left, Action right)
     {
         var height = Math.Max(ImGui.GetContentRegionAvail().Y, ImGui.GetFontSize() * 12);
         if (!ImGui.BeginTable(id, 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp)) return;
@@ -69,18 +69,16 @@ internal static partial class QuestEditor
     }
 
     /// <summary>Checkboxes for the bits of a flags field, a few per row.</summary>
-    private static void FlagBoxes(EditTarget? target, string label, IReadOnlyList<object> path, object? value, Type enumType, int columns)
+    internal static void FlagBoxes(EditTarget? target, string label, IReadOnlyList<object> path, object? value, Type enumType, int columns)
     {
         var raw = value is null ? 0L : Convert.ToInt64(value, CultureInfo.InvariantCulture);
         if (!ImGui.BeginTable("##flags" + label, columns)) return;
-        foreach (var flag in Enum.GetValues(enumType).Cast<object>())
+        foreach (var (name, bit) in RecordFields.FlagBits(enumType))
         {
-            var bit = Convert.ToInt64(flag, CultureInfo.InvariantCulture);
-            if (bit == 0) continue;
             ImGui.TableNextColumn();
             var on = (raw & bit) == bit;
             if (target is null) ImGui.BeginDisabled();
-            if (ImGui.Checkbox(FieldEditors.Label(flag.ToString()!), ref on) && target is not null)
+            if (ImGui.Checkbox(FieldEditors.Label(name), ref on) && target is not null)
             {
                 var set = Enum.ToObject(enumType, on ? raw | bit : raw & ~bit);
                 var at = path.ToArray();

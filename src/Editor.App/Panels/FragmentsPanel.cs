@@ -11,8 +11,8 @@ using static StbEditor.App.Ui.Loc;
 namespace StbEditor.App.Panels;
 
 /// <summary>
-/// Papyrus fragments of packages and scenes (CK: the Begin / End / Change boxes of a package, the scene's and its
-/// phases' fragments): the PF_ / SF_ script next to the active file, compiled; the record's script data points at
+/// Papyrus fragments of packages, scenes and perks (CK: the Begin / End / Change boxes of a package, the scene's and
+/// its phases' fragments, a perk's «Activate» entries): the PF_ / SF_ script next to the active file, compiled; the record's script data points at
 /// its fragments when it compiles (one undo step). Same flow as quest stage and dialogue line fragments.
 /// </summary>
 internal static class FragmentsPanel
@@ -30,8 +30,14 @@ internal static class FragmentsPanel
     public static void SetForTest(FormKey record, string slot, string code) =>
         (Edits.TryGetValue(record, out var map) ? map : Edits[record] = new())[slot] = code;
 
-    private static string SlotLabel(string slot)
+    private static string SlotLabel(IMajorRecordGetter record, string slot)
     {
+        if (slot.StartsWith("Entry", StringComparison.Ordinal) && int.TryParse(slot[5..], out var entry))
+        {
+            var label = record is Mutagen.Bethesda.Skyrim.IPerkGetter perk && entry < perk.Effects.Count
+                && perk.Effects[entry] is Mutagen.Bethesda.Skyrim.IPerkEntryPointAddActivateChoiceGetter choice ? choice.ButtonLabel?.String : null;
+            return string.IsNullOrEmpty(label) ? TF($"Perk entry {entry + 1}: activate") : TF($"Perk entry {entry + 1}: activate \"{label}\"");
+        }
         if (!slot.StartsWith("Phase", StringComparison.Ordinal)) return T(slot);
         var end = slot.EndsWith("End", StringComparison.Ordinal);
         var number = int.Parse(slot[5..^(end ? 3 : 5)]) + 1;
@@ -79,7 +85,7 @@ internal static class FragmentsPanel
         foreach (var slot in slots)
         {
             var text = edits?.GetValueOrDefault(slot) ?? Existing(slot);
-            ImGui.Text(SlotLabel(slot));
+            ImGui.Text(SlotLabel(record, slot));
             if (!editable) ImGui.BeginDisabled();
             var lines = Math.Clamp(text.Count(c => c == '\n') + 2, 2, 10);
             if (ImGui.InputTextMultiline("##" + slot, ref text, 65536, new Vector2(-1, ImGui.GetTextLineHeight() * lines + ImGui.GetStyle().FramePadding.Y * 2), ImGuiInputTextFlags.AllowTabInput))

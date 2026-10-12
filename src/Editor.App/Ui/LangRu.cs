@@ -1188,6 +1188,10 @@ internal static class LangRu
         ["Translations go into {0} (overrides, or its own records); one Ctrl+Z undoes the import."] = "Переводы пишутся в {0} (переопределения или его собственные записи); один Ctrl+Z отменяет импорт.",
         ["Choose the active file first: translations go into it."] = "Сначала выбери активный файл: переводы пишутся в него.",
 
+        // ---- Perk fragments
+        ["Perk entry {0}: activate"] = "Запись перка {0}: активация",
+        ["Perk entry {0}: activate \"{1}\""] = "Запись перка {0}: активация «{1}»",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

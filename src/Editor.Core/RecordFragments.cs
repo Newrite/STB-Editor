@@ -5,20 +5,25 @@ using Mutagen.Bethesda.Skyrim;
 namespace StbEditor.Core;
 
 /// <summary>
-/// Papyrus fragments of packages (PF_ scripts: Begin / End / Change, each taking akActor) and scenes (SF_ scripts:
-/// Begin / End of the scene and the start / completion of each phase, no parameters), as the Creation Kit writes
-/// them (checked on the 350 PF_ and 587 SF_ sources of the game). A record's fragments are a table slot → Fragment_N;
-/// slots are "Begin", "End", "Change", "Phase{i}Start", "Phase{i}End" (i from 0).
+/// Papyrus fragments of packages (PF_ scripts: Begin / End / Change, each taking akActor), scenes (SF_ scripts:
+/// Begin / End of the scene and the start / completion of each phase, no parameters) and perks (PRKF_ scripts: one per
+/// «Activate» entry, taking akTargetRef and akActor), as the Creation Kit writes them (checked on the 350 PF_, 587 SF_
+/// and 9 PRKF_ sources of the game). A record's fragments are a table slot → Fragment_N; slots are "Begin", "End",
+/// "Change", "Phase{i}Start", "Phase{i}End", "Entry{i}" (i from 0: the phase or the perk entry).
 /// </summary>
 public static class RecordFragments
 {
-    public static bool Supports(IMajorRecordGetter record) => record is IPackageGetter or ISceneGetter;
+    public static bool Supports(IMajorRecordGetter record) => record is IPackageGetter or ISceneGetter or IPerkGetter;
 
-    public static string Extends(IMajorRecordGetter record) => record is IPackageGetter ? "Package" : "Scene";
+    public static string Extends(IMajorRecordGetter record) => record switch { IPackageGetter => "Package", IPerkGetter => "Perk", _ => "Scene" };
 
     /// <summary>The "Function …" line of a new fragment.</summary>
-    public static string Header(IMajorRecordGetter record, string name) =>
-        record is IPackageGetter ? $"Function {name}(Actor akActor)" : $"Function {name}()";
+    public static string Header(IMajorRecordGetter record, string name) => record switch
+    {
+        IPackageGetter => $"Function {name}(Actor akActor)",
+        IPerkGetter => $"Function {name}(ObjectReference akTargetRef, Actor akActor)",
+        _ => $"Function {name}()",
+    };
 
     /// <summary>
     /// The fragment script's name: the one the record has, else the CK's PF_ / SF_&lt;EditorID&gt;_&lt;FormID&gt; (the CK
@@ -30,13 +35,14 @@ public static class RecordFragments
         var id = Regex.IsMatch(formIdText, "^[0-9A-Fa-f]{8}$") ? formIdText.ToUpperInvariant() : record.FormKey.ID.ToString("X8");
         var editorId = Regex.Replace(record.EditorID ?? "", @"\W", "");
         if (editorId.Length > 25) editorId = editorId[..25];
-        return $"{(record is IPackageGetter ? "PF" : "SF")}_{editorId}_{id}";
+        return $"{record switch { IPackageGetter => "PF", IPerkGetter => "PRKF", _ => "SF" }}_{editorId}_{id}";
     }
 
     private static string? FileName(IMajorRecordGetter record) => record switch
     {
         IPackageGetter p => p.VirtualMachineAdapter?.ScriptFragments?.FileName,
         ISceneGetter s => s.VirtualMachineAdapter?.ScriptFragments?.FileName,
+        IPerkGetter k => k.VirtualMachineAdapter?.ScriptFragments?.FileName,
         _ => null,
     };
 
@@ -45,6 +51,8 @@ public static class RecordFragments
     {
         IPackageGetter => ["Begin", "End", "Change"],
         ISceneGetter s => ["Begin", "End", .. Enumerable.Range(0, s.Phases.Count).SelectMany(i => new[] { $"Phase{i}Start", $"Phase{i}End" })],
+        // Only «Activate» entries run a fragment (CK: Run Script on the activate choice).
+        IPerkGetter k => [.. k.Effects.Select((e, i) => (e, i)).Where(x => x.e is IPerkEntryPointAddActivateChoiceGetter).Select(x => $"Entry{x.i}")],
         _ => [],
     };
 
@@ -69,6 +77,10 @@ public static class RecordFragments
                 foreach (var phase in f.PhaseFragments)
                     if (phase.FragmentName is { Length: > 0 } name)
                         table[$"Phase{phase.Index}{(phase.Flags.HasFlag(ScenePhaseFragment.Flag.OnCompletion) ? "End" : "Start")}"] = name;
+                break;
+            case IPerkGetter { VirtualMachineAdapter.ScriptFragments: { } f }:
+                foreach (var fragment in f.Fragments)
+                    if (fragment.FragmentName is { Length: > 0 } name) table[$"Entry{fragment.FragmentIndex}"] = name;
                 break;
         }
         return table;
@@ -134,6 +146,18 @@ public static class RecordFragments
                     foreach (var (suffix, flag) in new[] { ("Start", ScenePhaseFragment.Flag.OnStart), ("End", ScenePhaseFragment.Flag.OnCompletion) })
                         if (table.TryGetValue($"Phase{i}{suffix}", out var name))
                             fragments.PhaseFragments.Add(new ScenePhaseFragment { Flags = flag, Index = (byte)i, Unknown = 0x01000000, ScriptName = scriptName, FragmentName = name });
+                scripts = vmad.Scripts;
+                break;
+            }
+            case Perk perk:
+            {
+                var vmad = perk.VirtualMachineAdapter ??= new PerkAdapter { Version = 5, ObjectFormat = 2 };
+                var fragments = vmad.ScriptFragments ??= new PerkScriptFragments { ExtraBindDataVersion = 2 };
+                fragments.FileName = scriptName;
+                fragments.Fragments.Clear();
+                for (var i = 0; i < perk.Effects.Count; i++)
+                    if (table.TryGetValue($"Entry{i}", out var name))
+                        fragments.Fragments.Add(new IndexedScriptFragment { FragmentIndex = (ushort)i, Unknown = 0, Unknown2 = 1, ScriptName = scriptName, FragmentName = name });
                 scripts = vmad.Scripts;
                 break;
             }

@@ -1745,6 +1745,16 @@ switch (command)
             Console.WriteLine($"  {pk.EditorID}: file {f.FileName} begin {f.OnBegin?.ScriptName}/{f.OnBegin?.FragmentName} end {f.OnEnd?.FragmentName} change {f.OnChange?.FragmentName}; scripts {string.Join(",", pk.VirtualMachineAdapter.Scripts.Select(s => $"{s.Name}:{s.Flags}:{s.Properties.Count}"))}");
             Source(f.FileName);
         }
+        var perks = catalog.BySignature["PERK"].Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(r.FormKey))
+            .OfType<Mutagen.Bethesda.Skyrim.IPerkGetter>().Where(p => p.VirtualMachineAdapter?.ScriptFragments is not null).ToList();
+        Console.WriteLine($"perks with fragments: {perks.Count}; bind " + string.Join(",", perks.Select(p => p.VirtualMachineAdapter!.ScriptFragments!.ExtraBindDataVersion).Distinct())
+            + "; unknown " + string.Join(",", perks.SelectMany(p => p.VirtualMachineAdapter!.ScriptFragments!.Fragments).Select(f => $"{f.Unknown}/{f.Unknown2}").Distinct()));
+        foreach (var perk in perks.Take(3))
+        {
+            var f = perk.VirtualMachineAdapter!.ScriptFragments!;
+            Console.WriteLine($"  {perk.EditorID}: file {f.FileName}; fragments " + string.Join(", ", f.Fragments.Select(x => $"{x.FragmentIndex}:{x.FragmentName}"))
+                + "; entries " + string.Join(", ", perk.Effects.Select((e, i) => $"{i}:{e.GetType().Name.Replace("BinaryOverlay", "")}{(e is Mutagen.Bethesda.Skyrim.IAPerkEntryPointEffectGetter ep ? "/" + ep.EntryPoint : "")}")));
+        }
         var scenes = catalog.BySignature["SCEN"].Where(r => r.FormKey.ModKey.FileName == "Skyrim.esm").Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey))
             .OfType<Mutagen.Bethesda.Skyrim.ISceneGetter>().Where(s => s.VirtualMachineAdapter?.ScriptFragments is not null).ToList();
         Console.WriteLine($"scenes with fragments: {scenes.Count}; bind " + string.Join(",", scenes.Select(s => s.VirtualMachineAdapter!.ScriptFragments!.ExtraBindDataVersion).Distinct())
@@ -1771,10 +1781,10 @@ switch (command)
         var setup = StbEditor.Data.PapyrusSetup.Find(ws.Game);
         var failures = 0;
         int records = 0, withSource = 0, found = 0, missing = 0;
-        var records2 = catalog.BySignature["PACK"].Concat(catalog.BySignature["SCEN"]).ToList();
+        var records2 = catalog.BySignature["PACK"].Concat(catalog.BySignature["SCEN"]).Concat(catalog.BySignature["PERK"]).ToList();
         foreach (var r in records2)
         {
-            var record = r.Signature == "PACK" ? (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey) : lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey);
+            var record = r.Signature switch { "PACK" => (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey), "PERK" => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(r.FormKey), _ => lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey) };
             if (record is null) continue;
             var table = StbEditor.Core.RecordFragments.Table(record);
             if (table.Count == 0) continue;
@@ -1818,6 +1828,9 @@ switch (command)
         Check(package, new() { ["End"] = "Debug.Trace(\"STB fragtest end \" + akActor)" }, "End");
         var scene = lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(catalog.BySignature["SCEN"].First(r => r.EditorId == "BardSongsInstrumentalBard2Drum01").FormKey)!;
         Check(scene, new() { ["Phase0End"] = "Debug.Trace(\"STB fragtest phase 1 done\")", ["Begin"] = "" }, "Phase0End");
+
+        var perkRecord = lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(catalog.BySignature["PERK"].First(r => r.EditorId == "DA04BloodHarvestPerk").FormKey)!;
+        Check(perkRecord, new() { ["Entry1"] = "Debug.Trace(\"STB fragtest perk \" + akTargetRef + \" by \" + akActor)" }, "Entry1");
 
         // Phases shift their fragments.
         var moved = (Mutagen.Bethesda.Skyrim.Scene)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(scene);

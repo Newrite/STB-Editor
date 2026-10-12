@@ -242,6 +242,9 @@ internal static class FormView
         }
         var path = new List<object>();
         DrawMembers(app, record, tab.Members, path, target, 0);
+        // A perk's «Activate» entries run Papyrus fragments.
+        if (record is Mutagen.Bethesda.Skyrim.IPerkGetter perk && tab.Members is [{ Name: "Effects" }] && RecordFragments.Slots(perk).Count > 0)
+            FragmentsPanel.Draw(app, perk, target);
     }
 
     /// <summary>

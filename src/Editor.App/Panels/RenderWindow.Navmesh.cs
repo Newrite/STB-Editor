@@ -238,7 +238,7 @@ internal sealed partial class RenderWindow
         }
         if (doomed.Count == 0) return;
         if (copy.Data.DoorTriangles.Count > 0)
-            Log.Warn("navmesh: it has door triangles — the navmesh info map (NAVI) still counts the old triangle numbers until the CK finalizes it");
+            Log.Info("navmesh: it has door triangles — press Finalize after editing (door links and NAVI)");
 
         var map = NavmeshTools.DeleteTriangles(copy, doomed);
         CommitWithNeighbours(TF($"Delete {doomed.Count} navmesh triangle(s)"), selection.Mesh, copy, map);
@@ -427,7 +427,7 @@ internal sealed partial class RenderWindow
         _document!.CommitEdit(T("New navmesh"), mesh, RecordPlace.Navmesh, cell: cell, world: _scene.IsInterior ? null : _scene.Worldspace);
         _navSelection = new NavmeshSelection { Mesh = mesh.FormKey };
         _navSelection.Vertices.Add(0);
-        Log.Warn("navmesh: new navmesh started — the navmesh info map (NAVI) is not updated yet; links to neighbouring navmeshes need the CK's finalize for now");
+        Log.Info("navmesh: new navmesh started — press Finalize when it is done (links to neighbours, NAVI entry)");
     }
 
     /// <summary>Autotests: select parts of a navmesh directly.</summary>

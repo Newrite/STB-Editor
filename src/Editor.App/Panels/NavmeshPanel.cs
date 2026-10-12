@@ -8,6 +8,8 @@ namespace StbEditor.App.Panels;
 /// <summary>Navmesh tools next to the render window: what is selected, triangle flags, operations.</summary>
 internal sealed class NavmeshPanel : Panel
 {
+    private string? _summary;
+
     private static readonly (string Label, NavmeshTriangle.Flag Flag, string Tip)[] Flags =
     [
         (T("Water"), NavmeshTriangle.Flag.Water, T("Actors swim here")),
@@ -37,6 +39,12 @@ internal sealed class NavmeshPanel : Panel
 
         ImGui.TextColored(Theme.TextDim, TF($"{scene.Navmeshes.Count} navmesh(es) loaded, {scene.Navmeshes.Sum(n => n.Record.Data?.Triangles.Count ?? 0):N0} triangles"));
         ImGui.TextWrapped(T("Click: vertex or triangle (Ctrl adds). Drag: move (hold Z for height). Shift+click on the ground: new vertex — with 2 selected it also makes the triangle. Del deletes, F drops to the ground."));
+        if (ImGui.Button(T("Finalize edited"))) _summary = window.FinalizeNavmeshes(app, true) ?? _summary;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Door triangles and door links, edge links to neighbouring navmeshes, the navmesh info map (NAVI) — for the edited navmeshes (CK: Finalize)"));
+        ImGui.SameLine();
+        if (ImGui.Button(T("Finalize cell"))) _summary = window.FinalizeNavmeshes(app, false) ?? _summary;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The same for every navmesh of the open cell (the centre cell outdoors)"));
+        if (_summary is not null) ImGui.TextColored(Theme.TextDim, _summary);
         ImGui.Separator();
 
         if (window.NavSelection is not { } selection || selection.IsEmpty)
@@ -90,6 +98,6 @@ internal sealed class NavmeshPanel : Panel
         ImGui.Separator();
         ImGui.TextColored(Theme.TextDim, T("Colours: green walkable · yellow preferred · blue water · orange door · purple no large creatures."));
         ImGui.TextColored(Theme.TextDim, T("Edges: red = open border, light blue = linked to the next navmesh."));
-        ImGui.TextColored(Theme.TextDim, T("Generation and finalize (NAVI, door links) are not done here yet."));
+        ImGui.TextColored(Theme.TextDim, T("Navmesh generation is not done here yet; after editing press Finalize."));
     }
 }

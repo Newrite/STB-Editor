@@ -70,7 +70,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
-| **Finalize** (NAVI, связи между ячейками, ребра у дверей) — без него NPC не проходят через двери и границы | CK: Finalize Cell / WorldSpace | ★★★ | M |
+| ✅ 0.14.0 **Finalize** (NAVI, связи между ячейками, ребра у дверей) — без него NPC не проходят через двери и границы | CK: Finalize Cell / WorldSpace | ★★★ | M |
 | Автогенерация (Recast / Havok), Check NavMeshes, cover edges, pathing tests | CK: NavMesh → Generation, Check, Find Cover Edges | ★★ | L |
 | Move Selection to Separate NavMesh, Select Triangle by Index, preferred/non-connector вершины | CK | ★ | S |
 
@@ -98,6 +98,6 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 4. ✅ 0.10.0 **Квесты** (L): стадии, цели, алиасы.
 5. ✅ 0.11.0 **Papyrus: компиляция и фрагменты** (M), **SEQ** (S). Фрагменты реплик — вместе с диалогами.
 6. ✅ 0.12.0 **Диалоги** (L): темы, ветки, реплики, ответы.
-7. **Свойства ячейки и мира** (M), **Finalize навмеша** (M).
+7. ✅ 0.13.0 / 0.14.0 **Свойства ячейки и мира** (M), **Finalize навмеша** (M).
 8. **FaceGen** (L), очистка ITM/UDR и Check for Errors (M), упаковка BSA (M).
 9. Остальное по запросам.

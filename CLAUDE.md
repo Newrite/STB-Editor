@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.13.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.14.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -37,6 +37,8 @@ Compiled output goes next to the active file — tests must use a scratch active
 v0.12.0: dialogue (`Data/DialogueIndex.cs`, `Panels/DialogueEditor.cs`; INFO drafts are `RecordPlace.DialogInfo` with the topic
 in `Cell`, written under a header-only topic; `InfoFragments` for TIF__ scripts).
 v0.13.0: cell / worldspace header edits (`RecordPlace.Header`, `HeaderCopies`, `Panels/PlacePropertiesWindows.cs`).
+v0.14.0: navmesh Finalize (`Core/NavmeshFinalize.cs`: door triangles + XNDP, edge links by overlap one-to-one, NAVI
+entries only for the plugin's navmeshes; `Panels/RenderWindow.NavmeshFinalize.cs`; verified against CK data by `finalizetest`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,
@@ -181,7 +183,7 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   uint count + ushort triangle indices; ours is a safe superset of the game's — navtest checks it),
   editing in `Panels/RenderWindow.Navmesh.cs` + `Panels/NavmeshPanel.cs`, NAVM drafts with
   `RecordPlace.Navmesh` (writer replaces the cell's NAVM). Deleting triangles renumbers: loaded neighbours'
-  edge links are remapped in the same undo step; NAVI/door links are not (no finalize yet).
+  edge links are remapped in the same undo step; door links, cross-cell links and NAVI come from Finalize (v0.14.0).
 - ImGui: numeric inputs assert on `EnterReturnsTrue` (native abort 0xC0000409, no crash report) — use
   `Ui/Fields.cs` (commit on deactivate). Futura has no "×"/"⊕"/"↔": use x, +, <->.
 - Actors: `Render/ActorAppearance.cs` builds `actor:a.nif|b.nif?fallback,…` composite models (MeshCache).

@@ -307,6 +307,208 @@ switch (command)
         }
         break;
     }
+    case "finalizetest":
+    {
+        // finalizetest <game> <interior EditorID> <world EditorID> <x> <y>: Finalize run on copies of vanilla navmeshes must
+        // give what the CK wrote: door triangles of the interior's doors, and the exterior grid's edge links.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var doorIndex = StbEditor.Data.DoorIndex.Build(ws);
+        List<Mutagen.Bethesda.Skyrim.INavigationMeshGetter> MeshesOf(Mutagen.Bethesda.Plugins.FormKey cell) => lookup.CellVersions(cell).SelectMany(v => v.NavigationMeshes)
+            .Where(n => n.Data is not null).GroupBy(n => n.FormKey).Select(g => g.Last()).ToList();
+        List<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter> DoorsOf(Mutagen.Bethesda.Plugins.FormKey cell) => lookup.CellVersions(cell).SelectMany(v => v.Persistent.Concat(v.Temporary))
+            .OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().GroupBy(p => p.FormKey).Select(g => g.Last()).Where(p => p.TeleportDestination is { Door.IsNull: false }).ToList();
+        System.Numerics.Vector3? Arrival(Mutagen.Bethesda.Skyrim.IPlacedObjectGetter door)
+        {
+            var other = door.TeleportDestination!.Door.FormKey;
+            if (doorIndex.CellOf(other) is not { } otherCell) return null;
+            var otherDoor = lookup.CellVersions(otherCell).SelectMany(v => v.Persistent.Concat(v.Temporary)).OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().LastOrDefault(p => p.FormKey == other);
+            return otherDoor?.TeleportDestination?.Position is { } p ? new System.Numerics.Vector3(p.X, p.Y, p.Z) : null;
+        }
+
+        // Interiors: door triangles and XNDP.
+        int same = 0, differ = 0, xndpSame = 0, xndpDiffer = 0;
+        foreach (var name in args[2].Split(','))
+        {
+            var interior = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, name, StringComparison.OrdinalIgnoreCase)).FormKey;
+            var doors = DoorsOf(interior).Select(d => (Door: d, At: Arrival(d))).Where(d => d.At is not null).ToList();
+            foreach (var nav in MeshesOf(interior))
+            {
+                var copy = Mutagen.Bethesda.Skyrim.NavigationMeshMixIn.DeepCopy(nav);
+                var got = StbEditor.Core.NavmeshFinalize.LinkDoors(copy, doors.Select(d => new StbEditor.Core.NavmeshFinalize.Door(d.Door.FormKey, d.At!.Value)).Where(d => StbEditor.Core.NavmeshFinalize.TriangleAt(copy.Data!, d.Arrival, 64) >= 0));
+                foreach (var original in nav.Data!.DoorTriangles)
+                {
+                    var ok = got.TryGetValue(original.Door.FormKey, out var t) && t == original.TriangleBeforeDoor;
+                    if (ok) same++; else { differ++; Console.WriteLine($"  {name}: door {original.Door.FormKey} CK triangle {original.TriangleBeforeDoor}, ours {(got.TryGetValue(original.Door.FormKey, out var x) ? x : -1)}"); }
+                }
+                foreach (var (door, _) in doors.Where(d => d.Door.NavigationDoorLink?.NavMesh.FormKey == nav.FormKey))
+                {
+                    if (got.TryGetValue(door.FormKey, out var t) && t == door.NavigationDoorLink!.TeleportMarkerTriangle) xndpSame++;
+                    else { xndpDiffer++; Console.WriteLine($"  {name}: door {door.FormKey} XNDP {door.NavigationDoorLink!.TeleportMarkerTriangle}, ours {(got.TryGetValue(door.FormKey, out var x) ? x : -1)}"); }
+                }
+            }
+        }
+        Console.WriteLine($"door triangles: {same} as the CK, {differ} differ; door XNDP triangles: {xndpSame} as the CK, {xndpDiffer} differ");
+
+        // Exteriors: edge links of the centre cell, recomputed after clearing them, against the CK's.
+        var world = catalog.BySignature["WRLD"].First(w => string.Equals(w.EditorId, args[3], StringComparison.OrdinalIgnoreCase)).FormKey;
+        int cx = int.Parse(args[4]), cy = int.Parse(args[5]);
+        var meshes = new Dictionary<Mutagen.Bethesda.Plugins.FormKey, Mutagen.Bethesda.Skyrim.NavigationMesh>();
+        var originals = new Dictionary<Mutagen.Bethesda.Plugins.FormKey, Mutagen.Bethesda.Skyrim.INavigationMeshGetter>();
+        Mutagen.Bethesda.Plugins.FormKey? centre = null;
+        foreach (var c in catalog.BySignature["CELL"].Where(c => c.Winner.Cell is { IsInterior: false, IsPersistentCell: false } p && p.Worldspace == world && Math.Abs(p.GridX - cx) <= 1 && Math.Abs(p.GridY - cy) <= 1))
+        {
+            foreach (var nav in MeshesOf(c.FormKey))
+            {
+                meshes[nav.FormKey] = Mutagen.Bethesda.Skyrim.NavigationMeshMixIn.DeepCopy(nav);
+                originals[nav.FormKey] = nav;
+            }
+            if (c.Winner.Cell!.GridX == cx && c.Winner.Cell.GridY == cy) centre = c.FormKey;
+        }
+        var finalize = centre is { } cc ? MeshesOf(cc).Select(n => n.FormKey).ToHashSet() : [];
+        // Forget the centre meshes' links to other meshes (as if they were edited), then finalize them.
+        foreach (var key in finalize)
+        {
+            var data = meshes[key].Data!;
+            foreach (var tri in data.Triangles)
+                for (var e = 0; e < 3; e++)
+                    if (tri.Flags.HasFlag((Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag)(1 << e)) && data.EdgeLinks[e switch { 0 => tri.EdgeLink_0_1, 1 => tri.EdgeLink_1_2, _ => tri.EdgeLink_2_0 }].Unknown == 0)
+                    {
+                        tri.Flags &= ~(Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag)(1 << e);
+                        switch (e) { case 0: tri.EdgeLink_0_1 = -1; break; case 1: tri.EdgeLink_1_2 = -1; break; default: tri.EdgeLink_2_0 = -1; break; }
+                    }
+        }
+        var changedMeshes = StbEditor.Core.NavmeshFinalize.LinkEdges(meshes, finalize);
+        int linkSame = 0, linkMissing = 0, linkExtra = 0;
+        foreach (var key in finalize)
+        {
+            var before = originals[key].Data!;
+            var after = meshes[key].Data!;
+            for (var t = 0; t < before.Triangles.Count; t++)
+                for (var e = 0; e < 3; e++)
+                {
+                    var flag = (Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag)(1 << e);
+                    short Edge(Mutagen.Bethesda.Skyrim.INavmeshTriangleGetter x) => e switch { 0 => x.EdgeLink_0_1, 1 => x.EdgeLink_1_2, _ => x.EdgeLink_2_0 };
+                    var ck = before.Triangles[t].Flags.HasFlag(flag) && before.EdgeLinks[Edge(before.Triangles[t])].Unknown == 0 ? before.EdgeLinks[Edge(before.Triangles[t])] : null;
+                    var ours = after.Triangles[t].Flags.HasFlag(flag) ? after.EdgeLinks[Edge(after.Triangles[t])] : null;
+                    if (ck is null && ours is null) continue;
+                    if (ck is not null && ours is not null && ck.Mesh.FormKey == ours.Mesh.FormKey && ck.TriangleIndex == ours.TriangleIndex) linkSame++;
+                    else if (ck is not null && ours is null)
+                    {
+                        linkMissing++;
+                        if (linkMissing < 6)
+                        {
+                            var v = before.Triangles[t].Vertices;
+                            int[] cs = [v.X, v.Y, v.Z];
+                            var a = before.Vertices[cs[e]]; var b = before.Vertices[cs[(e + 1) % 3]];
+                            var target = originals.TryGetValue(ck.Mesh.FormKey, out var om) ? om.Data! : null;
+                            var tv = target?.Triangles[ck.TriangleIndex].Vertices;
+                            var tp = tv is { } q ? string.Join(" ", new[] { q.X, q.Y, q.Z }.Select(i => $"({target!.Vertices[i].X:0},{target.Vertices[i].Y:0},{target.Vertices[i].Z:0})")) : "not loaded";
+                            Console.WriteLine($"  missing {key} t{t}e{e} ({a.X:0},{a.Y:0},{a.Z:0})-({b.X:0},{b.Y:0},{b.Z:0}) -> {ck.Mesh.FormKey}/{ck.TriangleIndex}: {tp}");
+                        }
+                    }
+                    else
+                    {
+                        linkExtra++;
+                        if (linkExtra < 6)
+                        {
+                            var v = before.Triangles[t].Vertices;
+                            int[] cs = [v.X, v.Y, v.Z];
+                            var a = before.Vertices[cs[e]]; var b = before.Vertices[cs[(e + 1) % 3]];
+                            var raw = e switch { 0 => before.Triangles[t].EdgeLink_0_1, 1 => before.Triangles[t].EdgeLink_1_2, _ => before.Triangles[t].EdgeLink_2_0 };
+                            Console.WriteLine($"  edge {key} t{t}e{e} ({a.X:0},{a.Y:0},{a.Z:0})-({b.X:0},{b.Y:0},{b.Z:0}) CK raw {raw} flags {before.Triangles[t].Flags}: CK {ck?.Mesh.FormKey}/{ck?.TriangleIndex}, ours {ours?.Mesh.FormKey}/{ours?.TriangleIndex}");
+                        }
+                    }
+                }
+        }
+        Console.WriteLine($"exterior {args[3]} ({cx},{cy}): {finalize.Count} centre navmesh(es) among {meshes.Count}; edge links: {linkSame} as the CK, {linkMissing} missing, {linkExtra} different or extra; meshes changed {changedMeshes.Count}");
+        break;
+    }
+    case "navprobe":
+    {
+        // navprobe <game> <cell EditorID>: how the game data ties navmeshes to doors and NAVI (door triangles, door XNDP,
+        // NAVI entries), to check what Finalize must write.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var cellRec = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var cellVersions = lookup.CellVersions(cellRec.FormKey);
+        System.Numerics.Vector3 Center(Mutagen.Bethesda.Skyrim.INavigationMeshDataGetter d, int t)
+        {
+            var tri = d.Triangles[t].Vertices;
+            var a = d.Vertices[tri.X]; var b = d.Vertices[tri.Y]; var c = d.Vertices[tri.Z];
+            return new((a.X + b.X + c.X) / 3, (a.Y + b.Y + c.Y) / 3, (a.Z + b.Z + c.Z) / 3);
+        }
+        var meshes = cellVersions.SelectMany(v => v.NavigationMeshes).Where(n => n.Data is not null).GroupBy(n => n.FormKey).Select(g => g.Last()).ToList();
+        foreach (var nav in meshes)
+        {
+            var d = nav.Data!;
+            Console.WriteLine($"NAVM {nav.FormKey}: {d.Triangles.Count} tris, {d.EdgeLinks.Count} edge links (unknown values {string.Join(",", d.EdgeLinks.Select(e => e.Unknown).Distinct())}), door flag tris {d.Triangles.Count(t => t.Flags.HasFlag(Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag.Door))}, parent {d.Parent?.GetType().Name}");
+            foreach (var dt in d.DoorTriangles)
+                Console.WriteLine($"  door triangle {dt.TriangleBeforeDoor} at {Center(d, dt.TriangleBeforeDoor)} unknown {dt.Unknown:X} door {dt.Door.FormKey} flags {d.Triangles[dt.TriangleBeforeDoor].Flags}");
+        }
+        foreach (var placed in cellVersions.SelectMany(v => v.Persistent.Concat(v.Temporary)).OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().GroupBy(p => p.FormKey).Select(g => g.Last()).Where(p => p.TeleportDestination is not null))
+        {
+            var tel = placed.TeleportDestination!;
+            Console.WriteLine($"door {placed.FormKey} at {placed.Placement?.Position} -> {tel.Door.FormKey} marker {tel.Position}; XNDP {placed.NavigationDoorLink?.NavMesh.FormKey} tri {placed.NavigationDoorLink?.TeleportMarkerTriangle}");
+            if (placed.NavigationDoorLink is { } link && meshes.FirstOrDefault(m => m.FormKey == link.NavMesh.FormKey)?.Data is { } own && link.TeleportMarkerTriangle < own.Triangles.Count)
+                Console.WriteLine($"  XNDP triangle is in this cell, centre {Center(own, link.TeleportMarkerTriangle)}");
+            else if (placed.NavigationDoorLink is { } far)
+                Console.WriteLine($"  XNDP navmesh is elsewhere ({catalog.Get(far.NavMesh.FormKey)?.Signature ?? "not catalogued"})");
+            var other = lookup.Resolve<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>(tel.Door.FormKey);
+            Console.WriteLine($"  other door {tel.Door.FormKey}: at {other?.Placement?.Position}, its marker {other?.TeleportDestination?.Position}, its XNDP {other?.NavigationDoorLink?.NavMesh.FormKey} tri {other?.NavigationDoorLink?.TeleportMarkerTriangle}");
+        }
+        // Constants or hashes? Distinct values over the whole of Skyrim.esm.
+        var skyrim = ws.Active.First(p => p.Name == "Skyrim.esm").Mod!;
+        var naviAll = skyrim.NavigationMeshInfoMaps.First();
+        Console.WriteLine("NAVI unknown2 top: " + string.Join(", ", naviAll.MapInfos.GroupBy(i => i.Unknown2).OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key:X}x{g.Count()}")));
+        Console.WriteLine("NAVI unknown top: " + string.Join(", ", naviAll.MapInfos.GroupBy(i => i.Unknown).OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key:X}x{g.Count()}")));
+        Console.WriteLine("NAVI linked door unknown top: " + string.Join(", ", naviAll.MapInfos.SelectMany(i => i.LinkedDoors).GroupBy(l => l.Unknown).OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key:X}x{g.Count()}")));
+        Console.WriteLine("NAVI parents: " + string.Join(", ", naviAll.MapInfos.GroupBy(i => i.Parent?.GetType().Name).Select(g => $"{g.Key}x{g.Count()}")) + $"; islands {naviAll.MapInfos.Count(i => i.Island is not null)}; merged {naviAll.MapInfos.Count(i => i.MergedTo.Count > 0)}; preferred flag {string.Join(",", naviAll.MapInfos.Select(i => i.PreferredMergesFlag).Distinct().Take(5))}");
+        var worldInfo = naviAll.MapInfos.First(i => i.Parent is Mutagen.Bethesda.Skyrim.INavigationMapInfoWorldParentGetter);
+        Console.WriteLine($"world info {worldInfo.NavigationMesh.FormKey}: point {worldInfo.Point}, parent {((Mutagen.Bethesda.Skyrim.INavigationMapInfoWorldParentGetter)worldInfo.Parent!).ParentWorldspace.FormKey} {((Mutagen.Bethesda.Skyrim.INavigationMapInfoWorldParentGetter)worldInfo.Parent!).ParentWorldspaceCoord}, unknown2 {worldInfo.Unknown2:X}");
+        var doorUnknown = new Dictionary<int, int>();
+        var crcs = new HashSet<uint>();
+        var edgeUnknown = new Dictionary<int, int>();
+        var sampled = 0;
+        foreach (var block in skyrim.Cells.Records)
+            foreach (var sub in block.SubBlocks)
+                foreach (var c in sub.Cells)
+                    foreach (var n in c.NavigationMeshes)
+                    {
+                        if (n.Data is not { } d || sampled++ > 300) continue;
+                        foreach (var dt in d.DoorTriangles) doorUnknown[dt.Unknown] = doorUnknown.GetValueOrDefault(dt.Unknown) + 1;
+                        crcs.Add(d.CrcHash);
+                        foreach (var e in d.EdgeLinks) edgeUnknown[e.Unknown] = edgeUnknown.GetValueOrDefault(e.Unknown) + 1;
+                    }
+        Console.WriteLine($"interior navmeshes sampled {sampled}: door triangle unknown {string.Join(", ", doorUnknown.OrderByDescending(k => k.Value).Take(4).Select(k => $"{k.Key:X}x{k.Value}"))}; crc values {crcs.Count} ({string.Join(",", crcs.Take(3).Select(x => x.ToString("X")))}); edge link unknown {string.Join(", ", edgeUnknown.Select(k => $"{k.Key:X}x{k.Value}"))}");
+        var extEdge = new Dictionary<int, int>();
+        var extSampled = 0;
+        foreach (var w in skyrim.Worldspaces.Where(w => w.EditorID == "Tamriel"))
+            foreach (var block in w.SubCells)
+                foreach (var sub in block.Items)
+                    foreach (var c in sub.Items)
+                        foreach (var n in c.NavigationMeshes)
+                        {
+                            if (n.Data is not { } d || extSampled++ > 200) continue;
+                            foreach (var e in d.EdgeLinks) extEdge[e.Unknown] = extEdge.GetValueOrDefault(e.Unknown) + 1;
+                        }
+        Console.WriteLine($"exterior navmeshes sampled {extSampled}: edge link unknown {string.Join(", ", extEdge.OrderByDescending(k => k.Value).Take(6).Select(k => $"{k.Key:X}x{k.Value}"))}");
+
+        foreach (var naviRec in catalog.BySignature.GetValueOrDefault("NAVI") ?? [])
+        {
+            foreach (var plugin in naviRec.Plugins.Take(3))
+            {
+                var navi = plugin.Mod?.NavigationMeshInfoMaps.FirstOrDefault();
+                if (navi is null) continue;
+                Console.WriteLine($"NAVI {naviRec.FormKey} in {plugin.Name}: {navi.MapInfos.Count} infos, version {navi.NavMeshVersion}");
+                foreach (var info in navi.MapInfos.Where(i => meshes.Any(m => m.FormKey == i.NavigationMesh.FormKey)))
+                    Console.WriteLine($"  info {info.NavigationMesh.FormKey}: point {info.Point} unknown {info.Unknown:X} flag {info.PreferredMergesFlag:X} merged {info.MergedTo.Count} preferred {info.PreferredMerges.Count} doors [{string.Join(", ", info.LinkedDoors.Select(l => $"{l.Unknown:X}:{l.Door.FormKey}"))}] island {info.Island is not null} unknown2 {info.Unknown2:X} parent {info.Parent?.GetType().Name}");
+            }
+        }
+        break;
+    }
     case "navtest":
     {
         // navtest <game> [n]: for n navmeshes, rebuild the lookup grid and neighbour links like the editor does and compare with the file.

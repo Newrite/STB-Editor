@@ -303,6 +303,7 @@ internal sealed class EditorApp : IDisposable
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
+        RunFinalizeAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -521,7 +522,63 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9);
+
+    private int _finalizeStage;
+
+    /// <summary>
+    /// --autotest-finalize &lt;dir&gt; (with --cell of an interior with a load door): a new plugin in &lt;dir&gt; is the active file;
+    /// Finalize cell on the untouched navmesh (door triangle as the CK's), then a triangle deleted (numbers shift) and
+    /// Finalize edited: the door's XNDP follows; save, reload: navmesh, door and NAVI entry in the plugin agree.
+    /// </summary>
+    private void RunFinalizeAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-finalize");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _finalizeStage == 9) return;
+        var path = Path.Combine(cli[arg + 1], "STBEditorFinalizeAutotest.esp");
+        string Doors(Mutagen.Bethesda.Skyrim.INavigationMeshGetter mesh) => string.Join(", ", mesh.Data!.DoorTriangles.Select(d => $"{d.TriangleBeforeDoor}->{d.Door.FormKey}"));
+        switch (_finalizeStage)
+        {
+            case 0 when RenderWindow.IsSettled && RenderWindow.Scene is { IsInterior: true, Navmeshes.Count: > 0 } scene && session.Doors.IsCompletedSuccessfully:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(path, false, false, session.Game, session.Workspace.DefaultEncoding));
+                var view = scene.Navmeshes[0];
+                Log.Info($"autotest-finalize: {view.Key}: {view.Record.Data!.Triangles.Count} triangles, CK door triangles {Doors(view.Record)}");
+                Log.Info($"autotest-finalize: cell: {RenderWindow.FinalizeNavmeshes(this, false)}");
+                var after = (Mutagen.Bethesda.Skyrim.INavigationMeshGetter)StbEditor.Core.OverrideEditing.Override(Document, view.Key)!.Record;
+                Log.Info($"autotest-finalize: after finalize: door triangles {Doors(after)}, pending {Document.PendingCount}");
+                // Delete triangle 0 (not a door triangle): later numbers shift down.
+                var copy = (Mutagen.Bethesda.Skyrim.NavigationMesh)StbEditor.Core.OverrideEditing.WorkingCopy(Document, view.Key, after);
+                StbEditor.Core.NavmeshTools.DeleteTriangles(copy, new HashSet<int> { 0 });
+                StbEditor.Core.OverrideEditing.CommitEdit(Document, "delete", copy, StbEditor.Core.RecordPlace.Navmesh, cell: view.Cell, world: null);
+                Log.Info($"autotest-finalize: edited: {RenderWindow.FinalizeNavmeshes(this, true)}");
+                var final = (Mutagen.Bethesda.Skyrim.INavigationMeshGetter)StbEditor.Core.OverrideEditing.Override(Document, view.Key)!.Record;
+                var doors = final.Data!.DoorTriangles.Select(d => (d.Door.FormKey, (int)d.TriangleBeforeDoor)).ToList();
+                var xndp = doors.Select(d => StbEditor.Core.OverrideEditing.Override(Document, d.Item1)?.Record as Mutagen.Bethesda.Skyrim.IPlacedObjectGetter)
+                    .Select(r => r?.NavigationDoorLink is { } l ? $"{l.NavMesh.FormKey}/{l.TeleportMarkerTriangle}" : "unchanged");
+                Log.Info($"autotest-finalize: door triangles {Doors(final)}; door XNDP {string.Join(", ", xndp)}; pending {Document.PendingCount}");
+                Save();
+                _finalizeStage = 1;
+                break;
+            }
+            case 1 when !Saver.IsBusy && Document.PendingCount == 0 && Loader is null && RenderWindow.IsSettled:
+            {
+                using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(path, session.Game.Release);
+                var cells = check.Cells.Records.SelectMany(b => b.SubBlocks).SelectMany(sb => sb.Cells).ToList();
+                foreach (var nav in cells.SelectMany(c => c.NavigationMeshes))
+                    Log.Info($"autotest-finalize: file navmesh {nav.FormKey}: {nav.Data?.Triangles.Count} triangles, door triangles {Doors(nav)}");
+                foreach (var door in cells.SelectMany(c => c.Persistent.Concat(c.Temporary)).OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>())
+                    Log.Info($"autotest-finalize: file door {door.FormKey}: XNDP {door.NavigationDoorLink?.NavMesh.FormKey}/{door.NavigationDoorLink?.TeleportMarkerTriangle}");
+                foreach (var navi in check.NavigationMeshInfoMaps)
+                    foreach (var info in navi.MapInfos)
+                        Log.Info($"autotest-finalize: file NAVI {navi.FormKey}: {info.NavigationMesh.FormKey} point {info.Point} parent {info.Parent?.GetType().Name} doors [{string.Join(", ", info.LinkedDoors.Select(l => $"{l.Unknown:X}:{l.Door.FormKey}"))}] unknown {info.Unknown:X} unknown2 {info.Unknown2:X}");
+                _finalizeStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _cellPropsStage, _cellPropsFrames;
     private FormKey _cellPropsCell, _cellPropsWorld;

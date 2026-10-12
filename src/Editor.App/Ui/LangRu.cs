@@ -833,6 +833,19 @@ internal static class LangRu
         ["Map Image"] = "Изображение карты",
         ["Map Data"] = "Данные карты",
 
+        // ---- navmesh finalize
+        ["Finalize edited"] = "Finalize изменённых",
+        ["Door triangles and door links, edge links to neighbouring navmeshes, the navmesh info map (NAVI) — for the edited navmeshes (CK: Finalize)"] = "Треугольники и связи дверей, связи рёбер с соседними навмешами, карта навмешей (NAVI) — для изменённых навмешей (CK: Finalize)",
+        ["Finalize cell"] = "Finalize ячейки",
+        ["The same for every navmesh of the open cell (the centre cell outdoors)"] = "То же для всех навмешей открытой ячейки (снаружи — центральной)",
+        ["Navmesh generation is not done here yet; after editing press Finalize."] = "Генерации навмеша здесь пока нет; после правки нажмите Finalize.",
+        ["The door index is still being built: try again in a moment"] = "Индекс дверей ещё строится: попробуйте через секунду",
+        ["Finalize: no edited navmesh"] = "Finalize: изменённых навмешей нет",
+        ["Finalize: the cell has no navmesh"] = "Finalize: в ячейке нет навмеша",
+        ["Finalize {0} navmesh(es)"] = "Finalize навмешей: {0}",
+        ["Finalized {0} navmesh(es): {1} door triangle(s), {2} door link(s) set, {3} navmesh(es) with new edge links, {4} NAVI entr(ies)"] = "Готово навмешей: {0}; треугольников дверей: {1}, связей дверей обновлено: {2}, навмешей с новыми связями рёбер: {3}, записей NAVI: {4}",
+        ["Finalize: the load order has no navmesh info map (NAVI); its entries were not written"] = "Finalize: в наборе плагинов нет карты навмешей (NAVI), её записи не написаны",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

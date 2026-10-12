@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.8.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.9.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -27,6 +27,8 @@ conflict filters (`Ui/ConflictScan.cs`, time-sliced), master edits (`EditDocumen
 v0.8.0: Use Info (`Data/UseIndex.cs`: raw 4-byte FormID matches per subrecord, winners only, per-plugin disk cache keyed
 by the plugin and its masters; placed references use exact link offsets and a real VMAD parse; other records are
 confirmed at view time with Mutagen `EnumerateFormLinks` in `Panels/UseInfoWindows.cs`; `RenderWindow.GoToReference`).
+v0.9.0: condition editor (`Core/Conditions.cs`: function = Mutagen data class, Use Global = ConditionGlobal class;
+`Ui/ConditionsEditor.cs`, hooked into `FormView` for every condition list), reference «More properties» (`ReferenceProperties.DrawMore`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -762,6 +762,108 @@ switch (command)
         }
         break;
     }
+    case "condtest":
+    {
+        // condtest <game>: every condition of PERK/MGEF/PACK/QUST/IDLE/COBJ/SPEL/LSCR described as a CK line (no
+        // exceptions); then each function set on a perk's condition, plus Use Global, written and read back.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        string Name(Mutagen.Bethesda.Plugins.FormKey? k) => k is not { IsNull: false } key ? "NONE" : catalog.Get(key)?.EditorId ?? ws.FormIdText(key);
+        int described = 0, failed = 0;
+        var samples = new List<string>();
+        foreach (var sig in new[] { "PERK", "MGEF", "PACK", "QUST", "IDLE", "COBJ", "SPEL", "LSCR" })
+        {
+            foreach (var entry in catalog.BySignature[sig].Take(400))
+            {
+                if (lookup.Resolve(entry.FormKey) is not { } rec) continue;
+                foreach (var leaf in new[] { rec })
+                {
+                    foreach (var list in Walk(rec))
+                    {
+                        foreach (var c in list)
+                        {
+                            try
+                            {
+                                var line = StbEditor.Core.Conditions.Describe(c, Name);
+                                described++;
+                                if (samples.Count < 12 && samples.All(s => !s.StartsWith(sig))) samples.Add($"{sig} {entry.EditorId}: {line}");
+                            }
+                            catch (Exception ex) { failed++; if (failed < 5) Console.WriteLine($"  describe failed {entry.EditorId}: {ex.Message}"); }
+                        }
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"described {described} conditions, {failed} failed");
+        foreach (var s in samples) Console.WriteLine("  " + s);
+
+        static IEnumerable<IEnumerable<Mutagen.Bethesda.Skyrim.IConditionGetter>> Walk(object root)
+        {
+            var stack = new Stack<(object Value, int Depth)>();
+            stack.Push((root, 0));
+            while (stack.Count > 0)
+            {
+                var (value, depth) = stack.Pop();
+                if (StbEditor.Core.Conditions.IsConditionList(value)) { yield return ((System.Collections.IEnumerable)value).Cast<Mutagen.Bethesda.Skyrim.IConditionGetter>(); continue; }
+                if (depth > 5) continue;
+                if (value is System.Collections.IEnumerable e and not string)
+                {
+                    foreach (var item in e.Cast<object?>().Take(64)) if (item is not null && StbEditor.Core.RecordFields.IsComposite(item)) stack.Push((item, depth + 1));
+                    continue;
+                }
+                foreach (var p in StbEditor.Core.RecordFields.PropertiesOf(value))
+                {
+                    object? v;
+                    try { v = p.GetValue(value); } catch { continue; }
+                    if (v is not null && StbEditor.Core.RecordFields.IsComposite(v)) stack.Push((v, depth + 1));
+                }
+            }
+        }
+
+        // Every function written and read back on a copy of a perk with conditions.
+        var perk = catalog.BySignature["PERK"].Select(e => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(e.FormKey)).First(p => p?.Conditions.Count > 0)!;
+        var encoding = System.Text.Encoding.UTF8;
+        int ok = 0, bad = 0;
+        foreach (var function in StbEditor.Core.Conditions.Functions)
+        {
+            var copy = Mutagen.Bethesda.Skyrim.PerkMixIn.DeepCopy(perk);
+            StbEditor.Core.Conditions.SetFunction(copy.Conditions[0], function);
+            copy.Conditions[0] = StbEditor.Core.Conditions.WithGlobal(copy.Conditions[0], function.GetHashCode() % 3 == 0);
+            copy.Conditions[0].CompareOperator = Mutagen.Bethesda.Skyrim.CompareOperator.GreaterThanOrEqualTo;
+            var back = StbEditor.Core.RecordRoundTrip.Read(copy, ws.Game.Release, encoding) as Mutagen.Bethesda.Skyrim.IPerkGetter;
+            var got = back?.Conditions[0];
+            var wantGlobal = function.GetHashCode() % 3 == 0;
+            if (got is not null && StbEditor.Core.Conditions.FunctionName(got.Data) == function.ToString() && (got is Mutagen.Bethesda.Skyrim.IConditionGlobalGetter) == wantGlobal
+                && got.CompareOperator == Mutagen.Bethesda.Skyrim.CompareOperator.GreaterThanOrEqualTo) ok++;
+            else { bad++; if (bad < 8) Console.WriteLine($"  {function}: read back {(got is null ? StbEditor.Core.RecordRoundTrip.LastError : StbEditor.Core.Conditions.FunctionName(got.Data) + " global=" + (got is Mutagen.Bethesda.Skyrim.IConditionGlobalGetter))}"); }
+        }
+        Console.WriteLine($"functions: {ok} written and read back, {bad} wrong (of {StbEditor.Core.Conditions.Functions.Count})");
+        break;
+    }
+    case "condprobe":
+    {
+        // condprobe <game>: how Mutagen models conditions (enums, data classes, link-or-index members).
+        var asm = typeof(Mutagen.Bethesda.Skyrim.Condition).Assembly;
+        Console.WriteLine("Flag: " + string.Join(", ", Enum.GetValues<Mutagen.Bethesda.Skyrim.Condition.Flag>().Select(v => $"{v}={(int)v}")));
+        Console.WriteLine("RunOnType: " + string.Join(", ", Enum.GetValues<Mutagen.Bethesda.Skyrim.Condition.RunOnType>().Select(v => $"{v}={(int)v}")));
+        Console.WriteLine("CompareOperator: " + string.Join(", ", Enum.GetValues<Mutagen.Bethesda.Skyrim.CompareOperator>().Select(v => $"{v}={(int)v}")));
+        var functions = Enum.GetValues<Mutagen.Bethesda.Skyrim.Condition.Function>();
+        var dataTypes = asm.GetTypes().Where(t => t.IsClass && !t.IsAbstract && typeof(Mutagen.Bethesda.Skyrim.ConditionData).IsAssignableFrom(t)).ToList();
+        Console.WriteLine($"functions {functions.Length}, data classes {dataTypes.Count}");
+        var missing = functions.Where(f => asm.GetType($"Mutagen.Bethesda.Skyrim.{f}ConditionData") is null).ToList();
+        Console.WriteLine($"functions without a {{name}}ConditionData class: {missing.Count}: {string.Join(", ", missing.Take(30))}");
+        var orIndex = asm.GetType("Mutagen.Bethesda.Skyrim.GetIsIDConditionData")!.GetProperty("Object")!.PropertyType;
+        Console.WriteLine($"Object type {orIndex}: " + string.Join(", ", orIndex.GetProperties().Select(p => $"{p.Name}:{p.PropertyType.Name}{(p.CanWrite ? " rw" : "")}")));
+        var getId = (Mutagen.Bethesda.Skyrim.ConditionData)Activator.CreateInstance(asm.GetType("Mutagen.Bethesda.Skyrim.GetIsIDConditionData")!)!;
+        Console.WriteLine($"new GetIsID: Function={((Mutagen.Bethesda.Skyrim.IConditionDataGetter)getId).GetType().GetProperties().Where(p => p.Name == "Function").Select(p => p.GetValue(getId)).FirstOrDefault()} RunOn={getId.RunOnType}");
+        Console.WriteLine("ConditionData members: " + string.Join(", ", typeof(Mutagen.Bethesda.Skyrim.ConditionData).GetProperties().Select(p => $"{p.Name}:{p.PropertyType.Name}{(p.CanWrite ? " rw" : "")}")));
+        Console.WriteLine("extra data classes: " + string.Join(", ", dataTypes.Where(t => !Enum.TryParse<Mutagen.Bethesda.Skyrim.Condition.Function>(t.Name.Replace("ConditionData", ""), out _)).Select(t => t.Name)));
+        var param = dataTypes.Select(t => (t.Name, Props: t.GetProperties().Where(p => p.DeclaringType == t && p.CanWrite).Select(p => p.PropertyType.Name).ToList()))
+            .GroupBy(x => string.Join(",", x.Props)).OrderByDescending(g => g.Count()).Take(25);
+        foreach (var g in param) Console.WriteLine($"  [{g.Key}] x{g.Count()}: {string.Join(" ", g.Take(4).Select(x => x.Name))}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

@@ -16,7 +16,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.7.0 **Новая запись любого типа** («+ Новая» в Object Window; квесты и диалоги — со своими редакторами) | CK: Object Window → New; xEdit: Copy as new record | ★★★ | S |
 | ✅ 0.7.0 **Удалить запись / убрать override из своего плагина** | CK: Delete; xEdit: Remove | ★★★ | S |
 | ✅ 0.8.0 **Use Info / Referenced By** — кто ссылается на запись (рефы, списки, скрипты, условия) | CK: Use Info; xEdit: вкладка Referenced By | ★★★ | M |
-| **Редактор условий (CTDA)**: выбор функции, параметры, Run On, OR/AND, копировать/вставить условия | CK: Condition Item, Select Function Parameters, Copy/Paste Conditions | ★★★ | M |
+| ✅ 0.9.0 **Редактор условий (CTDA)**: выбор функции, параметры, Run On, OR/AND, копировать/вставить условия | CK: Condition Item, Select Function Parameters, Copy/Paste Conditions | ★★★ | M |
 | Search & Replace: ✅ 0.8.0 заменить базовый объект у рефов; текст в записях, Find Text по всем строкам — нет | CK: Ctrl+F, Find Text | ★★ | S–M |
 | ✅ 0.8.0 Copy as override в активный файл (as new record = Duplicate); deep copy, перенос между плагинами — нет | xEdit | ★★ | S |
 | Правка прямо в сравнении: перетащить значение из колонки в колонку, «Copy to selected records» | xEdit | ★★ | M |
@@ -57,7 +57,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Примитивы: триггер-боксы, активаторы-зоны, room bounds и порталы, multibound, occlusion planes | CK: Primitives, Validate room/portal | ★★ | M |
 | ✅ 0.8.0 Reference Batch Action: поменять что-то у всех выделенных рефов; замена базы | CK | ★★ | S |
 | Run Havok Sim — «уронить» clutter физикой, а не только F (на землю) | CK: Alt+H | ★★ | M |
-| Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |
+| ✅ 0.9.0 Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |
 | Show/Hide по типам, Current Cell Only, световые и звуковые маркеры, радиус света, коллизия (F4), изометрия | CK: View | ★ | S |
 | Регионы (REGN): области на карте, генерация объектов, травы, погоды и звуков | CK: Region Editor | ★ | L |
 | Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
@@ -94,7 +94,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 1. ✅ 0.7.0 **Мелкие ежедневные операции**: новая запись, удаление записи и override, копирование и вставка рефов,
    фильтр «только плагин X / только конфликты», Add/Clean Masters.
 2. ✅ 0.8.0 **Use Info / Referenced By**: нужен везде, в том числе перед удалением записи.
-3. **Редактор условий** (M): нужен квестам, диалогам, перкам, пакетам, эффектам.
+3. ✅ 0.9.0 **Редактор условий** (M): нужен квестам, диалогам, перкам, пакетам, эффектам.
 4. **Квесты** (L): стадии, цели, алиасы.
 5. **Papyrus: компиляция и фрагменты** (M), **SEQ** (S).
 6. **Диалоги** (L): темы, ветки, реплики, ответы.

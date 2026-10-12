@@ -266,7 +266,8 @@ internal static class FormView
         if (!open) return;
 
         ImGui.Indent(ImGui.GetFontSize() * 0.4f);
-        if (isEnumerable) DrawList(app, (IEnumerable)value, path, target, depth);
+        if (isEnumerable && StbEditor.Core.Conditions.IsConditionList(value)) ConditionsEditor.Draw(app, (IEnumerable)value, path, target);
+        else if (isEnumerable) DrawList(app, (IEnumerable)value, path, target, depth);
         else DrawMembers(app, value, RecordFields.PropertiesOf(value), path, target, depth + 1);
         ImGui.Unindent(ImGui.GetFontSize() * 0.4f);
     }

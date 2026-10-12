@@ -15,8 +15,9 @@ namespace StbEditor.App.Panels;
 
 /// <summary>
 /// The Creation Kit's reference dialog, in the Inspector: flags, enable parent, ownership, lock,
-/// teleport (with linking both doors), linked references, count/radius. Every change is one undo
-/// step on an edited copy of the reference (<see cref="OverrideDraft"/>).
+/// teleport (with linking both doors), linked references, count/radius, and every other field of the
+/// reference under «More properties». Every change is one undo step on an edited copy of the
+/// reference (<see cref="OverrideDraft"/>).
 /// </summary>
 internal static class ReferenceProperties
 {
@@ -83,6 +84,7 @@ internal static class ReferenceProperties
             if (obj.BaseSignature == "DOOR" && !batch) DrawTeleport(app, obj, context, placed, Edit);
             DrawExtra(placed, obj, Edit);
         }
+        DrawMore(app, current, batch ? [obj, .. others] : [obj]);
         if (!batch)
         {
             DrawLinkedRefs(app, current, Edit);
@@ -132,6 +134,71 @@ internal static class ReferenceProperties
         document.CommitEdits(targets.Count > 1 ? TF($"{name} ({edits.Count} objects)") : name, edits);
         if (skipped > 0) Log.Info($"{name}: {skipped} selected object(s) skipped (the change does not apply to them)");
     }
+
+    /// <summary>Fields the sections above edit, and the placement (the transform fields and gizmo).</summary>
+    private static readonly HashSet<string> Covered = ["VirtualMachineAdapter", "Base", "Placement", "Scale", "EnableParent", "Owner",
+        "FactionRank", "Lock", "TeleportDestination", "ItemCount", "Radius", "LinkedReferences", "MajorFlags", "SkyrimMajorRecordFlags", "FormKey"];
+
+    /// <summary>What CK's reference tabs show first; rooms, occlusion and water after; anything else last.</summary>
+    private static readonly string[] MoreOrder =
+    [
+        "EditorID", "LevelModifier", "EncounterZone", "PersistentLocation", "LocationReference", "LocationRefTypes", "IsIgnoredBySandbox",
+        "IsOpenByDefault", "ActivateParents", "MapMarker", "Emittance", "LightData", "Alpha", "Horse", "MerchantContainer", "Health", "Charge",
+        "Count", "FavorCost", "HeadTrackingWeight", "SpawnContainer", "TeleportMessageBox", "AttachRef", "LeveledItemBaseObject",
+        "CollisionLayer", "Action", "Patrol", "Primitive", "BoundHalfExtents", "MultiBoundReference", "IsMultiBoundPrimitive", "Portals",
+        "RoomPortal", "LinkedRooms", "LightingTemplate", "ImageSpace", "OcclusionPlane", "XORD", "Reflections", "LitWater", "WaterVelocity",
+        "NavigationDoorLink", "DistantLodData",
+    ];
+
+    private static readonly Dictionary<Type, FormTab> MoreTabs = [];
+
+    private static FormTab MoreTab(IPlacedGetter record)
+    {
+        if (MoreTabs.TryGetValue(record.GetType(), out var tab)) return tab;
+        var members = RecordFields.PropertiesOf(record)
+            .Where(p => !Covered.Contains(p.Name) && !RecordFields.IsRecordHeader(p.Name))
+            .OrderBy(p => Array.IndexOf(MoreOrder, p.Name) is var i and >= 0 ? i : MoreOrder.Length)
+            .ToList();
+        return MoreTabs[record.GetType()] = new FormTab("More", members);
+    }
+
+    /// <summary>
+    /// Every other field of the reference (CK's Activate Parents, Map Marker, Location, Leveled, Emittance,
+    /// Primitive, Room tabs…) as form fields; with several objects selected a change goes to all of them.
+    /// </summary>
+    private static void DrawMore(EditorApp app, IPlacedGetter current, IReadOnlyList<SceneObject> targets)
+    {
+        if (OpenMoreForTest) ImGui.SetNextItemOpen(true, ImGuiCond.Once);
+        if (!ImGui.CollapsingHeader(T("More properties") + "###refmore")) return;
+        ImGui.TextColored(Theme.TextDim, T("Activate parents, map marker, location, encounter zone, leveled actor level, emittance, rooms and primitives."));
+        ImGui.PushID("refmore");
+        FormView.DrawTab(app, current, MoreTab(current), MoreTarget(app, targets));
+        ImGui.PopID();
+    }
+
+    /// <summary>--autotest-refmore: the section starts open (screenshots).</summary>
+    private static readonly bool OpenMoreForTest = Environment.GetCommandLineArgs().Contains("--autotest-refmore");
+
+    /// <summary>Field edits of «More properties»: on every target's edited copy, one undo step.</summary>
+    public static EditTarget MoreTarget(EditorApp app, IReadOnlyList<SceneObject> targets)
+    {
+        var document = app.Document;
+        var contexts = targets.ToDictionary(t => t.Reference, t => app.RenderWindow.RefContextOf(t));
+        var copies = targets.Select(t => (Func<IMajorRecord>)(() =>
+        {
+            document.RegisterContext(t.Reference, contexts[t.Reference]);
+            var record = document.Override(t.Reference)?.Record as IPlacedGetter ?? t.Record as IPlacedGetter ?? NewRecord(app.Session!, t)
+                ?? throw new InvalidOperationException(TF($"{t.Reference}: no record"));
+            return document.WorkingCopy(t.Reference, record);
+        })).ToList();
+        var target = new EditTarget(copies, (name, edited) => document.CommitEdits(
+            targets.Count > 1 ? TF($"{name} ({edited.Count} objects)") : name,
+            edited.Select(e => (e, RecordPlace.Reference, (RefContext?)contexts.GetValueOrDefault(e.FormKey))).ToList()));
+        return target;
+    }
+
+    /// <summary>The «More properties» fields of a reference (autotests).</summary>
+    public static IReadOnlyList<string> MoreMembers(IPlacedGetter record) => MoreTab(record).Members.Select(m => m.Name).ToList();
 
     /// <summary>A reference made in this session has no record yet: start from an empty one with its base.</summary>
     private static IPlacedGetter? NewRecord(EditorSession session, SceneObject obj)

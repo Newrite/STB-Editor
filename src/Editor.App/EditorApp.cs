@@ -274,6 +274,8 @@ internal sealed class EditorApp : IDisposable
         RunUseInfoAutotest();
         RunBatchAutotest();
         RunTogetherAutotest();
+        RunRefMoreAutotest();
+        RunConditionsAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -484,7 +486,115 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-useinfo") || _useStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-batch") || _batchStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-together") || _togetherStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-sheet") || _sheetStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-sheet") || _sheetStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || _refMoreStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9);
+
+    private int _condStage, _condFrames;
+    private FormKey _condPerk, _condOther;
+
+    /// <summary>
+    /// --autotest-conditions: a perk's form on its Conditions tab; through the form's own edit target: function,
+    /// parameter, operator, value, OR, Use Global, a new row, reorder; copy all and paste into another perk; all
+    /// undone and redone (the screenshot shows the edited list); nothing saved.
+    /// </summary>
+    private void RunConditionsAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || Session is not { } session || Loader is not null || _condStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        Mutagen.Bethesda.Skyrim.IPerkGetter? Perk(FormKey k) => (Mutagen.Bethesda.Skyrim.IPerkGetter?)StbEditor.Core.OverrideEditing.Override(Document, k)?.Record
+            ?? lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(k);
+        List<string> Lines(FormKey k) => Perk(k)?.Conditions.Select(c => StbEditor.Core.Conditions.Describe(c, x => StbEditor.App.Ui.ConditionsEditor.NameOf(this, x))).ToList() ?? [];
+        switch (_condStage)
+        {
+            case 0:
+            {
+                var perks = session.Catalog.BySignature["PERK"].Where(r => r.Plugins[0].Name == "Skyrim.esm").ToList();
+                _condPerk = perks.First(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(r.FormKey)?.Conditions.Count >= 2).FormKey;
+                _condOther = perks.First(r => r.FormKey != _condPerk && lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(r.FormKey)?.Conditions.Count == 0).FormKey;
+                FormWindows.Open(_condPerk);
+                StbEditor.App.Ui.ConditionsEditor.ForceSelect = 0;
+                Log.Info($"autotest-conditions: {session.Catalog.Get(_condPerk)?.EditorId}: {string.Join(" | ", Lines(_condPerk))}");
+                _condStage = 1;
+                break;
+            }
+            case 1 when ++_condFrames > 15 && FormWindows.FormOf(_condPerk)?.Target is { } target:
+            {
+                Log.Info($"autotest-conditions: drawn: {string.Join(" | ", StbEditor.App.Ui.ConditionsEditor.LastLines)}");
+                object[] list = ["Conditions"];
+                var before = Document.History.UndoName;
+                target.Apply("function", r => StbEditor.Core.Conditions.SetFunction((Mutagen.Bethesda.Skyrim.Condition)StbEditor.Core.Conditions.ListAt(r, list)[0]!, Mutagen.Bethesda.Skyrim.Condition.Function.GetActorValue));
+                target.Apply("parameter", r => StbEditor.Core.RecordFields.Set(r, ["Conditions", 0, "Data", "ActorValue"], Mutagen.Bethesda.Skyrim.ActorValue.Health));
+                target.Apply("operator", r => ((Mutagen.Bethesda.Skyrim.Condition)StbEditor.Core.Conditions.ListAt(r, list)[0]!).CompareOperator = Mutagen.Bethesda.Skyrim.CompareOperator.GreaterThanOrEqualTo);
+                target.Apply("value", r => StbEditor.Core.RecordFields.Set(r, ["Conditions", 0, "ComparisonValue"], 50f));
+                target.Apply("or", r => ((Mutagen.Bethesda.Skyrim.Condition)StbEditor.Core.Conditions.ListAt(r, list)[0]!).Flags |= Mutagen.Bethesda.Skyrim.Condition.Flag.OR);
+                target.Apply("global", r => { var l = StbEditor.Core.Conditions.ListAt(r, list); l[1] = StbEditor.Core.Conditions.WithGlobal((Mutagen.Bethesda.Skyrim.Condition)l[1]!, true); });
+                var timescale = session.Catalog.BySignature["GLOB"].First(g => g.EditorId == "TimeScale").FormKey;
+                target.Apply("global value", r => StbEditor.Core.RecordFields.Set(r, ["Conditions", 1, "ComparisonValue"], timescale));
+                target.Apply("add", r => StbEditor.Core.Conditions.ListAt(r, list).Add(StbEditor.Core.Conditions.New()));
+                target.Apply("move", r => { var l = StbEditor.Core.Conditions.ListAt(r, list); var item = l[^1]; l.RemoveAt(l.Count - 1); l.Insert(0, item); });
+                Log.Info($"autotest-conditions: edited: {string.Join(" | ", Lines(_condPerk))}");
+
+                StbEditor.App.Ui.ConditionsEditor.CopyForTest(Perk(_condPerk)!.Conditions);
+                var other = Perk(_condOther)!;
+                var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)StbEditor.Core.OverrideEditing.WorkingCopy(Document, _condOther, other);
+                foreach (var c in StbEditor.Core.Conditions.Copy(Perk(_condPerk)!.Conditions)) StbEditor.Core.Conditions.ListAt(copy, list).Add(c);
+                StbEditor.Core.OverrideEditing.CommitEdit(Document, "paste conditions", copy, StbEditor.Core.RecordPlace.TopLevel);
+                Log.Info($"autotest-conditions: pasted into {session.Catalog.Get(_condOther)?.EditorId}: {Lines(_condOther).Count} condition(s), clipboard {StbEditor.App.Ui.ConditionsEditor.ClipboardCount}");
+
+                var steps = 0;
+                while (Document.History.UndoName != before && steps < 20) { Document.Undo(); steps++; }
+                Log.Info($"autotest-conditions: {steps} undo steps: pending {Document.PendingCount}, lines {string.Join(" | ", Lines(_condPerk))}");
+                for (var i = 0; i < steps; i++) Document.Redo();
+                Log.Info($"autotest-conditions: redone: {string.Join(" | ", Lines(_condPerk))}; pending {Document.PendingCount}");
+                _condStage = 2;
+                _condFrames = 0;
+                break;
+            }
+            case 2 when ++_condFrames > 15:
+                Log.Info($"autotest-conditions: drawn after: {string.Join(" | ", StbEditor.App.Ui.ConditionsEditor.LastLines)}");
+                _condStage = 9;
+                break;
+        }
+    }
+
+    private int _refMoreStage, _refMoreFrames;
+    private StbEditor.Render.SceneObject[] _refMore = [];
+
+    /// <summary>
+    /// --autotest-refmore (with --cell): two references selected; «More properties» lists its fields,
+    /// one change (ignored by sandbox, encounter zone) goes to both as one undo step; Ctrl+Z checked; nothing saved.
+    /// </summary>
+    private void RunRefMoreAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || Session is not { } session || Loader is not null || _refMoreStage == 9) return;
+        bool Ignored(StbEditor.Render.SceneObject o) => (StbEditor.Core.OverrideEditing.Override(Document, o.Reference)?.Record as Mutagen.Bethesda.Skyrim.IPlacedObjectGetter
+            ?? o.Record as Mutagen.Bethesda.Skyrim.IPlacedObjectGetter)?.IsIgnoredBySandbox == true;
+        switch (_refMoreStage)
+        {
+            case 0 when RenderWindow.IsSettled && RenderWindow.Scene is { IsInterior: true } scene:
+                _refMore = scene.Objects.Where(o => o.Record is Mutagen.Bethesda.Skyrim.IPlacedObjectGetter { IsIgnoredBySandbox: false } && o.BaseSignature is "FURN" or "STAT" or "MISC").Take(2).ToArray();
+                if (_refMore.Length < 2) { Log.Warn("autotest-refmore: fewer than 2 references"); _refMoreStage = 9; return; }
+                RenderWindow.SelectForTest(_refMore);
+                Select(_refMore[0].Reference);
+                Log.Info($"autotest-refmore: fields: {string.Join(", ", ReferenceProperties.MoreMembers((Mutagen.Bethesda.Skyrim.IPlacedGetter)_refMore[0].Record!))}");
+                var target = ReferenceProperties.MoreTarget(this, _refMore);
+                target.Apply("Ignored by sandbox", r => StbEditor.Core.RecordFields.Set(r, ["IsIgnoredBySandbox"], true));
+                var zone = session.Catalog.BySignature["ECZN"].First();
+                target.Apply("Encounter zone", r => StbEditor.Core.RecordFields.Set(r, ["EncounterZone"], zone.FormKey));
+                var zones = _refMore.Select(o => (StbEditor.Core.OverrideEditing.Override(Document, o.Reference)?.Record as Mutagen.Bethesda.Skyrim.IPlacedObjectGetter)?.EncounterZone.FormKeyNullable == zone.FormKey).Count(x => x);
+                Log.Info($"autotest-refmore: ignored by sandbox {_refMore.Count(Ignored)}/2, encounter zone {zones}/2 ({Document.History.UndoName})");
+                Document.Undo();
+                Document.Undo();
+                Log.Info($"autotest-refmore: after 2x Ctrl+Z ignored {_refMore.Count(Ignored)}/2, pending {Document.PendingCount}");
+                target.Apply("Ignored by sandbox", r => StbEditor.Core.RecordFields.Set(r, ["IsIgnoredBySandbox"], true));
+                _refMoreStage = 1;
+                break;
+            case 1 when ++_refMoreFrames > 20:
+                _refMoreStage = 9;
+                break;
+        }
+    }
 
     private int _sheetStage, _sheetFrames;
 

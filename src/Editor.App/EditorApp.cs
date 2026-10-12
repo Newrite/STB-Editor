@@ -42,7 +42,25 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || ScriptSources.IsBusy;
+
+    /// <summary>Papyrus source windows (Scripts tab: Source / New script).</summary>
+    public Panels.ScriptSourceWindows ScriptSources { get; } = new();
+
+    private (EditorSession Session, string? Compiler, StbEditor.Data.PapyrusSetup Setup)? _papyrus;
+
+    /// <summary>The Papyrus compiler and the load order's script sources, found once per session.</summary>
+    public StbEditor.Data.PapyrusSetup? Papyrus
+    {
+        get
+        {
+            if (Session is not { } session) return null;
+            if (_papyrus is { } p && p.Session == session && p.Compiler == Settings.PapyrusCompiler) return p.Setup;
+            var setup = StbEditor.Data.PapyrusSetup.Find(session.Game, Settings.PapyrusCompiler);
+            _papyrus = (session, Settings.PapyrusCompiler, setup);
+            return setup;
+        }
+    }
     public uint IdleWaitMilliseconds => 500;
 
     public GraphicsDevice Graphics => _graphics;
@@ -273,10 +291,12 @@ internal sealed class EditorApp : IDisposable
         RunMastersAutotest();
         RunUseInfoAutotest();
         RunBatchAutotest();
+        Panels.QuestEditor.Update(this);
         RunTogetherAutotest();
         RunRefMoreAutotest();
         RunConditionsAutotest();
         RunQuestAutotest();
+        RunFragmentsAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -316,6 +336,7 @@ internal sealed class EditorApp : IDisposable
         FormWindows.Draw(this);
         Compare.Draw(this);
         UseInfo.Draw(this);
+        ScriptSources.Draw(this);
         Spreadsheets.Draw(this);
         NewForm.Draw();
         _newRecordDialog.Draw();
@@ -490,7 +511,97 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-sheet") || _sheetStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || _refMoreStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9);
+
+    private int _fragStage, _fragFrames;
+    private FormKey _fragQuest;
+
+    /// <summary>
+    /// --autotest-fragments &lt;dir&gt;: a new plugin in &lt;dir&gt; is the active file; a new quest (Start Game Enabled) with an
+    /// alias and a stage; a broken fragment must fail with its line, a good one compiles (QF_ script next to the
+    /// plugin), the quest's script data gets the fragment and the Alias_ property; save (with the SEQ file), reload,
+    /// check. Nothing is written outside &lt;dir&gt;.
+    /// </summary>
+    private void RunFragmentsAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-fragments");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _fragStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        Mutagen.Bethesda.Skyrim.IQuestGetter? Quest() => (Mutagen.Bethesda.Skyrim.IQuestGetter?)StbEditor.Core.OverrideEditing.Override(Document, _fragQuest)?.Record
+            ?? lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(_fragQuest);
+        switch (_fragStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorFragmentAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _fragQuest = NewForm.CreateForTest("QUST", 0, "STBFragTestQuest", "STB fragment test") ?? default;
+                if (_fragQuest.IsNull) { Log.Warn("autotest-fragments: quest not created"); _fragStage = 9; return; }
+                FormWindows.Open(_fragQuest);
+                _fragStage = 1;
+                break;
+            }
+            case 1 when ++_fragFrames > 10 && FormWindows.FormOf(_fragQuest)?.Target is { } target:
+            {
+                target.Apply("setup", r =>
+                {
+                    var q = (Mutagen.Bethesda.Skyrim.Quest)r;
+                    q.Flags |= Mutagen.Bethesda.Skyrim.Quest.Flag.StartGameEnabled;
+                    q.Aliases.Add(new Mutagen.Bethesda.Skyrim.QuestAlias { ID = 0, Name = "PlayerAlias", Type = Mutagen.Bethesda.Skyrim.QuestAlias.TypeEnum.Reference });
+                    q.Aliases[0].ForcedReference.SetTo(new FormKey(Mutagen.Bethesda.Skyrim.Constants.Skyrim, 0x14));
+                    q.NextAliasID = 1;
+                    var stage = new Mutagen.Bethesda.Skyrim.QuestStage { Index = 10, Flags = Mutagen.Bethesda.Skyrim.QuestStage.Flag.StartUpStage };
+                    stage.LogEntries.Add(new Mutagen.Bethesda.Skyrim.QuestLogEntry());
+                    q.Stages.Add(stage);
+                });
+                Panels.QuestEditor.SetFragmentForTest(_fragQuest, 10, 0, "Debug.Notification(NoSuchVariable)");
+                Panels.QuestEditor.StartCompile(this, Quest()!, target);
+                _fragStage = 2;
+                break;
+            }
+            case 2 when !Panels.QuestEditor.IsCompiling && Panels.QuestEditor.LastCompile is { } broken:
+            {
+                Log.Info($"autotest-fragments: broken code: success {broken.Success}, {broken.Errors} error(s); fragments in quest: {Quest()!.VirtualMachineAdapter?.Fragments.Count ?? 0}");
+                Panels.QuestEditor.SetFragmentForTest(_fragQuest, 10, 0, "Debug.Notification(\"STB fragment test\")\nAlias_PlayerAlias.GetReference().AddItem(Game.GetForm(0xF) as MiscObject, 1)");
+                Panels.QuestEditor.StartCompile(this, Quest()!, FormWindows.FormOf(_fragQuest)!.Target!);
+                _fragStage = 3;
+                break;
+            }
+            case 3 when !Panels.QuestEditor.IsCompiling:
+            {
+                var q = Quest()!;
+                var vmad = q.VirtualMachineAdapter;
+                var good = Panels.QuestEditor.LastCompile;
+                Log.Info($"autotest-fragments: good code: success {good?.Success}, errors {good?.Errors}; file {vmad?.FileName}, fragments [{string.Join(", ", vmad?.Fragments.Select(f => $"{f.Stage}/{f.StageIndex}->{f.FragmentName}") ?? [])}], properties [{string.Join(", ", vmad?.Scripts.SelectMany(s => s.Properties).Select(p => $"{p.Name}={(p as Mutagen.Bethesda.Skyrim.IScriptObjectPropertyGetter)?.Alias}") ?? [])}]");
+                var pex = Directory.EnumerateFiles(cli[arg + 1], "*.pex", SearchOption.AllDirectories).Select(Path.GetFileName);
+                Log.Info($"autotest-fragments: pex files: {string.Join(", ", pex)}; library sees it: {Panels.ScriptsEditor.Library?.Get(vmad?.FileName ?? "") is not null || session.Assets.Exists($@"scripts\{vmad?.FileName}.pex")}");
+                // A new script through the source window, attached to the quest once it compiles.
+                var formTarget = FormWindows.FormOf(_fragQuest)!.Target!;
+                ScriptSources.Open(this, "STBEditorTestScript", "Quest", () => formTarget.Apply("Add script STBEditorTestScript",
+                    r => ((Mutagen.Bethesda.Skyrim.Quest)r).VirtualMachineAdapter!.Scripts.Add(new Mutagen.Bethesda.Skyrim.ScriptEntry { Name = "STBEditorTestScript" })));
+                ScriptSources.CompileForTest(this, "Scriptname STBEditorTestScript extends Quest\r\n\r\nInt Property Count Auto\r\n\r\nEvent OnInit()\r\n    Debug.Trace(\"STB test \" + Count)\r\nEndEvent\r\n");
+                _fragStage = 5;
+                break;
+            }
+            case 5 when !ScriptSources.IsBusy:
+            {
+                var scripts = Quest()!.VirtualMachineAdapter?.Scripts.Select(s => s.Name) ?? [];
+                Log.Info($"autotest-fragments: new script: compiled {ScriptSources.LastResult?.Success} ({ScriptSources.LastResult?.Errors.Count} errors); quest scripts [{string.Join(", ", scripts)}]; property Count seen: {Panels.ScriptsEditor.Library is null || new StbEditor.Assets.ScriptLibrary(session.Assets).AllProperties("STBEditorTestScript").Any(p => p.Property.Name == "Count")}");
+                Save();
+                _fragStage = 4;
+                break;
+            }
+            case 4 when !Saver.IsBusy && Document.PendingCount == 0 && Loader is null:
+            {
+                var q = Quest();
+                var seq = StbEditor.Data.Raw.SeqFile.PathFor(Path.Combine(cli[arg + 1], "STBEditorFragmentAutotest.esp"));
+                Log.Info($"autotest-fragments: reloaded: quest {q?.EditorID}, start game {q?.Flags.HasFlag(Mutagen.Bethesda.Skyrim.Quest.Flag.StartGameEnabled)}, fragments {q?.VirtualMachineAdapter?.Fragments.Count}, fragment script {q?.VirtualMachineAdapter?.FileName}, scripts [{string.Join(", ", q?.VirtualMachineAdapter?.Scripts.Select(s => s.Name) ?? [])}]; SEQ {(File.Exists(seq) ? new FileInfo(seq).Length + " bytes" : "missing")}");
+                _fragStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _questStage, _questFrames;
     private FormKey _quest;
@@ -569,7 +680,7 @@ internal sealed class EditorApp : IDisposable
                 while (Document.History.UndoName != before && steps < 30) { Document.Undo(); steps++; }
                 Log.Info($"autotest-quest: {steps} undo steps: pending {Document.PendingCount}: {Summary(Quest()!)}");
                 for (var i = 0; i < steps; i++) Document.Redo();
-                StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Stages", Quest()!.Stages.Count - 2);
+                StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Stages", cli.Skip(arg + 1).FirstOrDefault() is { } named && !named.StartsWith("--", StringComparison.Ordinal) ? 0 : Quest()!.Stages.Count - 2);
                 StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Objectives", Quest()!.Objectives.Count - 1);
                 StbEditor.App.Panels.QuestEditor.SelectForTest(_quest, "Aliases", Quest()!.Aliases.Count - 1);
                 Log.Info($"autotest-quest: redone: pending {Document.PendingCount}");

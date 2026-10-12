@@ -20,6 +20,9 @@ internal static class ScriptsEditor
 {
     private static string _addFilter = string.Empty;
     private static ScriptLibrary? _library;
+
+    /// <summary>The script library of the session (null before a Scripts tab was drawn).</summary>
+    public static ScriptLibrary? Library => _library;
     private static object? _librarySession;
 
     /// <summary>Papyrus native types → record signatures they accept ("REF" = placed references).</summary>
@@ -46,21 +49,26 @@ internal static class ScriptsEditor
         VmadProperty(record.GetType()) is not null;
 
     private static PropertyInfo? VmadProperty(Type type) =>
-        type.GetProperties().FirstOrDefault(p => p.Name == "VirtualMachineAdapter" && typeof(IVirtualMachineAdapterGetter).IsAssignableFrom(p.PropertyType));
+        type.GetProperties().FirstOrDefault(p => p.Name == "VirtualMachineAdapter" && typeof(IAVirtualMachineAdapterGetter).IsAssignableFrom(p.PropertyType));
 
     /// <summary>How many scripts the record has (for the tab title).</summary>
     public static int Count(IMajorRecordGetter record) => VmadOf(record)?.Scripts.Count ?? 0;
 
-    private static IVirtualMachineAdapterGetter? VmadOf(IMajorRecordGetter record) =>
-        VmadProperty(record.GetType())?.GetValue(record) as IVirtualMachineAdapterGetter;
+    private static IAVirtualMachineAdapterGetter? VmadOf(IMajorRecordGetter record) =>
+        VmadProperty(record.GetType())?.GetValue(record) as IAVirtualMachineAdapterGetter;
 
     /// <summary>The mutable VMAD of an edited copy, created when missing.</summary>
-    private static VirtualMachineAdapter VmadOf(IMajorRecord copy, bool create)
+    /// <remarks>Quests, perks, packages, scenes and dialogue have their own adapter class (with fragments).</remarks>
+    private static AVirtualMachineAdapter VmadOf(IMajorRecord copy, bool create)
     {
         var property = VmadProperty(copy.GetType())!;
-        if (property.GetValue(copy) is VirtualMachineAdapter existing) return existing;
+        if (property.GetValue(copy) is AVirtualMachineAdapter existing) return existing;
         if (!create) throw new InvalidOperationException("no scripts");
-        var vmad = new VirtualMachineAdapter { Version = 5, ObjectFormat = 2 };
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        var vmad = (AVirtualMachineAdapter)System.Activator.CreateInstance(type.IsAbstract ? typeof(VirtualMachineAdapter) : type)!;
+        vmad.Version = 5;
+        vmad.ObjectFormat = 2;
+        if (vmad is QuestAdapter quest) quest.ExtraBindDataVersion = 2;
         property.SetValue(copy, vmad);
         return vmad;
     }
@@ -94,6 +102,9 @@ internal static class ScriptsEditor
             if (ImGui.SmallButton(T("Auto-fill"))) AutoFill(app, entry, declared, scriptIndex, edit);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Fill empty object properties whose name matches an EditorID (as the CK does)"));
             ImGui.SameLine();
+            if (ImGui.SmallButton(T("Source"))) app.ScriptSources.Open(app, entry.Name);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Edit the Papyrus source and compile it (CK: Edit Source)"));
+            ImGui.SameLine();
             if (ImGui.SmallButton(T("Remove script")))
                 edit(TF($"Remove script {entry.Name}"), copy => VmadOf(copy, false).Scripts.RemoveAt(scriptIndex));
             ImGui.PopID();
@@ -112,6 +123,20 @@ internal static class ScriptsEditor
             _addFilter = string.Empty;
         }
         ImGui.EndDisabled();
+
+        // A name no script has yet: write it (Scriptname X extends the type this record's scripts extend), attached once it compiles.
+        var newName = _addFilter.Trim();
+        if (exact is null && newName.Length >= 2 && System.Text.RegularExpressions.Regex.IsMatch(newName, @"^[A-Za-z_]\w*$"))
+        {
+            var signature = current is IPlacedNpcGetter ? "ACHR" : current is IPlacedGetter ? "REFR" : session.Catalog.Get(current.FormKey)?.Signature ?? "";
+            var extends = ScriptSourceWindows.DefaultExtends(signature);
+            if (ImGui.SmallButton(TF($"New script {newName} (extends {extends})")))
+            {
+                app.ScriptSources.Open(app, newName, extends, () => edit(TF($"Add script {newName}"), copy => VmadOf(copy, true).Scripts.Add(new ScriptEntry { Name = newName })));
+                _addFilter = string.Empty;
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Opens a new Papyrus source; once it compiles the script is attached here"));
+        }
 
         if (_addFilter.Trim().Length >= 2 && exact is null)
         {

@@ -212,6 +212,13 @@ public sealed class ScriptLibrary(AssetFileSystem assets)
         .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
+    /// <summary>A script was (re)compiled: read it again next time, and list it.</summary>
+    public void Forget(string name)
+    {
+        _scripts.Remove(name);
+        _names = null;
+    }
+
     public PexScript? Get(string name)
     {
         if (_scripts.TryGetValue(name, out var cached)) return cached;

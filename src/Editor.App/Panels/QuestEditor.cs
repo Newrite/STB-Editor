@@ -17,7 +17,7 @@ namespace StbEditor.App.Panels;
 /// Quest Aliases (fill type, flags, inventory, packages, spells…). A list on the left, the selected
 /// item on the right; every change edits the quest's working copy as one undo step.
 /// </summary>
-internal static class QuestEditor
+internal static partial class QuestEditor
 {
     /// <summary>Selected row per quest and tab.</summary>
     private static readonly Dictionary<string, int> Selected = new();
@@ -166,12 +166,12 @@ internal static class QuestEditor
             if (stages.Count == 0) ImGui.TextColored(Theme.TextDim, T("No stages."));
         }, () =>
         {
+            DrawCompileResult(app, quest);
             if (row < 0) return;
             var stage = stages[row];
             if (IndexField(target, "Stages", row, stage.Index, stages.Where((_, j) => j != row).Select(s => (int)s.Index)) is { } moved) Selected[key] = moved;
             FlagBoxes(target, T("Stage flags"), ["Stages", row, "Flags"], stage.Flags, typeof(QuestStage.Flag), 2);
 
-            var fragments = quest.VirtualMachineAdapter?.Fragments.Where(f => f.Stage == stage.Index).ToList() ?? [];
             ImGui.SeparatorText(TF($"Log entries ({stage.LogEntries.Count})"));
             if (target is not null)
             {
@@ -194,8 +194,7 @@ internal static class QuestEditor
                     ImGui.Indent(ImGui.GetFontSize() * 0.5f);
                     FlagBoxes(target, T("Log entry flags"), ["Stages", row, "LogEntries", j, "Flags"], entry.Flags, typeof(QuestLogEntry.Flag), 2);
                     FormView.DrawObject(app, entry, ["Entry", "NextQuest", "Conditions"], ["Stages", row, "LogEntries", j], target);
-                    if (fragments.FirstOrDefault(f => f.StageIndex == j) is { } fragment)
-                        ImGui.TextColored(Theme.TextDim, TF($"Papyrus fragment: {fragment.ScriptName}.{fragment.FragmentName} (fragments are edited in Papyrus for now)"));
+                    DrawFragment(app, quest, stage.Index, j, target);
                     ImGui.Unindent(ImGui.GetFontSize() * 0.5f);
                 }
                 ImGui.PopID();

@@ -93,6 +93,12 @@ internal sealed class SaveController
 
             File.Move(result.TempPath!, result.TargetPath, overwrite: true);
             Log.Info($"saved {result.TargetPath}: {result.Overridden} changed, {result.Created} new, {result.Disabled} disabled, {result.Removed} removed");
+            // Quests that start with the game need the plugin's SEQ file (as the CK writes it on save).
+            try
+            {
+                if (StbEditor.Data.Raw.SeqFile.Write(result.TargetPath) is { } seq) Log.Info($"SEQ: {seq.Path} ({seq.Count} start-game quest(s))");
+            }
+            catch (Exception ex) { Log.Warn($"SEQ file not written: {ex.Message}"); }
         }
         catch (Exception ex)
         {

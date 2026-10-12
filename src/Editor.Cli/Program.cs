@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Diagnostics;
 using StbEditor.Data;
 using StbEditor.Data.Catalog;
@@ -839,6 +840,51 @@ switch (command)
             else { bad++; if (bad < 8) Console.WriteLine($"  {function}: read back {(got is null ? StbEditor.Core.RecordRoundTrip.LastError : StbEditor.Core.Conditions.FunctionName(got.Data) + " global=" + (got is Mutagen.Bethesda.Skyrim.IConditionGlobalGetter))}"); }
         }
         Console.WriteLine($"functions: {ok} written and read back, {bad} wrong (of {StbEditor.Core.Conditions.Functions.Count})");
+        break;
+    }
+    case "papyrustest":
+    {
+        // papyrustest <game> <out folder>: compiler, imports and flags found; every QF_*.psc of the load order parsed and
+        // written back (same fragments and code); a real quest's fragment script changed and compiled into <out>.
+        var setup = StbEditor.Data.PapyrusSetup.Find(ws.Game);
+        Console.WriteLine($"compiler: {setup.Compiler ?? "none"}; {setup.SourceFolders.Count} source folders; flags in {setup.FlagsFolder ?? "none"}; problem: {setup.Problem ?? "none"}");
+        foreach (var f in setup.SourceFolders.Take(4)) Console.WriteLine($"  import {f}");
+        int parsed = 0, same = 0;
+        var firstBad = new List<string>();
+        foreach (var file in setup.SourceFolders.SelectMany(f => Directory.EnumerateFiles(f, "QF_*.psc")).DistinctBy(Path.GetFileName).Take(3000))
+        {
+            var text = File.ReadAllText(file);
+            var a = StbEditor.Core.FragmentScript.Parse(text);
+            var b = StbEditor.Core.FragmentScript.Parse(a.Write([]));
+            parsed++;
+            var ok = a.Name == b.Name && a.Fragments.Count == b.Fragments.Count && a.Tail.Trim() == b.Tail.Trim()
+                && a.Fragments.Zip(b.Fragments).All(p => p.First.Name == p.Second.Name && p.First.Code == p.Second.Code && p.First.Prologue == p.Second.Prologue);
+            if (ok) same++; else if (firstBad.Count < 5) firstBad.Add(Path.GetFileName(file));
+        }
+        Console.WriteLine($"fragment scripts: {parsed} parsed, {same} written back the same{(firstBad.Count > 0 ? "; differ: " + string.Join(", ", firstBad) : "")}");
+
+        var outDir = Path.GetFullPath(args[2]);
+        var sourceDir = Path.Combine(outDir, "Source", "Scripts");
+        Directory.CreateDirectory(sourceDir);
+        var questName = args.Length > 3 ? args[3] : "QF_DA01_00028AD6";
+        if (setup.SourcePath(questName) is { } original)
+        {
+            var script = StbEditor.Core.FragmentScript.Parse(File.ReadAllText(original));
+            var aliases = Regex.Matches(File.ReadAllText(original), @";BEGIN ALIAS PROPERTY (\w+)\r?\n;ALIAS PROPERTY TYPE (\w+)")
+                .Select(m => (m.Groups[1].Value, m.Groups[2].Value == "LocationAlias")).ToList();
+            script.Fragments[0].Code += "\nDebug.Trace(\"STB Editor papyrustest\")";
+            var psc = Path.Combine(sourceDir, questName + ".psc");
+            File.WriteAllText(psc, script.Write(aliases));
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var result = setup.Compile(psc, Path.Combine(outDir, "Scripts"));
+            Console.WriteLine($"compile {questName}: {(result.Success ? "ok" : "FAILED")} in {clock.Elapsed.TotalSeconds:0.0} s, pex {result.PexPath ?? "none"}, {result.Errors.Count} error(s)");
+            foreach (var e in result.Errors.Take(5)) Console.WriteLine($"  {Path.GetFileName(e.File)}({e.Line},{e.Column}): {e.Message}");
+            if (!result.Success) Console.WriteLine(result.Output[..Math.Min(result.Output.Length, 1500)]);
+            // A broken one must report its error with the line.
+            File.WriteAllText(psc, script.Write(aliases).Replace("Debug.Trace(\"STB Editor papyrustest\")", "Debug.Trace(UndefinedThing)"));
+            var broken = setup.Compile(psc, Path.Combine(outDir, "Scripts"));
+            Console.WriteLine($"broken: success {broken.Success}, errors: {string.Join(" | ", broken.Errors.Take(3).Select(e => $"({e.Line},{e.Column}) {e.Message}"))}");
+        }
         break;
     }
     case "enums":

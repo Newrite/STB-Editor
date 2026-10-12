@@ -94,6 +94,17 @@ internal sealed class SettingsWindow
             var onlyDiff = settings.CompareOnlyDifferences;
             if (ImGui.Checkbox(T("Comparison: only differences"), ref onlyDiff)) settings.CompareOnlyDifferences = onlyDiff;
 
+            ImGui.SeparatorText(T("Papyrus"));
+            var compiler = settings.PapyrusCompiler ?? string.Empty;
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputTextWithHint("##papyrus", T("PapyrusCompiler.exe (empty: the game's Papyrus Compiler folder)"), ref compiler, 512))
+                settings.PapyrusCompiler = compiler.Trim().Trim('"') is { Length: > 0 } path ? path : null;
+            if (app.Papyrus is { } papyrus)
+            {
+                ImGui.TextColored(papyrus.Problem is null ? Theme.TextDim : Theme.Warning,
+                    papyrus.Problem ?? TF($"Compiler: {papyrus.Compiler}; {papyrus.SourceFolders.Count} script source folder(s)"));
+            }
+
             ImGui.Spacing();
             ImGui.TextColored(Theme.TextDim, T("Saved when the editor closes."));
         }

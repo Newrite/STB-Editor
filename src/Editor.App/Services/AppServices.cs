@@ -136,6 +136,9 @@ internal sealed class Settings
     /// <summary>Record comparison: hide the rows where every column has the same value.</summary>
     public bool CompareOnlyDifferences { get; set; }
 
+    /// <summary>PapyrusCompiler.exe; null: the game's "Papyrus Compiler" folder.</summary>
+    public string? PapyrusCompiler { get; set; }
+
     /// <summary>Interface language: "en" or "ru".</summary>
     public string Language { get; set; } = "en";
 

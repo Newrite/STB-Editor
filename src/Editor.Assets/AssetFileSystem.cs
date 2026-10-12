@@ -21,7 +21,7 @@ public sealed class AssetFileSystem
 {
     private sealed record ArchiveEntry(IArchiveFile File, string ArchivePath, string ArchiveName, object Gate);
 
-    private readonly Dictionary<string, (string FullPath, string Container)> _loose;
+    private Dictionary<string, (string FullPath, string Container)> _loose;
     private readonly Dictionary<string, ArchiveEntry> _archived;
 
     public IReadOnlyList<string> LoadedArchives { get; }
@@ -210,6 +210,16 @@ public sealed class AssetFileSystem
             return new AssetSource(key, entry.ArchiveName, entry.ArchivePath, null);
 
         return null;
+    }
+
+    /// <summary>
+    /// A loose file made during the session (a compiled script): it wins over what was there. The map is
+    /// replaced, not changed, so lookups on worker threads never see it half-updated.
+    /// </summary>
+    public void AddLoose(string path, string fullPath, string container)
+    {
+        var copy = new Dictionary<string, (string FullPath, string Container)>(_loose, _loose.Comparer) { [Normalize(path)] = (fullPath, container) };
+        _loose = copy;
     }
 
     public bool Exists(string path)

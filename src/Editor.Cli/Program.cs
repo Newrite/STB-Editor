@@ -307,6 +307,55 @@ switch (command)
         }
         break;
     }
+    case "compacttest":
+    {
+        // compacttest <game> <plugin> <out folder>: Compact FormIDs on a copy: every own record in 0x800-0xFFF, same
+        // record count, every link to an own record resolves, and each record equals the original with links remapped.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        var outDir = Path.GetFullPath(args[3]);
+        Directory.CreateDirectory(outDir);
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var plan = StbEditor.Core.FormIdCompactor.Plan(plugin.Mod!, plugin.ModKey, ws.Active);
+        Console.WriteLine($"{plugin.Name}: {plan.Own} own record(s), {plan.Moved} to renumber, fits ESL {plan.Fits}, dependents [{string.Join(", ", plan.Dependents)}]");
+        var writer = new PluginWriter(ws, catalog);
+        var temp = writer.Compact(active, plan.Map, light: plan.Fits);
+        Console.WriteLine($"{writer.LastCompactRestored} untouched record(s) kept byte for byte");
+        using var after = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(new Mutagen.Bethesda.Plugins.ModPath(plugin.ModKey, temp), game.Release);
+        var afterRecords = after.EnumerateMajorRecords().ToList();
+        var own = afterRecords.Where(r => r.FormKey.ModKey == plugin.ModKey).ToList();
+        var ownKeys = own.Select(r => r.FormKey).ToHashSet();
+        var beforeRecords = plugin.Mod!.EnumerateMajorRecords().ToList();
+        var outOfRange = own.Count(r => r.FormKey.ID is < 0x800 or > 0xFFF);
+        var dangling = afterRecords.SelectMany(r => r.EnumerateFormLinks()).Count(l => l.FormKey.ModKey == plugin.ModKey && !l.FormKey.IsNull && !ownKeys.Contains(l.FormKey));
+        Console.WriteLine($"after: {afterRecords.Count} records (before {beforeRecords.Count}), own {own.Count}, out of range {outOfRange}, links to missing own records {dangling}, light flag {after.ModHeader.Flags}");
+        var byKey = afterRecords.GroupBy(r => r.FormKey).ToDictionary(g => g.Key, g => g.First());
+        int same = 0, differ = 0;
+        foreach (var record in beforeRecords.Where(r => r.Registration.Name is not ("Cell" or "Worldspace" or "DialogTopic")).Take(3000))
+        {
+            var target = plan.Map.TryGetValue(record.FormKey, out var moved) ? moved : record.FormKey;
+            if (!byKey.TryGetValue(target, out var now)) { differ++; continue; }
+            var expected = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.Duplicate(record, target);
+            expected.RemapLinks(plan.Map);
+            if (StbEditor.Core.PluginChecks.Identical(expected, now)) same++;
+            else
+            {
+                differ++;
+                if (differ < 4)
+                {
+                    var a = StbEditor.Core.RecordFields.Leaves(expected, 16, int.MaxValue).Select(l => (l.PathText, StbEditor.Core.RecordFields.Repr(l.Value))).ToList();
+                    var b = StbEditor.Core.RecordFields.Leaves(now, 16, int.MaxValue).Select(l => (l.PathText, StbEditor.Core.RecordFields.Repr(l.Value))).ToList();
+                    var diffs = a.Except(b).Take(3).Select(x => $"{x.Item1}={x.Item2}").Concat(b.Except(a).Take(3).Select(x => $"now {x.Item1}={x.Item2}"));
+                    Console.WriteLine($"  differs: {record.FormKey} -> {target} {record.EditorID}: {string.Join("; ", diffs)}");
+                }
+            }
+        }
+        Console.WriteLine($"content: {same} identical after remapping, {differ} differ");
+        break;
+    }
     case "bsatest":
     {
         // bsatest <game> <vanilla .bsa> <out folder>: our name hash against every folder and file of a vanilla archive;

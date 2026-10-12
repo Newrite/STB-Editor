@@ -371,6 +371,38 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
         return mod;
     }
 
+    /// <summary>Records the last <see cref="Compact"/> kept byte for byte.</summary>
+    public int LastCompactRestored { get; private set; }
+
+    /// <summary>
+    /// Compact FormIDs (and optionally mark light): the whole plugin read, renumbered by <paramref name="map"/>,
+    /// written to a temporary file next to it (masters and string encoding kept) and read back. Returns that file.
+    /// </summary>
+    public string Compact(ActivePlugin active, IReadOnlyDictionary<FormKey, FormKey> map, bool light)
+    {
+        if (active.IsNew || !File.Exists(active.Path)) throw new InvalidOperationException("the plugin has not been saved yet");
+        var header = PluginHeader.Read(active.Path);
+        if (((uint)header.Flags & 0x80) != 0) throw new InvalidOperationException("localized plugins (.strings files) are not compacted here");
+        var mod = ReadMod(active);
+        var originalMasters = mod.ModHeader.MasterReferences.Select(m => m.Master).ToList();
+        // Records that neither move nor point at a moved one keep their original bytes (as an ordinary save).
+        uint FileId(FormKey key) => ((uint)(key.ModKey == active.ModKey ? originalMasters.Count : originalMasters.IndexOf(key.ModKey)) << 24) | (key.ID & 0xFFFFFF);
+        var edited = mod.EnumerateMajorRecords()
+            .Where(r => map.ContainsKey(r.FormKey) || r.EnumerateFormLinks().Any(l => map.ContainsKey(l.FormKey)))
+            .Select(r => FileId(r.FormKey)).ToHashSet();
+        FormIdCompactor.Apply(mod, map);
+        if (light) mod.ModHeader.Flags |= SkyrimModHeader.HeaderFlag.Small;
+        var temp = active.Path + ".stbsave";
+        Write(mod, temp, active, originalMasters, null);
+        File.WriteAllBytes(temp, RawSplice.Splice(File.ReadAllBytes(active.Path), File.ReadAllBytes(temp), edited, out var restored));
+        LastCompactRestored = restored;
+        using var check = SkyrimMod.CreateFromBinaryOverlay(new ModPath(active.ModKey, temp), workspace.Game.Release);
+        var own = check.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == active.ModKey).ToList();
+        if (light && own.Any(r => r.FormKey.ID is < FormIdCompactor.First or > FormIdCompactor.Last))
+            throw new InvalidDataException("verification failed: a record is still outside 0x800-0xFFF");
+        return temp;
+    }
+
     private SkyrimMod ReadMod(ActivePlugin active)
     {
         var text = StringEncodingDetector.ReadEncoding(workspace.Game.Language);

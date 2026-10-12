@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.16.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.17.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -42,6 +42,7 @@ entries only for the plugin's navmeshes; `Panels/RenderWindow.NavmeshFinalize.cs
 v0.15.0: Check and clean (`Core/PluginChecks.cs`: ITM vs the nearest master version, GenderedItem-safe compare; errors;
 UDR via the writer's SafeDisable; `Panels/PluginCheckWindow.cs`); writer removes references (RemovalDraft for REFR/ACHR…).
 v0.16.0: BSA packing (`Assets/BsaWriter.cs` v105 uncompressed, hash checked on vanilla archives; `Panels/ArchiveWindow.cs`).
+v0.17.0: Compact FormIDs / light (`Core/FormIdCompactor.cs`, `PluginWriter.Compact` with RawSplice, `Panels/CompactWindow.cs`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -109,7 +109,7 @@ internal sealed class SaveController
     }
 
     /// <summary>Copies the plugin to %LOCALAPPDATA%\STBEditor\backups\&lt;plugin&gt;\, keeping the last 30.</summary>
-    private static string Backup(string path)
+    internal static string Backup(string path)
     {
         var name = Path.GetFileName(path);
         var folder = Path.Combine(AppPaths.BackupFolder, name);

@@ -12,7 +12,7 @@
     <SelfContained>false</SelfContained>
     <InvariantGlobalization>false</InvariantGlobalization>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <Version>0.16.0</Version>
+    <Version>0.17.0</Version>
     <Product>STB Editor</Product>
   </PropertyGroup>
 </Project>

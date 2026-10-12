@@ -888,6 +888,24 @@ internal static class LangRu
         ["Pack"] = "Упаковать",
         ["Loose files stay where they are and win over the archive: move them away once the archive is checked. Script sources (.psc) and SEQ files are not packed."] = "Файлы остаются на месте и важнее архива: уберите их, когда проверите архив. Исходники скриптов (.psc) и SEQ не упаковываются.",
 
+        // ---- compact formids
+        ["Compact FormIDs..."] = "Сжать FormID…",
+        ["Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"] = "Перенумеровать записи активного файла в 0x800-0xFFF и сделать его лёгким (xEdit: Compact FormIDs for ESL)",
+        ["Compact FormIDs"] = "Сжатие FormID",
+        ["Choose a saved active file first."] = "Сначала выберите сохранённый активный файл.",
+        ["{0}: {1} own record(s), {2} outside 0x800–0xFFF."] = "{0}: своих записей {1}, вне 0x800–0xFFF — {2}.",
+        ["Fits a light plugin (at most 2048 own records)."] = "Помещается в лёгкий плагин (до 2048 своих записей).",
+        ["Too many own records for a light plugin ({0} > 2048): numbers can still be compacted, the light flag cannot be set."] = "Слишком много своих записей для лёгкого плагина ({0} > 2048): номера сжать можно, флаг ESL — нет.",
+        ["These plugins use it and would point at the old numbers: {0}"] = "Эти плагины его используют и будут указывать на старые номера: {0}",
+        ["Save the unsaved changes first (Ctrl+S)."] = "Сначала сохраните изменения (Ctrl+S).",
+        ["Mark as light plugin (ESL flag)"] = "Сделать лёгким плагином (флаг ESL)",
+        ["Rename FaceGen and voice files next to it"] = "Переименовать файлы FaceGen и озвучки рядом с ним",
+        ["Compact"] = "Сжать",
+        ["The file is backed up first (as on save) and reloaded."] = "Файл сначала копируется в бэкапы (как при сохранении) и перезагружается.",
+        ["Not compacted: {0}"] = "Не сжато: {0}",
+        ["{0} record(s) renumbered, {1} kept byte for byte, {2} FaceGen / voice file(s) renamed{3}"] = "перенумеровано записей: {0}, байт в байт: {1}, переименовано файлов FaceGen и озвучки: {2}{3}",
+        [", marked light"] = ", помечен лёгким",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

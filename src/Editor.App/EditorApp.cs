@@ -306,6 +306,7 @@ internal sealed class EditorApp : IDisposable
         RunFinalizeAutotest();
         RunCleanAutotest();
         RunArchiveAutotest();
+        RunCompactAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -344,6 +345,7 @@ internal sealed class EditorApp : IDisposable
         _mastersWindow.Draw(this);
         PluginCheck.Draw(this);
         Archive.Draw(this);
+        Compact.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
         UseInfo.Draw(this);
@@ -505,6 +507,9 @@ internal sealed class EditorApp : IDisposable
     /// <summary>File → Pack into BSA.</summary>
     public Panels.ArchiveWindow Archive { get; } = new();
 
+    /// <summary>File → Compact FormIDs.</summary>
+    public Panels.CompactWindow Compact { get; } = new();
+
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-new") || _newTestStage == 4)
@@ -535,7 +540,46 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-bsa") || _bsaStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-bsa") || _bsaStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-compact") || _compactStage == 9);
+
+    private int _compactStage;
+    private string _compactCopy = "";
+
+    /// <summary>
+    /// --autotest-compact &lt;dir&gt; &lt;plugin&gt;: a copy of the plugin in &lt;dir&gt; is the active file; File → Compact FormIDs
+    /// (light): backed up, replaced, reloaded; the copy's own records all in 0x800–0xFFF with the light flag.
+    /// </summary>
+    private void RunCompactAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-compact");
+        if (arg < 0 || arg + 2 >= cli.Length || Session is not { } session || _compactStage == 9) return;
+        switch (_compactStage)
+        {
+            case 0 when Loader is null:
+            {
+                var plugin = session.Workspace.Active.First(p => p.Name.Equals(cli[arg + 2], StringComparison.OrdinalIgnoreCase));
+                _compactCopy = Path.Combine(cli[arg + 1], plugin.Name);
+                File.Copy(plugin.Location.Path, _compactCopy, overwrite: true);
+                var active = StbEditor.Core.ActivePlugin.ForExisting(plugin, session.Game).RetargetedTo(_compactCopy);
+                SetActivePlugin(active);
+                var plan = StbEditor.Core.FormIdCompactor.Plan(plugin.Mod!, plugin.ModKey, session.Workspace.Active);
+                Log.Info($"autotest-compact: {plan.Own} own, {plan.Moved} to move, fits {plan.Fits}");
+                Log.Info($"autotest-compact: {Panels.CompactWindow.Run(this, session, active, plan, plan.Fits, true)}");
+                _compactStage = 1;
+                break;
+            }
+            case 1 when Loader is null:
+            {
+                using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(_compactCopy, session.Game.Release);
+                var own = check.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == check.ModKey).ToList();
+                Log.Info($"autotest-compact: file: flags {check.ModHeader.Flags}, own {own.Count}, outside 0x800-0xFFF {own.Count(r => r.FormKey.ID is < 0x800 or > 0xFFF)}, next {check.ModHeader.Stats.NextFormID:X}");
+                _compactStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _bsaStage;
 
@@ -2060,6 +2104,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The active file's masters: add one, remove unused ones (as xEdit)"));
             if (ImGui.MenuItem(T("Check and clean..."), (string?)null, false, Session is not null)) PluginCheck.Show();
             if (ImGui.MenuItem(T("Pack into BSA..."), (string?)null, false, Session is not null)) Archive.Show();
+            if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));
             var saveLabel = ActivePlugin is { } ap ? TF($"Save into {ap.Name}") : T("Save...");

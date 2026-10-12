@@ -1203,6 +1203,25 @@ internal static class LangRu
         ["navmesh: that is every triangle — nothing would be left"] = "навмеш: это все треугольники — ничего бы не осталось",
         ["Move {0} navmesh triangle(s) to a new navmesh"] = "Вынести треугольников навмеша в новый навмеш: {0}",
 
+        // ---- Compare with another file
+        ["Compare with another file..."] = "Сравнить с другим файлом...",
+        ["{0}: no such file"] = "{0}: файла нет",
+        ["only in the plugin"] = "только в плагине",
+        ["only in the other file"] = "только в другом файле",
+        ["Compare failed: {0}"] = "Сравнение не удалось: {0}",
+        ["Compare with another file"] = "Сравнить с другим файлом",
+        ["the other version of the file: full path"] = "другая версия файла: полный путь",
+        ["comparing…"] = "сравниваю…",
+        ["Compare"] = "Сравнить",
+        ["{0} difference(s):"] = "Различий: {0}:",
+        ["all"] = "все",
+        ["Filter: EditorID, type or field"] = "Фильтр: EditorID, тип или поле",
+        ["Difference"] = "Различие",
+        ["Fields that differ"] = "Различающиеся поля",
+
+        // ---- Compare with another file 2
+        ["changed record"] = "изменена",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

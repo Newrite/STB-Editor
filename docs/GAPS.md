@@ -83,7 +83,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.7.0 Мастера: Add / Clean Masters (Sort — нет) | xEdit | ★★ | S |
 | ✅ 0.17.0 (Compact + light; смена одного FormID — нет) Change FormID, Renumber, **Compact FormIDs for ESL**, Convert to Light Master | CK + xEdit | ★★ | M |
 | ✅ 0.16.0 (упаковка; список используемых ассетов и проверка отсутствующих — нет) Упаковка в **BSA** (Create Archive), список ассетов плагина, проверка отсутствующих мешей и текстур | CK: Create Archive, Test Models; xEdit: Assets manager | ★★ | M |
-| Compare to: сравнить с другой версией того же плагина, delta-патч | xEdit | ★ | M |
+| ✅ 0.29.0 (сравнение и список полей; delta-патч — нет) Compare to: сравнить с другой версией того же плагина, delta-патч | xEdit | ★ | M |
 | ✅ 0.26.0 (экспорт / импорт текстов в JSON; запись .strings у локализованных плагинов — нет) Строки локализации (.strings): правка, экспорт / импорт для перевода | xEdit: Localization; CK: Export | ★ | M |
 | Merged Patch (слияние leveled lists и т.п.) | xEdit | ★ | M |
 | Скрипты пользователя (у xEdit ~190 .pas в `Edit Scripts`) — свой язык или C#-скрипты | xEdit: Apply Script | ★ | L |

@@ -306,6 +306,7 @@ internal sealed class EditorApp : IDisposable
         RunAliasUseAutotest();
         RunTextsAutotest();
         RunNavSplitAutotest();
+        RunCompareFileAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -355,6 +356,7 @@ internal sealed class EditorApp : IDisposable
         Archive.Draw(this);
         Compact.Draw(this);
         Texts.Draw(this);
+        CompareFile.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -523,6 +525,7 @@ internal sealed class EditorApp : IDisposable
     /// <summary>File → Compact FormIDs.</summary>
     public Panels.CompactWindow Compact { get; } = new();
     public Panels.TextsWindow Texts { get; } = new();
+    public Panels.CompareFileWindow CompareFile { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -557,6 +560,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-aliasuse") || _aliasUseStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-texts") || _textsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navsplit") || _navSplitStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-comparefile") || _compareFileStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1469,6 +1473,32 @@ internal sealed class EditorApp : IDisposable
             }
             case 1 when ++_navSplitFrames > 15:
                 _navSplitStage = 9;
+                break;
+        }
+    }
+
+    private int _compareFileStage, _compareFileFrames;
+
+    /// <summary>--autotest-comparefile &lt;plugin&gt; &lt;other file&gt;: the window compares them; the differences are logged and shown.</summary>
+    private void RunCompareFileAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-comparefile");
+        if (arg < 0 || arg + 2 >= cli.Length || Session is null || Loader is not null || _compareFileStage == 9) return;
+        switch (_compareFileStage)
+        {
+            case 0:
+                CompareFile.Show(this);
+                CompareFile.Start(this, cli[arg + 1], cli[arg + 2]);
+                _compareFileStage = 1;
+                break;
+            case 1 when !CompareFile.IsBusy && ++_compareFileFrames > 2:
+                Log.Info($"autotest-comparefile: {CompareFile.Result?.Count} difference(s): {string.Join(", ", CompareFile.Result?.GroupBy(e => e.Kind).Select(g => $"{g.Key} {g.Count()}") ?? [])}");
+                _compareFileStage = 2;
+                _compareFileFrames = 0;
+                break;
+            case 2 when ++_compareFileFrames > 15:
+                _compareFileStage = 9;
                 break;
         }
     }
@@ -2512,6 +2542,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Pack into BSA..."), (string?)null, false, Session is not null)) Archive.Show();
             if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
             if (ImGui.MenuItem(T("Texts for translation..."), (string?)null, false, Session is not null)) Texts.Show(this);
+            if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));

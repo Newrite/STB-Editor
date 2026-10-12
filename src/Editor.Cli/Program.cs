@@ -2002,6 +2002,18 @@ switch (command)
         Console.WriteLine(failures == 0 ? "OK" : "FAILED");
         break;
     }
+    case "difftest":
+    {
+        // difftest <game> <plugin> <other file>: the plugin compared with another version of the file (Compare to).
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        var clock = Stopwatch.StartNew();
+        var diff = StbEditor.Core.PluginDiff.Compare(plugin.Location.Path, args[3], game.Release);
+        Console.WriteLine($"{diff.Count} difference(s) in {clock.Elapsed.TotalSeconds:0.0} s: " + string.Join(", ", diff.GroupBy(d => d.Kind).Select(g => $"{g.Key} {g.Count()}")));
+        foreach (var group in diff.GroupBy(d => d.Kind))
+            foreach (var d in group.Take(6))
+                Console.WriteLine($"  {d.Kind} {d.Signature} {d.EditorId} {d.Key}{(d.Fields.Count > 0 ? ": " + string.Join(", ", d.Fields) : "")}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

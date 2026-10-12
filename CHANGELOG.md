@@ -2,6 +2,12 @@
 
 Each `## <version>` section is the release description on GitHub (see `docs/DEVELOPING.md`, «Релиз»).
 
+## 0.16.0
+
+- **Файл → Упаковать в BSA…** (Create Archive в CK): ассеты рядом с активным файлом — в `<плагин>.bsa` и
+  `<плагин> - Textures.bsa` (SSE, версия 105, без сжатия). Исходники скриптов и SEQ не упаковываются, старый архив
+  уходит в бэкапы. Хэши имён совпадают со всеми файлами ванильных архивов (`stbedit-cli bsatest`).
+
 ## 0.15.0
 
 - **Файл → Проверка и очистка…** (xEdit: Check for Errors, Quick Auto Clean): ошибки (ссылки на отсутствующие

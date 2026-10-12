@@ -307,6 +307,66 @@ switch (command)
         }
         break;
     }
+    case "bsatest":
+    {
+        // bsatest <game> <vanilla .bsa> <out folder>: our name hash against every folder and file of a vanilla archive;
+        // then an archive written from a few hundred of its files, read back by Mutagen, byte for byte.
+        var path = args[2];
+        var bytes = File.ReadAllBytes(path);
+        var folderCount = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(16));
+        var flags = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(12));
+        var version = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4));
+        var totalFileNames = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(28));
+        var fileCount = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(20));
+        Console.WriteLine($"{Path.GetFileName(path)}: version {version}, flags 0x{flags:X}, {folderCount} folders, {fileCount} files");
+        var pos = 36;
+        var folders = new List<(ulong Hash, int Count)>();
+        for (var i = 0; i < folderCount; i++)
+        {
+            folders.Add((System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(pos)), (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(pos + 8))));
+            pos += version == 105 ? 24 : 16;
+        }
+        var fileHashes = new List<(string Folder, ulong Hash)>();
+        int folderOk = 0, folderBad = 0;
+        foreach (var (hash, count) in folders)
+        {
+            var len = bytes[pos];
+            var name = System.Text.Encoding.ASCII.GetString(bytes, pos + 1, len - 1);
+            pos += 1 + len;
+            if (StbEditor.Assets.BsaWriter.Hash(name, true) == hash) folderOk++; else { folderBad++; if (folderBad < 4) Console.WriteLine($"  folder {name}: ours {StbEditor.Assets.BsaWriter.Hash(name, true):X16}, archive {hash:X16}"); }
+            for (var f = 0; f < count; f++) { fileHashes.Add((name, System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(pos)))); pos += 16; }
+        }
+        var names = System.Text.Encoding.ASCII.GetString(bytes, pos, totalFileNames).Split('\0');
+        int fileOk = 0, fileBad = 0;
+        for (var i = 0; i < fileHashes.Count; i++)
+        {
+            if (StbEditor.Assets.BsaWriter.Hash(names[i], false) == fileHashes[i].Hash) fileOk++;
+            else { fileBad++; if (fileBad < 4) Console.WriteLine($"  file {fileHashes[i].Folder}\\{names[i]}: ours {StbEditor.Assets.BsaWriter.Hash(names[i], false):X16}, archive {fileHashes[i].Hash:X16}"); }
+        }
+        Console.WriteLine($"hashes: folders {folderOk} ok / {folderBad} wrong, files {fileOk} ok / {fileBad} wrong");
+
+        // Round trip: extract some files, pack them, read back.
+        var outDir = Path.GetFullPath(args[3]);
+        var loose = Path.Combine(outDir, "loose");
+        Directory.CreateDirectory(loose);
+        var reader = Mutagen.Bethesda.Archives.Archive.CreateReader(ws.Game.GameRelease, new Noggog.FilePath(path));
+        var picked = reader.Files.Take(300).ToList();
+        var map = new Dictionary<string, string>();
+        foreach (var file in picked)
+        {
+            var target = Path.Combine(loose, file.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, file.GetBytes());
+            map[file.Path] = target;
+        }
+        var archive = Path.Combine(outDir, "STBEditorTest.bsa");
+        var written = StbEditor.Assets.BsaWriter.Write(archive, map);
+        var back = Mutagen.Bethesda.Archives.Archive.CreateReader(ws.Game.GameRelease, new Noggog.FilePath(archive));
+        var backFiles = back.Files.ToDictionary(f => f.Path.ToLowerInvariant(), f => f);
+        var same = map.Count(kv => backFiles.TryGetValue(kv.Key.ToLowerInvariant(), out var f) && f.GetBytes().AsSpan().SequenceEqual(File.ReadAllBytes(kv.Value)));
+        Console.WriteLine($"round trip: {written} written ({new FileInfo(archive).Length:N0} bytes), {backFiles.Count} read back, {same} byte for byte");
+        break;
+    }
     case "udrtest":
     {
         // udrtest <game> <out folder>: a plugin that deletes a vanilla reference (as old CK plugins do) is found by the

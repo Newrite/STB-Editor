@@ -873,6 +873,21 @@ internal static class LangRu
         ["{0}: no master version found, skipped"] = "{0}: нет версии мастера, пропущено",
         ["{0} deleted reference(s) will be undeleted and disabled, {1} own one(s) taken out, on save"] = "При сохранении удалённых рефов вернётся и выключится: {0}, своих уберётся: {1}",
 
+        // ---- bsa packing
+        ["Pack into BSA..."] = "Упаковать в BSA…",
+        ["Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"] = "Меши, текстуры, скрипты и звуки рядом с активным файлом — в его архивы (CK: Create Archive)",
+        ["{0}: {1} file(s), {2:0.0} MB"] = "{0}: файлов {1}, {2:0.0} МБ",
+        ["Nothing to pack: no meshes, textures, scripts or sounds next to the plugin."] = "Упаковывать нечего: рядом с плагином нет мешей, текстур, скриптов и звуков.",
+        ["Packing failed: {0}"] = "Упаковать не удалось: {0}",
+        ["Pack into BSA"] = "Упаковка в BSA",
+        ["Choose the active file first: its folder is packed."] = "Сначала выберите активный файл: упаковывается его папка.",
+        ["Loose files next to {0} ({1}):"] = "Файлы рядом с {0} ({1}):",
+        ["No meshes, textures, compiled scripts, sounds or interface files there."] = "Там нет мешей, текстур, скомпилированных скриптов, звуков и файлов интерфейса.",
+        ["Textures in their own archive (<plugin> - Textures.bsa)"] = "Текстуры — отдельным архивом (<плагин> - Textures.bsa)",
+        ["packing…"] = "упаковка…",
+        ["Pack"] = "Упаковать",
+        ["Loose files stay where they are and win over the archive: move them away once the archive is checked. Script sources (.psc) and SEQ files are not packed."] = "Файлы остаются на месте и важнее архива: уберите их, когда проверите архив. Исходники скриптов (.psc) и SEQ не упаковываются.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

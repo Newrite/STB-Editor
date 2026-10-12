@@ -79,7 +79,7 @@ U/V offset и scale (бегущая вода, листание атласа пл
    (worn armor NPC или skin расы) — только в незанятые слоты. Часть кожи прячется, если занят её
    главный слот: слот тела (32), а без него — младший (голое тело под рубахой уходит, тело драугра
    под одним шлемом остаётся).
-4. Голова — готовый FaceGen: `meshesctors\characteracegendataacegeom\<плагин NPC>\<локальный FormID:X8>.nif`
+4. Голова — готовый FaceGen: `meshes\actors\character\facegendata\facegeom\<плагин NPC>\<локальный FormID:X8>.nif`
    (для NPC с шаблоном по Traits — FaceGen шаблона). Нет файла — head parts NPC (или расы), без морфов.
 5. Масштаб = рост NPC × рост расы × масштаб рефа.
 

@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -305,6 +305,7 @@ internal sealed class EditorApp : IDisposable
         RunCellPropsAutotest();
         RunFinalizeAutotest();
         RunCleanAutotest();
+        RunArchiveAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -342,6 +343,7 @@ internal sealed class EditorApp : IDisposable
         _settingsWindow.Draw(this);
         _mastersWindow.Draw(this);
         PluginCheck.Draw(this);
+        Archive.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
         UseInfo.Draw(this);
@@ -500,6 +502,9 @@ internal sealed class EditorApp : IDisposable
     /// <summary>File → Check and clean.</summary>
     public Panels.PluginCheckWindow PluginCheck { get; } = new();
 
+    /// <summary>File → Pack into BSA.</summary>
+    public Panels.ArchiveWindow Archive { get; } = new();
+
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-new") || _newTestStage == 4)
@@ -529,7 +534,52 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-bsa") || _bsaStage == 9);
+
+    private int _bsaStage;
+
+    /// <summary>
+    /// --autotest-bsa &lt;dir&gt;: a new plugin in &lt;dir&gt; is the active file; loose meshes, textures, a compiled script and a
+    /// script source next to it; Pack into BSA: the main archive and the textures archive read back by Mutagen with the
+    /// right files byte for byte, the source left out.
+    /// </summary>
+    private void RunArchiveAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-bsa");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _bsaStage == 9) return;
+        var dir = cli[arg + 1];
+        switch (_bsaStage)
+        {
+            case 0:
+            {
+                var plugin = Path.Combine(dir, "STBEditorBsaAutotest.esp");
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(plugin, false, false, session.Game, session.Workspace.DefaultEncoding));
+                var assets = new[] { @"meshes\clutter\barrel01.nif", @"meshes\clutter\bucket01.nif", @"textures\clutter\barrel01.dds", @"textures\clutter\barrel01_n.dds", @"scripts\objectreference.pex" };
+                foreach (var asset in assets)
+                {
+                    if (session.Assets.ReadAllBytes(asset) is not { } bytes) { Log.Warn($"autotest-bsa: {asset} not found"); continue; }
+                    var target = Path.Combine(dir, asset);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.WriteAllBytes(target, bytes);
+                }
+                Directory.CreateDirectory(Path.Combine(dir, "scripts", "source"));
+                File.WriteAllText(Path.Combine(dir, "scripts", "source", "Test.psc"), "Scriptname Test");
+                var summary = Panels.ArchiveWindow.Pack(plugin, true);
+                Log.Info($"autotest-bsa: {summary}");
+                foreach (var archive in Directory.EnumerateFiles(dir, "*.bsa"))
+                {
+                    var reader = Mutagen.Bethesda.Archives.Archive.CreateReader(session.Game.GameRelease, new Noggog.FilePath(archive));
+                    var files = reader.Files.ToList();
+                    var same = files.Count(f => File.Exists(Path.Combine(dir, f.Path)) && f.GetBytes().AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(dir, f.Path))));
+                    Log.Info($"autotest-bsa: {Path.GetFileName(archive)}: {files.Count} file(s) [{string.Join(", ", files.Select(f => f.Path))}], {same} byte for byte");
+                }
+                _bsaStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _cleanStage;
     private List<FormKey> _cleanItm = [];
@@ -2009,6 +2059,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Masters..."), (string?)null, false, Session is not null)) _mastersWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The active file's masters: add one, remove unused ones (as xEdit)"));
             if (ImGui.MenuItem(T("Check and clean..."), (string?)null, false, Session is not null)) PluginCheck.Show();
+            if (ImGui.MenuItem(T("Pack into BSA..."), (string?)null, false, Session is not null)) Archive.Show();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));
             var saveLabel = ActivePlugin is { } ap ? TF($"Save into {ap.Name}") : T("Save...");
             if (ImGui.MenuItem(saveLabel, T("Ctrl+S"), false, Session is not null && !Saver.IsBusy)) Save();

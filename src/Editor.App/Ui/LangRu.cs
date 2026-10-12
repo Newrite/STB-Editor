@@ -1242,6 +1242,19 @@ internal static class LangRu
         ["Body tint from the skin tone, as the CK's Update NPC Body Tint Colors (one undo step)"] = "Тинт тела по тону кожи, как Update NPC Body Tint Colors в CK (один шаг отмены)",
         ["Update NPC body tints"] = "Обновить тинт тела NPC",
 
+        // ---- Heightmap
+        ["Heightmap of the loaded cells (.r16, 16-bit, north up; the .json beside it keeps the cells and the height range):"] = "Карта высот загруженных ячеек (.r16, 16 бит, север сверху; .json рядом хранит ячейки и диапазон высот):",
+        ["Export heightmap"] = "Экспорт карты высот",
+        ["Import heightmap"] = "Импорт карты высот",
+        ["The loaded cells inside the map take its heights (edit it in World Machine, Gaea or an image editor; keep its size); one Ctrl+Z"] = "Загруженные ячейки внутри карты получают её высоты (правь её в World Machine, Gaea или графическом редакторе, не меняя размер); один Ctrl+Z",
+        ["Open an exterior first."] = "Сначала открой внешнюю ячейку.",
+        ["No land loaded."] = "Ландшафт не загружен.",
+        ["{0} x {1} samples, cells {2}, {3} … {4}, {5}, heights {6:0} … {7:0} → {8}"] = "{0} x {1} точек, ячейки {2}, {3} … {4}, {5}, высоты {6:0} … {7:0} → {8}",
+        ["The heightmap is of {0}, the open worldspace is {1}."] = "Карта высот — от {0}, а открыт мир {1}.",
+        ["None of the loaded cells is inside the heightmap."] = "Ни одна загруженная ячейка не попадает в карту высот.",
+        ["Import heightmap {0}"] = "Импорт карты высот {0}",
+        ["{0} cell(s) took their heights from {1}"] = "Ячеек с высотами из {1}: {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

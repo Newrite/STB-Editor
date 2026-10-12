@@ -234,6 +234,55 @@ internal sealed partial class RenderWindow
         if (_strokeFull) Log.Warn("landscape: a quadrant already has 6 texture layers — erase one by painting its base texture, or paint a texture it already uses");
     }
 
+    /// <summary>CK Heightmap Editor export: the loaded cells' heights as a .r16 with its .json; returns a summary.</summary>
+    public string ExportHeightmap(EditorApp app, string path)
+    {
+        if (_scene is not { IsInterior: false, Worldspace: { } world } scene || app.Session is not { } session) return T("Open an exterior first.");
+        var cells = scene.Terrain.Where(t => t.Data is not null).Select(t => (t.X, t.Y, t.Data!.Heights)).ToList();
+        if (cells.Count == 0) return T("No land loaded.");
+        var (info, samples) = Heightmap.Build(session.Catalog.Get(world)?.EditorId ?? world.ToString(), cells);
+        Heightmap.Write(path, info, samples);
+        var summary = TF($"{info.Width} x {info.Height} samples, cells {info.MinCellX}, {info.MinCellY} … {info.MinCellX + info.CellsX - 1}, {info.MinCellY + info.CellsY - 1}, heights {info.MinHeight:0} … {info.MaxHeight:0} → {path}");
+        Log.Info($"heightmap: {summary}");
+        return summary;
+    }
+
+    /// <summary>
+    /// CK Heightmap Editor import: the loaded cells inside the map (written by <see cref="ExportHeightmap"/>, edited
+    /// elsewhere) take its heights — one undo step, like a brush stroke.
+    /// </summary>
+    public string ImportHeightmap(EditorApp app, string path)
+    {
+        if (_scene is not { IsInterior: false, Worldspace: { } world } scene || app.Session is not { } session) return T("Open an exterior first.");
+        HeightmapInfo info;
+        ushort[] samples;
+        try { (info, samples) = Heightmap.Read(path); }
+        catch (Exception ex) { return TF($"Cannot read {path}: {ex.Message}"); }
+        var name = session.Catalog.Get(world)?.EditorId ?? world.ToString();
+        if (!string.Equals(info.World, name, StringComparison.OrdinalIgnoreCase)) return TF($"The heightmap is of {info.World}, the open worldspace is {name}.");
+        var builder = Builder(session);
+        _stroke.Clear();
+        for (var t = 0; t < scene.Terrain.Count; t++)
+        {
+            var terrain = scene.Terrain[t];
+            if (terrain.Data is null || Heightmap.CellHeights(info, samples, terrain.X, terrain.Y) is not { } heights) continue;
+            var data = StrokeData(builder, terrain, world);
+            Array.Copy(heights, data.Heights, heights.Length);
+            data.HeightsEdited = true;
+            data.RecomputeNormals();
+            var draft = _stroke[(terrain.X, terrain.Y)].Draft;
+            scene.Terrain[t] = builder.TerrainFrom(data, terrain.X, terrain.Y, draft.Key, draft.Cell);
+        }
+        if (_stroke.Count == 0) return T("None of the loaded cells is inside the heightmap.");
+        _renderer!.Forget(scene);
+        var cells = _stroke.Values.Select(e => (e.Draft, e.Before, e.Draft.Data.Clone())).ToList();
+        _stroke.Clear();
+        _document!.Record(new LandStrokeCommand(TF($"Import heightmap {Path.GetFileName(path)}"), cells));
+        var summary = TF($"{cells.Count} cell(s) took their heights from {Path.GetFileName(path)}");
+        Log.Info($"heightmap: {summary}");
+        return summary;
+    }
+
     /// <summary>Autotests: one stroke of the current brush at a point, as if held for <paramref name="seconds"/>.</summary>
     public bool StrokeForTest(EditorApp app, Vector3 point, float seconds)
     {

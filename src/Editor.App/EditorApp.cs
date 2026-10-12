@@ -309,6 +309,7 @@ internal sealed class EditorApp : IDisposable
         RunCompareFileAutotest();
         RunLevelMergeAutotest();
         RunBodyTintAutotest();
+        RunHeightmapAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -567,6 +568,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-comparefile") || _compareFileStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-levelmerge") || _mergeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-bodytint") || _tintStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-heightmap") || _heightStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1580,6 +1582,47 @@ internal sealed class EditorApp : IDisposable
             }
             case 1 when ++_tintFrames > 10:
                 _tintStage = 9;
+                break;
+        }
+    }
+
+    private int _heightStage, _heightFrames;
+
+    /// <summary>
+    /// --autotest-heightmap &lt;dir&gt; (with --cell &lt;exterior&gt;): the loaded cells' heightmap exported into &lt;dir&gt;, raised by
+    /// 1000 units in a copy, imported (one undo step), the heights checked; undone. Nothing is saved.
+    /// </summary>
+    private void RunHeightmapAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-heightmap");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is null || Loader is not null || _heightStage == 9) return;
+        var scene = RenderWindow.Scene;
+        switch (_heightStage)
+        {
+            case 0 when scene is { IsInterior: false, Terrain.Count: > 0 } && ++_heightFrames > 30:
+            {
+                var path = Path.Combine(cli[arg + 1], "heightmap.r16");
+                Log.Info($"autotest-heightmap: export: {RenderWindow.ExportHeightmap(this, path)}");
+                float Sample() => scene.Terrain.First(t => t.Data is not null).Data!.Heights[16 * 33 + 16];
+                var before = Sample();
+                // The same map 1000 units higher: shift the height range in the .json.
+                var (info, samples) = StbEditor.Core.Heightmap.Read(path);
+                info.MinHeight += 1000;
+                info.MaxHeight += 1000;
+                var raised = Path.Combine(cli[arg + 1], "raised.r16");
+                StbEditor.Core.Heightmap.Write(raised, info, samples);
+                Log.Info($"autotest-heightmap: import: {RenderWindow.ImportHeightmap(this, raised)}; pending {Document.PendingCount}");
+                var after = RenderWindow.Scene!.Terrain.First(t => t.Data is not null).Data!.Heights[16 * 33 + 16];
+                Log.Info($"autotest-heightmap: centre of the first cell {before:0.0} -> {after:0.0} (expected +1000 within the 16-bit step)");
+                Document.Undo();
+                RenderWindow.RefreshTerrainNow(this);
+                Log.Info($"autotest-heightmap: undone: pending {Document.PendingCount}");
+                _heightStage = 1;
+                break;
+            }
+            case 1 when ++_heightFrames > 15:
+                _heightStage = 9;
                 break;
         }
     }

@@ -17,6 +17,8 @@ internal sealed class LandscapePanel : Panel
     private string _filter = string.Empty;
     private float _flatHeight;
     private SceneBuilder? _builder;
+    private string _heightmapPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "STB Editor", "Heightmaps", "heightmap.r16");
+    private string? _heightmapResult;
 
     public override string Name => "Landscape";
 
@@ -91,6 +93,16 @@ internal sealed class LandscapePanel : Panel
             Log.Info(count == 0 ? "landscape: every loaded cell already has land" : $"landscape: created flat land in {count} cell(s)");
         }
         ImGui.TextColored(Theme.TextDim, T("Edited land is saved into the active file (Ctrl+S); each stroke is one Ctrl+Z."));
+
+        ImGui.Separator();
+        ImGui.TextColored(Theme.TextDim, T("Heightmap of the loaded cells (.r16, 16-bit, north up; the .json beside it keeps the cells and the height range):"));
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputText("##heightmap", ref _heightmapPath, 1024);
+        if (ImGui.Button(T("Export heightmap"))) _heightmapResult = window.ExportHeightmap(app, _heightmapPath.Trim().Trim('"'));
+        ImGui.SameLine();
+        if (ImGui.Button(T("Import heightmap"))) _heightmapResult = window.ImportHeightmap(app, _heightmapPath.Trim().Trim('"'));
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The loaded cells inside the map take its heights (edit it in World Machine, Gaea or an image editor; keep its size); one Ctrl+Z"));
+        if (_heightmapResult is not null) ImGui.TextWrapped(_heightmapResult);
     }
 
     private unsafe void DrawTextures(EditorApp app, LandscapeBrush brush)

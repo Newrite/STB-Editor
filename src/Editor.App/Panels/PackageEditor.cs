@@ -22,7 +22,7 @@ internal static class PackageEditor
     /// <summary>Selected branch of the procedure tree per package.</summary>
     private static readonly Dictionary<FormKey, int> SelectedBranch = new();
 
-    public static bool Draws(FormTab tab) => tab.Title is "Package Data" or "Schedule" or "Procedure Tree";
+    public static bool Draws(FormTab tab) => tab.Title is "Package Data" or "Schedule" or "Procedure Tree" or "Begin / End / Change";
 
     /// <summary>Autotests: select a branch of the procedure tree.</summary>
     public static void SelectForTest(FormKey package, int branch) => SelectedBranch[package] = branch;
@@ -52,6 +52,21 @@ internal static class PackageEditor
             case "Package Data": DrawData(app, package, target); break;
             case "Schedule": DrawSchedule(package, target); break;
             case "Procedure Tree": DrawTree(app, package, target); break;
+            case "Begin / End / Change":
+                // The events' idle and topics (their old script blocks are bookkeeping), then the Papyrus fragments.
+                foreach (var (member, label, value) in new[] { ("OnBegin", "On Begin", package.OnBegin), ("OnEnd", "On End", package.OnEnd), ("OnChange", "On Change", package.OnChange) })
+                {
+                    ImGui.PushID(member);
+                    if (value is null) FormView.DrawObject(app, package, [member], [], target);
+                    else
+                    {
+                        ImGui.SeparatorText(T(label));
+                        FormView.DrawObject(app, value, ["Idle", "Topics"], [member], target);
+                    }
+                    ImGui.PopID();
+                }
+                FragmentsPanel.Draw(app, package, target);
+                break;
         }
     }
 

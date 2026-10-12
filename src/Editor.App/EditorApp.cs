@@ -296,6 +296,7 @@ internal sealed class EditorApp : IDisposable
         RunBatchAutotest();
         Panels.QuestEditor.Update(this);
         Panels.DialogueEditor.Update(this);
+        Panels.FragmentsPanel.Update(this);
         RunTogetherAutotest();
         RunRefMoreAutotest();
         RunConditionsAutotest();
@@ -1220,11 +1221,22 @@ internal sealed class EditorApp : IDisposable
                     StbEditor.App.Panels.PackageEditor.SelectForTest(shown.FormKey, 1);
                     if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(shown.FormKey) is { } p) Log.Info($"autotest-package: {shown.EditorId}: {Summary(p)}");
                 }
+                // A Begin fragment, compiled next to the scratch file; the package then points at it.
+                StbEditor.App.Panels.FragmentsPanel.SetForTest(_pack, "Begin", "Debug.Trace(\"STB autotest package begin \" + akActor)");
+                StbEditor.App.Panels.FragmentsPanel.StartCompile(this, Pack()!, target);
                 _packStage = 2;
                 _packFrames = 0;
                 break;
             }
-            case 2 when ++_packFrames > 15:
+            case 2 when !StbEditor.App.Panels.FragmentsPanel.IsCompiling:
+            {
+                var result = StbEditor.App.Panels.FragmentsPanel.LastResultFor(_pack);
+                var vmad = Pack()!.VirtualMachineAdapter;
+                Log.Info($"autotest-package: fragments compile {(result?.Success == true ? "ok" : "FAILED " + result?.Output)}; script {vmad?.ScriptFragments?.FileName}, begin {vmad?.ScriptFragments?.OnBegin?.FragmentName}, scripts [{string.Join(",", vmad?.Scripts.Select(x => x.Name) ?? [])}]");
+                _packStage = 3;
+                break;
+            }
+            case 3 when ++_packFrames > 15:
                 _packStage = 9;
                 break;
         }

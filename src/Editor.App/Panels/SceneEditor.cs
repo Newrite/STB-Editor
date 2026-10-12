@@ -52,6 +52,7 @@ internal static class SceneEditor
                 ImGui.SeparatorText(T("Flags"));
                 QuestEditor.FlagBoxes(target, T("Scene flags"), ["Flags"], scene.Flags, typeof(Scene.Flag), 2);
                 FormView.DrawObject(app, scene, ["Conditions"], [], target);
+                FragmentsPanel.Draw(app, scene, target, ["Begin", "End"]);
                 break;
             case "Actors":
                 DrawActors(scene, aliases, target);
@@ -217,6 +218,7 @@ internal static class SceneEditor
             ImGui.PushID($"phase{shown}");
             FormView.DrawObject(app, scene.Phases[shown], ["Name", "StartConditions", "CompletionConditions"], ["Phases", shown], target);
             ImGui.PopID();
+            FragmentsPanel.Draw(app, scene, target, [$"Phase{shown}Start", $"Phase{shown}End"]);
         }
         else if (SelectedAction.TryGetValue(key, out var index) && scene.Actions.Select((a, i) => (a, i)).FirstOrDefault(x => x.a.Index == index) is { a: { } chosen } found)
             DrawAction(app, scene, quest, aliases, chosen, found.i, target);

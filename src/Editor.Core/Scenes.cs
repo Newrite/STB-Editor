@@ -39,6 +39,9 @@ public static class Scenes
             if (action.StartPhase >= at) action.StartPhase++;
             if (action.EndPhase >= at) action.EndPhase++;
         }
+        // Phase fragments are kept by phase number.
+        foreach (var fragment in scene.VirtualMachineAdapter?.ScriptFragments?.PhaseFragments ?? [])
+            if (fragment.Index >= at) fragment.Index++;
     }
 
     /// <summary>
@@ -55,6 +58,12 @@ public static class Scenes
         {
             if (action.StartPhase > index) action.StartPhase--;
             if (action.EndPhase >= index) action.EndPhase--;
+        }
+        if (scene.VirtualMachineAdapter?.ScriptFragments is { } fragments)
+        {
+            fragments.PhaseFragments.RemoveAll(f => f.Index == index);
+            foreach (var fragment in fragments.PhaseFragments)
+                if (fragment.Index > index) fragment.Index--;
         }
         return gone;
     }

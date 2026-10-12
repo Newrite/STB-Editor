@@ -1136,6 +1136,11 @@ internal static class LangRu
         ["Package action"] = "Пакет",
         ["Timer action"] = "Таймер",
 
+        // ---- Fragments
+        ["Phase {0}: completion"] = "Фаза {0}: завершение",
+        ["Phase {0}: start"] = "Фаза {0}: начало",
+        ["Change"] = "Смена",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

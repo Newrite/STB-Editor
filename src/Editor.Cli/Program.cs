@@ -1404,7 +1404,7 @@ switch (command)
         foreach (var f in setup.SourceFolders.Take(4)) Console.WriteLine($"  import {f}");
         int parsed = 0, same = 0;
         var firstBad = new List<string>();
-        foreach (var file in setup.SourceFolders.SelectMany(f => Directory.EnumerateFiles(f, "QF_*.psc").Concat(Directory.EnumerateFiles(f, "TIF__*.psc"))).DistinctBy(Path.GetFileName).Take(12000))
+        foreach (var file in setup.SourceFolders.SelectMany(f => Directory.EnumerateFiles(f, "QF_*.psc").Concat(Directory.EnumerateFiles(f, "TIF__*.psc")).Concat(Directory.EnumerateFiles(f, "PF_*.psc")).Concat(Directory.EnumerateFiles(f, "SF_*.psc"))).DistinctBy(Path.GetFileName).Take(12000))
         {
             var text = File.ReadAllText(file);
             var a = StbEditor.Core.FragmentScript.Parse(text);
@@ -1719,6 +1719,115 @@ switch (command)
         var removed = StbEditor.Core.Scenes.RemovePhase(scene, 1);
         Console.WriteLine($"remove phase 1: {removed} action(s) gone, left {Phases(scene)}, phases {scene.Phases.Count}, last index {scene.LastActionIndex}");
         if (removed != 1 || scene.Phases.Count != 1) failures++;
+        Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
+        break;
+    }
+    case "fragprobe":
+    {
+        // fragprobe <game>: package (PF_) and scene (SF_) fragment data as vanilla has it, and the source of one of each.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var papyrus = StbEditor.Data.PapyrusSetup.Find(ws.Game);
+        void Source(string name)
+        {
+            if (papyrus.SourcePath(name) is { } path) Console.WriteLine(path + "\n" + string.Join("\n", File.ReadAllLines(path).Take(40).Select(l => "    | " + l)));
+            else Console.WriteLine($"    (no source for {name})");
+        }
+        var packs = catalog.BySignature["PACK"].Where(r => r.FormKey.ModKey.FileName == "Skyrim.esm").Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey))
+            .OfType<Mutagen.Bethesda.Skyrim.IPackageGetter>().Where(p => p.VirtualMachineAdapter?.ScriptFragments is not null).ToList();
+        Console.WriteLine($"packages with fragments: {packs.Count}; bind " + string.Join(",", packs.Select(p => p.VirtualMachineAdapter!.ScriptFragments!.ExtraBindDataVersion).Distinct())
+            + "; fragment bind " + string.Join(",", packs.SelectMany(p => new[] { p.VirtualMachineAdapter!.ScriptFragments!.OnBegin, p.VirtualMachineAdapter.ScriptFragments.OnEnd, p.VirtualMachineAdapter.ScriptFragments.OnChange }).OfType<Mutagen.Bethesda.Skyrim.IScriptFragmentGetter>().Select(f => f.ExtraBindDataVersion).Distinct())
+            + "; vmad " + string.Join(",", packs.Select(p => $"{p.VirtualMachineAdapter!.Version}/{p.VirtualMachineAdapter.ObjectFormat}").Distinct()));
+        if (packs.FirstOrDefault(p => p.VirtualMachineAdapter!.ScriptFragments!.OnBegin is not null && p.VirtualMachineAdapter.ScriptFragments.OnEnd is not null) is { } pk)
+        {
+            var f = pk.VirtualMachineAdapter!.ScriptFragments!;
+            Console.WriteLine($"  {pk.EditorID}: file {f.FileName} begin {f.OnBegin?.ScriptName}/{f.OnBegin?.FragmentName} end {f.OnEnd?.FragmentName} change {f.OnChange?.FragmentName}; scripts {string.Join(",", pk.VirtualMachineAdapter.Scripts.Select(s => $"{s.Name}:{s.Flags}:{s.Properties.Count}"))}");
+            Source(f.FileName);
+        }
+        var scenes = catalog.BySignature["SCEN"].Where(r => r.FormKey.ModKey.FileName == "Skyrim.esm").Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey))
+            .OfType<Mutagen.Bethesda.Skyrim.ISceneGetter>().Where(s => s.VirtualMachineAdapter?.ScriptFragments is not null).ToList();
+        Console.WriteLine($"scenes with fragments: {scenes.Count}; bind " + string.Join(",", scenes.Select(s => s.VirtualMachineAdapter!.ScriptFragments!.ExtraBindDataVersion).Distinct())
+            + "; phase unknown " + string.Join(",", scenes.SelectMany(s => s.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments).Select(p => p.Unknown).Distinct())
+            + "; vmad " + string.Join(",", scenes.Select(s => $"{s.VirtualMachineAdapter!.Version}/{s.VirtualMachineAdapter.ObjectFormat}").Distinct()));
+        Console.WriteLine("phase index: max = count " + scenes.Count(s => s.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments.Any(p => p.Index == s.Phases.Count)) + ", index 0 used " + scenes.Count(s => s.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments.Any(p => p.Index == 0)) + ", beyond " + scenes.Count(s => s.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments.Any(p => p.Index > s.Phases.Count)));
+        if (scenes.FirstOrDefault(s => s.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments.Count >= 2 && s.VirtualMachineAdapter.ScriptFragments.OnBegin is not null) is { } sc)
+        {
+            var f = sc.VirtualMachineAdapter!.ScriptFragments!;
+            Console.WriteLine($"  {sc.EditorID}: file {f.FileName} begin {f.OnBegin?.FragmentName} end {f.OnEnd?.FragmentName}; phases " + string.Join(", ", f.PhaseFragments.Select(p => $"{p.Index}:{p.Flags}:{p.FragmentName}:{p.ScriptName}")) + $"; scripts {string.Join(",", sc.VirtualMachineAdapter.Scripts.Select(s => $"{s.Name}:{s.Flags}:{s.Properties.Count}"))}");
+            Source(f.FileName);
+        }
+        break;
+    }
+    case "fragtest":
+    {
+        // fragtest <game> <out folder>: package and scene fragment tables of the load order point at fragments their
+        // sources have; a vanilla package and a vanilla scene get new code (Begin, a phase completion) merged into
+        // their scripts, compiled into <out>, applied to copies and read back; a phase inserted in front shifts the
+        // scene's phase fragments.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var setup = StbEditor.Data.PapyrusSetup.Find(ws.Game);
+        var failures = 0;
+        int records = 0, withSource = 0, found = 0, missing = 0;
+        var records2 = catalog.BySignature["PACK"].Concat(catalog.BySignature["SCEN"]).ToList();
+        foreach (var r in records2)
+        {
+            var record = r.Signature == "PACK" ? (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter?)lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey) : lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey);
+            if (record is null) continue;
+            var table = StbEditor.Core.RecordFragments.Table(record);
+            if (table.Count == 0) continue;
+            records++;
+            var name = StbEditor.Core.RecordFragments.ScriptName(record, ws.FormIdText(record.FormKey));
+            if (setup.SourcePath(name) is not { } path) continue;
+            withSource++;
+            var script = StbEditor.Core.FragmentScript.Parse(File.ReadAllText(path));
+            foreach (var fragment in table.Values) if (script.Get(fragment) is not null) found++; else missing++;
+        }
+        Console.WriteLine($"records with fragments {records}, with source {withSource}; fragments in the source {found}, missing {missing}");
+
+        var outDir = Path.GetFullPath(args[2]);
+        var sources = Path.Combine(outDir, "Source", "Scripts");
+        Directory.CreateDirectory(sources);
+        void Check(Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter record, Dictionary<string, string> edits, string expect)
+        {
+            var name = StbEditor.Core.RecordFragments.ScriptName(record, ws.FormIdText(record.FormKey));
+            var script = setup.SourcePath(name) is { } path ? StbEditor.Core.FragmentScript.Parse(File.ReadAllText(path)) : new StbEditor.Core.FragmentScript { Name = name };
+            script.Name = name;
+            script.Extends = StbEditor.Core.RecordFragments.Extends(record);
+            var before = StbEditor.Core.RecordFragments.Table(record);
+            var table = StbEditor.Core.RecordFragments.Merge(record, script, edits);
+            var psc = Path.Combine(sources, name + ".psc");
+            File.WriteAllText(psc, script.Write([]));
+            var result = setup.Compile(psc, Path.Combine(outDir, "Scripts"));
+            Console.WriteLine($"{record.EditorID}: {name}, table [{string.Join(", ", before.Select(kv => $"{kv.Key}={kv.Value}"))}] -> [{string.Join(", ", table.Select(kv => $"{kv.Key}={kv.Value}"))}], compile {(result.Success ? "ok" : "FAILED")}");
+            foreach (var e in result.Errors.Take(5)) Console.WriteLine($"  ({e.Line},{e.Column}) {e.Message}");
+            if (!result.Success) { failures++; return; }
+            var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(record);
+            StbEditor.Core.RecordFragments.Apply(copy, name, table);
+            var back = StbEditor.Core.RecordRoundTrip.Read(copy, game.Release, System.Text.Encoding.UTF8);
+            var backTable = back is null ? null : StbEditor.Core.RecordFragments.Table(back);
+            var text = backTable is null ? $"FAILED {StbEditor.Core.RecordRoundTrip.LastError}" : string.Join(", ", backTable.Select(kv => $"{kv.Key}={kv.Value}"));
+            Console.WriteLine($"  read back: [{text}]");
+            if (backTable is null || !backTable.ContainsKey(expect) || backTable.Count != table.Count) failures++;
+        }
+        // A package with a script source that has fragments, and a fresh one; a scene with phase fragments.
+        var package = catalog.BySignature["PACK"].Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey)).OfType<Mutagen.Bethesda.Skyrim.IPackageGetter>()
+            .First(p => p.EditorID == "AbeloneCarryFirewood11x2");
+        Check(package, new() { ["End"] = "Debug.Trace(\"STB fragtest end \" + akActor)" }, "End");
+        var scene = lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(catalog.BySignature["SCEN"].First(r => r.EditorId == "BardSongsInstrumentalBard2Drum01").FormKey)!;
+        Check(scene, new() { ["Phase0End"] = "Debug.Trace(\"STB fragtest phase 1 done\")", ["Begin"] = "" }, "Phase0End");
+
+        // Phases shift their fragments.
+        var moved = (Mutagen.Bethesda.Skyrim.Scene)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(scene);
+        var indices = string.Join(",", moved.VirtualMachineAdapter!.ScriptFragments!.PhaseFragments.Select(f => f.Index));
+        StbEditor.Core.Scenes.InsertPhase(moved, 0);
+        var shifted = string.Join(",", moved.VirtualMachineAdapter.ScriptFragments.PhaseFragments.Select(f => f.Index));
+        StbEditor.Core.Scenes.RemovePhase(moved, 0);
+        var restored = string.Join(",", moved.VirtualMachineAdapter.ScriptFragments.PhaseFragments.Select(f => f.Index));
+        Console.WriteLine($"phase fragments {indices} -> insert {shifted} -> remove {restored}");
+        if (restored != indices || shifted == indices) failures++;
         Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
         break;
     }

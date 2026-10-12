@@ -41,6 +41,9 @@ internal sealed class CompareNode
     public required string[] Keys { get; init; }
 
     public FormKey?[]? Links { get; set; }
+
+    /// <summary>The record member a top-level row shows (its value can be copied between columns).</summary>
+    public string? Member { get; set; }
     public List<CompareNode> Children { get; } = [];
     public bool Group { get; set; }
 
@@ -103,6 +106,7 @@ internal static class RecordCompare
                 catch (TargetInvocationException) { values[col] = null; }
             }
             Add(app, parent, FieldEditors.Label(name), values, depth + 1);
+            if (depth == 0) parent.Children[^1].Member = name;
         }
     }
 
@@ -429,8 +433,38 @@ internal sealed class CompareView
             if (i > 0 && ImGui.IsItemHovered()) ImGui.SetTooltip(columns[i - 1].Tooltip);
         }
 
-        foreach (var child in _root.Children) DrawNode(app, child, onlyDiff);
+        foreach (var child in _root.Children) DrawNode(app, child, onlyDiff, columns, versions);
         ImGui.EndTable();
+    }
+
+    /// <summary>
+    /// A field's value from one column into another record (xEdit: drag a value across, Copy to selected records):
+    /// with versions, into the active file's version of the record; with several records, into all the others.
+    /// One undo step; saved with Ctrl+S.
+    /// </summary>
+    public static int CopyValue(EditorApp app, IReadOnlyList<CompareColumn> columns, int from, string member, bool versions)
+    {
+        if (columns[from].Record is not { } source) return 0;
+        var targets = versions
+            ? [app.Document.Override(source.FormKey)?.Record ?? StbEditor.App.Panels.CompareWindows.Versions(app, source.FormKey).FirstOrDefault().Record]
+            : columns.Where((c, i) => i != from && c.Record is not null).Select(c => app.Document.Override(c.Record!.FormKey)?.Record ?? c.Record).ToList();
+        var edits = new List<(Mutagen.Bethesda.Plugins.Records.IMajorRecord, StbEditor.Core.RecordPlace, StbEditor.Core.RefContext?)>();
+        foreach (var target in targets.OfType<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>())
+        {
+            if (target.GetType() != source.GetType() && target.Registration.ClassType != source.Registration.ClassType) continue;
+            var copy = StbEditor.Core.OverrideEditing.WorkingCopy(app.Document, target.FormKey, target);
+            try
+            {
+                StbEditor.Core.MemberCopy.Copy(copy, source, member);
+                edits.Add((copy, StbEditor.Core.RecordPlace.TopLevel, null));
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Warn(TF($"{member}: not copied ({ex.Message})"));
+            }
+        }
+        if (edits.Count > 0) StbEditor.Core.OverrideEditing.CommitEdits(app.Document, TF($"Copy {FieldEditors.Label(member)} from {columns[from].Title}"), edits);
+        return edits.Count;
     }
 
     private static void Legend(Vector4 color, string text)
@@ -445,7 +479,7 @@ internal sealed class CompareView
         ImGui.TextColored(Theme.TextDim, text);
     }
 
-    private static void DrawNode(EditorApp app, CompareNode node, bool onlyDiff)
+    private static void DrawNode(EditorApp app, CompareNode node, bool onlyDiff, IReadOnlyList<CompareColumn> columns, bool versions)
     {
         if (onlyDiff && node.State == CompareState.Same) return;
 
@@ -476,14 +510,26 @@ internal sealed class CompareView
             var text = node.Group && !summary ? "" : node.Text[col];
             if (text.Length == 0) continue;
             ImGui.TextColored(RecordCompare.CellColor(node, col), text);
+            if (node.Member is { } member && col < columns.Count && columns[col].Record is { } record && record is not Mutagen.Bethesda.Skyrim.ICellGetter
+                && record is not Mutagen.Bethesda.Skyrim.IWorldspaceGetter && record is not Mutagen.Bethesda.Skyrim.IDialogTopicGetter && record is not Mutagen.Bethesda.Skyrim.IPlacedGetter)
+            {
+                ImGui.PushID(col);
+                if (ImGui.BeginPopupContextItem($"##copy{node.Label}"))
+                {
+                    var label = versions ? TF($"Use this value in {app.ActivePlugin?.Name ?? T("the active file")}") : T("Copy this value to the other records");
+                    if (ImGui.MenuItem(label)) CopyValue(app, columns, col, member, versions);
+                    ImGui.EndPopup();
+                }
+                ImGui.PopID();
+            }
             if (!ImGui.IsItemHovered()) continue;
             var link = node.Links?[col];
-            ImGui.SetTooltip(link is not null ? text + "\n" + T("Double-click to open") : text);
+            ImGui.SetTooltip((link is not null ? text + "\n" + T("Double-click to open") : text) + (node.Member is not null ? "\n" + T("Right-click: copy this value") : ""));
             if (link is { } key && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) app.Select(key);
         }
 
         if (!open) return;
-        foreach (var child in node.Children) DrawNode(app, child, onlyDiff);
+        foreach (var child in node.Children) DrawNode(app, child, onlyDiff, columns, versions);
         ImGui.TreePop();
     }
 }

@@ -2,6 +2,12 @@
 
 Each `## <version>` section is the release description on GitHub (see `docs/DEVELOPING.md`, «Релиз»).
 
+## 0.18.0
+
+- **Правка в сравнении**: ПКМ по значению поля — «Взять это значение в <активный файл>» (сравнение версий) или
+  «Скопировать это значение в остальные записи» (сравнение записей, как Copy to selected records в xEdit). Поле
+  копируется целиком через маску Mutagen; поля, которые Mutagen задевает сверх маски (скелет расы), возвращаются.
+
 ## 0.17.0
 
 - **Файл → Сжать FormID…** (Compact FormIDs for ESL / Convert to light): свои записи активного файла в 0x800–0xFFF,

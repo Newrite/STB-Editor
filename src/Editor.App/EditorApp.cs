@@ -307,6 +307,7 @@ internal sealed class EditorApp : IDisposable
         RunCleanAutotest();
         RunArchiveAutotest();
         RunCompactAutotest();
+        RunCompareCopyAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -541,7 +542,38 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-bsa") || _bsaStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-compact") || _compactStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-compact") || _compactStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-comparecopy") || _compareCopyStage == 9);
+
+    private int _compareCopyStage;
+
+    /// <summary>
+    /// --autotest-comparecopy: a record with several versions; the oldest version's Keywords and Weight taken into the
+    /// active file's version from the compare columns (one undo step each); three armors get one armor's weight
+    /// ("copy to the other records"); all undone; nothing saved.
+    /// </summary>
+    private void RunCompareCopyAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-comparecopy") || Session is not { } session || Loader is not null || _compareCopyStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        var armor = session.Catalog.BySignature["ARMO"].First(r => r.Plugins.Count >= 3);
+        var columns = Panels.CompareWindows.VersionColumns(this, armor.FormKey);
+        string Keywords(Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter? r) => r is Mutagen.Bethesda.Skyrim.IArmorGetter a ? $"{a.Keywords?.Count ?? 0} kw, weight {a.Weight}" : "?";
+        Log.Info($"autotest-comparecopy: {armor.EditorId}: columns [{string.Join(", ", columns.Select(c => c.Title + " " + Keywords(c.Record)))}]");
+        var before = Document.History.UndoName;
+        var oldest = 0; // columns run from the first plugin to the winner
+        StbEditor.App.Ui.CompareView.CopyValue(this, columns, oldest, "Keywords", true);
+        StbEditor.App.Ui.CompareView.CopyValue(this, columns, oldest, "Weight", true);
+        Log.Info($"autotest-comparecopy: edited: {Keywords(StbEditor.Core.OverrideEditing.Override(Document, armor.FormKey)?.Record)} (oldest {Keywords(columns[oldest].Record)}); undo '{Document.History.UndoName}'");
+        var three = new[] { "ArmorIronHelmet", "ArmorIronBoots", "ArmorIronGauntlets" }.Select(id => session.Catalog.BySignature["ARMO"].First(r => r.EditorId == id).FormKey).ToList();
+        var recordColumns = three.Select(k => new StbEditor.App.Ui.CompareColumn(session.Catalog.Get(k)!.EditorId!, "", lookup.Resolve(k))).ToList();
+        var copied = StbEditor.App.Ui.CompareView.CopyValue(this, recordColumns, 0, "Weight", false);
+        Log.Info($"autotest-comparecopy: weight of {recordColumns[0].Title} into {copied} other(s): {string.Join(", ", three.Skip(1).Select(k => Keywords(StbEditor.Core.OverrideEditing.Override(Document, k)?.Record)))}");
+        var steps = 0;
+        while (Document.History.UndoName != before && steps < 10) { Document.Undo(); steps++; }
+        Log.Info($"autotest-comparecopy: {steps} undo step(s), pending {Document.PendingCount}");
+        _compareCopyStage = 9;
+    }
 
     private int _compactStage;
     private string _compactCopy = "";

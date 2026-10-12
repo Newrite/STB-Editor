@@ -906,6 +906,13 @@ internal static class LangRu
         ["{0} record(s) renumbered, {1} kept byte for byte, {2} FaceGen / voice file(s) renamed{3}"] = "перенумеровано записей: {0}, байт в байт: {1}, переименовано файлов FaceGen и озвучки: {2}{3}",
         [", marked light"] = ", помечен лёгким",
 
+        // ---- compare copy
+        ["{0}: not copied ({1})"] = "{0}: не скопировано ({1})",
+        ["Copy {0} from {1}"] = "{0} из {1}",
+        ["Use this value in {0}"] = "Взять это значение в {0}",
+        ["Copy this value to the other records"] = "Скопировать это значение в остальные записи",
+        ["Right-click: copy this value"] = "ПКМ — скопировать это значение",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

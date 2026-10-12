@@ -307,6 +307,77 @@ switch (command)
         }
         break;
     }
+    case "deepcopyprobe":
+    {
+        var asm = typeof(Mutagen.Bethesda.Skyrim.Armor).Assembly;
+        foreach (var t in asm.GetTypes().Where(t => t.Name.Contains("Armor") && t.IsAbstract && t.IsSealed))
+            foreach (var m in t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).Where(m => m.Name.StartsWith("DeepCopy")))
+                Console.WriteLine($"{t.FullName}.{m.Name}({string.Join(", ", m.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name))})");
+        break;
+    }
+    case "copytest":
+    {
+        // copytest <game>: every top-level field of overridden records (several types) copied from the oldest version onto
+        // a copy of the winner: that field must equal the oldest version's, every other field stay the winner's.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        int ok = 0, wrong = 0, failed = 0;
+        var failures = new Dictionary<string, int>();
+        // Mutable and read-only Mutagen objects list links and empty lists differently: compare what they hold.
+        string Leaves(object? o) => o is null || (o is System.Collections.IEnumerable e and not string && !e.Cast<object?>().Any()) ? ""
+            : string.Join("|", StbEditor.Core.RecordFields.Leaves(o, 16, int.MaxValue).Where(l => !l.PathText.EndsWith("FormKeyNullable", StringComparison.Ordinal))
+                .Select(l => l.PathText + "=" + StbEditor.Core.RecordFields.Repr(l.Value)));
+        foreach (var sig in new[] { "ARMO", "WEAP", "NPC_", "LVLI", "COBJ", "PERK", "RACE", "MGEF", "SPEL", "ALCH", "CONT", "FACT", "QUST", "LCTN" })
+        {
+            var type = StbEditor.Data.RecordLookup.GetterType(sig)!;
+            foreach (var entry in catalog.BySignature[sig].Where(r => r.Plugins.Count >= 2).Take(6))
+            {
+                var versions = ws.LinkCache.ResolveAllSimpleContexts(entry.FormKey, type).Select(c => c.Record).ToList();
+                var winner = versions[0];
+                var oldest = versions[^1];
+                foreach (var member in StbEditor.Core.RecordFields.PropertiesOf(winner).Select(p => p.Name).Where(n => !StbEditor.Core.RecordFields.IsRecordHeader(n) && n != "FormKey"))
+                {
+                    var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(winner);
+                    try
+                    {
+                        StbEditor.Core.MemberCopy.Copy(copy, oldest, member);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        failures[$"{sig}.{member}: {ex.GetType().Name} {ex.Message}"[..Math.Min(120, $"{sig}.{member}: {ex.GetType().Name} {ex.Message}".Length)]] = 1;
+                        continue;
+                    }
+                    var prop = StbEditor.Core.RecordFields.PropertiesOf(copy).First(p => p.Name == member);
+                    var got = Leaves(prop.GetValue(copy));
+                    var want = Leaves(StbEditor.Core.RecordFields.PropertiesOf(oldest).FirstOrDefault(p => p.Name == member)?.GetValue(oldest));
+                    var baseline = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(winner);
+                    var othersSame = StbEditor.Core.RecordFields.PropertiesOf(copy).Where(p => p.Name != member && !StbEditor.Core.RecordFields.IsRecordHeader(p.Name) && p.Name != "FormKey")
+                        .All(p => Leaves(p.GetValue(copy)) == Leaves(StbEditor.Core.RecordFields.PropertiesOf(baseline).First(w => w.Name == p.Name).GetValue(baseline)));
+                    var scalarSame = got == want;
+                    if ((got == want && (got.Length > 0 || scalarSame)) && othersSame) ok++;
+                    else
+                    {
+                        wrong++;
+                        if (wrong < 6)
+                        {
+                            var changed = StbEditor.Core.RecordFields.PropertiesOf(copy).Where(p => p.Name != member && !StbEditor.Core.RecordFields.IsRecordHeader(p.Name) && p.Name != "FormKey")
+                                .Where(p => Leaves(p.GetValue(copy)) != Leaves(StbEditor.Core.RecordFields.PropertiesOf(baseline).First(w => w.Name == p.Name).GetValue(baseline))).Select(p => p.Name).Take(4);
+                            static string Cut(string t) => t.Length > 90 ? t[..90] : t;
+                            foreach (var name in changed.Take(1))
+                                Console.WriteLine($"    {name}: copy '{Cut(Leaves(StbEditor.Core.RecordFields.PropertiesOf(copy).First(p => p.Name == name).GetValue(copy)))}' baseline '{Cut(Leaves(StbEditor.Core.RecordFields.PropertiesOf(baseline).First(p => p.Name == name).GetValue(baseline)))}'");
+                            var gotText = got.Length > 0 ? got : StbEditor.Core.RecordFields.Repr(prop.GetValue(copy));
+                            var wantText = want.Length > 0 ? want : StbEditor.Core.RecordFields.Repr(StbEditor.Core.RecordFields.PropertiesOf(oldest).FirstOrDefault(p => p.Name == member)?.GetValue(oldest));
+                            Console.WriteLine($"  wrong {sig} {entry.EditorId}.{member}: others changed [{string.Join(", ", changed)}]; got '{Cut(gotText)}' want '{Cut(wantText)}'");
+                        }
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"member copies: {ok} correct, {wrong} wrong, {failed} not copyable");
+        foreach (var f in failures.Keys.Take(12)) Console.WriteLine("  " + f);
+        break;
+    }
     case "compacttest":
     {
         // compacttest <game> <plugin> <out folder>: Compact FormIDs on a copy: every own record in 0x800-0xFFF, same

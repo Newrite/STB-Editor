@@ -19,7 +19,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.9.0 **Редактор условий (CTDA)**: выбор функции, параметры, Run On, OR/AND, копировать/вставить условия | CK: Condition Item, Select Function Parameters, Copy/Paste Conditions | ★★★ | M |
 | Search & Replace: ✅ 0.8.0 заменить базовый объект у рефов; текст в записях, Find Text по всем строкам — нет | CK: Ctrl+F, Find Text | ★★ | S–M |
 | ✅ 0.8.0 Copy as override в активный файл (as new record = Duplicate); deep copy, перенос между плагинами — нет | xEdit | ★★ | S |
-| Правка прямо в сравнении: перетащить значение из колонки в колонку, «Copy to selected records» | xEdit | ★★ | M |
+| ✅ 0.18.0 (поля верхнего уровня) Правка прямо в сравнении: перетащить значение из колонки в колонку, «Copy to selected records» | xEdit | ★★ | M |
 | ✅ 0.8.0 Одно поле сразу у нескольких записей («Править вместе»); таблицы оружия/брони/боеприпасов и др. | xEdit | ★★ | M |
 | ✅ 0.7.0 Фильтр Object Window: только записи плагина X / активного файла / только конфликты | xEdit: Apply Filter, by conflict status | ★★ | S |
 | Use Report для алиасов квеста, «Find use in conditions» | CK | ★ | S |

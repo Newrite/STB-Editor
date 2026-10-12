@@ -1,0 +1,101 @@
+# Чего не хватает до CK и xEdit
+
+Сверка от 2026-10-13 (STB Editor 0.6.1). Источники: меню и все 426 окон `CreationKit.exe` (Skyrim SE 1.5.97,
+вытащены из ресурсов exe), меню, фильтры и настройки `SSEEdit 4.1.5f` (формы Delphi из exe), документация
+xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; здесь только то, чего нет.
+
+Важность: **★★★** без этого CK не заменить, **★★** часто нужно, **★** редко или есть внешние программы.
+Объём: **S** — день-два, **M** — неделя, **L** — больше.
+
+## 1. Базовые операции с записями
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **Новая запись любого типа** (сейчас только Duplicate и ячейки/миры) | CK: Object Window → New; xEdit: Copy as new record | ★★★ | S |
+| **Удалить запись / убрать override из своего плагина** | CK: Delete; xEdit: Remove | ★★★ | S |
+| **Use Info / Referenced By** — кто ссылается на запись (рефы, списки, скрипты, условия) | CK: Use Info; xEdit: вкладка Referenced By | ★★★ | M |
+| **Редактор условий (CTDA)**: выбор функции, параметры, Run On, OR/AND, копировать/вставить условия | CK: Condition Item, Select Function Parameters, Copy/Paste Conditions | ★★★ | M |
+| Search & Replace: заменить базовый объект у рефов, текст в записях; Find Text по всем строкам | CK: Ctrl+F, Find Text | ★★ | S–M |
+| Copy as override / deep copy / as new record **в другой плагин**; перенос записей между плагинами | xEdit | ★★ | S |
+| Правка прямо в сравнении: перетащить значение из колонки в колонку, «Copy to selected records» | xEdit | ★★ | M |
+| Одно поле сразу у нескольких записей (выделил 20 брони → поменял вес); таблицы Weapon/Armor/Ammo Spreadsheet | xEdit | ★★ | M |
+| Фильтр Object Window: только записи плагина X / активного файла / только конфликты | xEdit: Apply Filter, by conflict status | ★★ | S |
+| Use Report для алиасов квеста, «Find use in conditions» | CK | ★ | S |
+
+## 2. Квесты, диалоги, скрипты (сейчас только просмотр)
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **Квесты**: Quest Data, стадии (лог, флаги), цели (Objectives, цели на алиасы), **алиасы** (Reference / Location Alias: заполнение, условия, пакеты, скрипты, inventory), Quest Stages/Objectives export | CK: Quest, Reference Alias, Location Alias | ★★★ | L |
+| **Диалоги**: темы (DIAL), ветки (DLBR), реплики (INFO — сейчас даже не показываются), ответы с эмоциями, Shared Info, Player Dialogue, Dialogue Views (граф) | CK: Topic, Info, Edit Response, Branch, Dialogue Connections | ★★★ | L |
+| **Компиляция Papyrus и фрагменты** (стадий квеста, реплик, пакетов, сцен, перков): без этого квест или диалог со скриптом не сделать. Компилятор уже лежит в `C:\Skyrim\Papyrus Compiler` | CK: Papyrus Manager, Compile, Edit Papyrus Script | ★★★ | M |
+| **SEQ-файл** для квестов «Start Game Enabled» с диалогами (без него диалоги не работают) | xEdit: Create SEQ File | ★★ | S |
+| Сцены (SCEN): фазы, актёры, действия (Dialogue / Package / Timer) на таймлайне | CK: Scene Data, Phase, Dialogue Scene Action | ★★ | L |
+| AI-пакеты: шаблон, дерево процедур, расписание, цели | CK: Package, Package Target, Choose Procedure | ★★ | M |
+| Story Manager: дерево веток и событий (SMBN / SMQN / SMEN) | CK: Story Manager | ★ | M |
+| Голос и LIP: список нужных звуковых файлов по актёрам, генерация .lip, Export Dialogue | CK: Quest Voice Assets, Export Dialogue | ★ | M |
+
+## 3. Персонажи
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **FaceGen**: экспорт лица NPC (меш + тинт), иначе «тёмное лицо» после правок внешности | CK: Ctrl+F4 | ★★★ | L |
+| Лицо: ползунки морфов, части головы, слои тинта с превью | CK: Actor → Character Gen Parts / Face | ★★ | L |
+| Дерево перков (AVIF) графически | CK: Actor Values; xEdit-скрипт PerkTreeUI | ★ | M |
+| Дерево idle-анимаций (IDLE) | CK: Animations | ★ | M |
+| Update NPC Body Tint Colors, Filtered Dialogue, Export Relationship Data | CK | ★ | S |
+
+## 4. Мир
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **Свойства существующей ячейки**: освещение, вода, акустика, музыка, encounter zone, локация, регионы, владелец, флаги | CK: Cell | ★★★ | M |
+| **Копировать / вырезать / вставить рефы** (в т.ч. в другую ячейку), Paste in Place | CK: Ctrl+C / X / V, Ctrl+Shift+V | ★★★ | S |
+| Свойства мира (WRLD сейчас только просмотр): родитель, климат, вода, карта, LOD, флаги | CK: World Spaces | ★★ | M |
+| Примитивы: триггер-боксы, активаторы-зоны, room bounds и порталы, multibound, occlusion planes | CK: Primitives, Validate room/portal | ★★ | M |
+| Reference Batch Action: поменять что-то у всех выделенных рефов; Search & Replace базы | CK | ★★ | S |
+| Run Havok Sim — «уронить» clutter физикой, а не только F (на землю) | CK: Alt+H | ★★ | M |
+| Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |
+| Show/Hide по типам, Current Cell Only, световые и звуковые маркеры, радиус света, коллизия (F4), изометрия | CK: View | ★ | S |
+| Регионы (REGN): области на карте, генерация объектов, травы, погоды и звуков | CK: Region Editor | ★ | L |
+| Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
+| Слои (Layers): группы рефов, скрыть/заморозить слой | CK: Layers | ★ | M |
+| Ландшафт: vertex color, импорт/экспорт карты высот | CK: Heightmap Editor | ★ | M |
+| Предпросмотр погоды и времени суток в Render Window | CK: Bright Light / Sky | ★ | M |
+| Локальные карты, LOD (террейн / объекты) | CK: Create Local Maps, World LOD; xLODGen / DynDoLOD | ★ (внешние программы) | L |
+
+## 5. Навмеш
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **Finalize** (NAVI, связи между ячейками, ребра у дверей) — без него NPC не проходят через двери и границы | CK: Finalize Cell / WorldSpace | ★★★ | M |
+| Автогенерация (Recast / Havok), Check NavMeshes, cover edges, pathing tests | CK: NavMesh → Generation, Check, Find Cover Edges | ★★ | L |
+| Move Selection to Separate NavMesh, Select Triangle by Index, preferred/non-connector вершины | CK | ★ | S |
+
+## 6. Файлы и проверки
+
+| Что | Где есть | Важность | Объём |
+|---|---|---|---|
+| **Check for Errors** (несуществующие ссылки, неверные данные), циклические leveled list | xEdit; CK: Validate Loaded Data | ★★ | M |
+| **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
+| Мастера: Add / Sort / Clean Masters | xEdit | ★★ | S |
+| Change FormID, Renumber, **Compact FormIDs for ESL**, Convert to Light Master | CK + xEdit | ★★ | M |
+| Упаковка в **BSA** (Create Archive), список ассетов плагина, проверка отсутствующих мешей и текстур | CK: Create Archive, Test Models; xEdit: Assets manager | ★★ | M |
+| Compare to: сравнить с другой версией того же плагина, delta-патч | xEdit | ★ | M |
+| Строки локализации (.strings): правка, экспорт / импорт для перевода | xEdit: Localization; CK: Export | ★ | M |
+| Merged Patch (слияние leveled lists и т.п.) | xEdit | ★ | M |
+| Скрипты пользователя (у xEdit ~190 .pas в `Edit Scripts`) — свой язык или C#-скрипты | xEdit: Apply Script | ★ | L |
+| ModGroups, экспорт данных (имена, книги, GMST, сообщения) | xEdit / CK: Export | ★ | S |
+
+## Предлагаемый порядок
+
+1. **Мелкие ежедневные операции** (S): новая запись, удаление записи и override, копирование и вставка рефов,
+   фильтр «только плагин X / только конфликты», Add/Clean Masters.
+2. **Use Info / Referenced By** (M): нужен везде, в том числе перед удалением записи.
+3. **Редактор условий** (M): нужен квестам, диалогам, перкам, пакетам, эффектам.
+4. **Квесты** (L): стадии, цели, алиасы.
+5. **Papyrus: компиляция и фрагменты** (M), **SEQ** (S).
+6. **Диалоги** (L): темы, ветки, реплики, ответы.
+7. **Свойства ячейки и мира** (M), **Finalize навмеша** (M).
+8. **FaceGen** (L), очистка ITM/UDR и Check for Errors (M), упаковка BSA (M).
+9. Остальное по запросам.

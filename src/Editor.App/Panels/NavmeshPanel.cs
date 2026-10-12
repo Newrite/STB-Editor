@@ -1,5 +1,6 @@
 using Hexa.NET.ImGui;
 using Mutagen.Bethesda.Skyrim;
+using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using static StbEditor.App.Ui.Loc;
 
@@ -9,6 +10,8 @@ namespace StbEditor.App.Panels;
 internal sealed class NavmeshPanel : Panel
 {
     private string? _summary;
+    private int _findIndex;
+    private int _findMesh;
 
     private static readonly (string Label, NavmeshTriangle.Flag Flag, string Tip)[] Flags =
     [
@@ -45,6 +48,7 @@ internal sealed class NavmeshPanel : Panel
         if (ImGui.Button(T("Finalize cell"))) _summary = window.FinalizeNavmeshes(app, false) ?? _summary;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The same for every navmesh of the open cell (the centre cell outdoors)"));
         if (_summary is not null) ImGui.TextColored(Theme.TextDim, _summary);
+        DrawFindByIndex(app, scene);
         ImGui.Separator();
 
         if (window.NavSelection is not { } selection || selection.IsEmpty)
@@ -90,7 +94,33 @@ internal sealed class NavmeshPanel : Panel
         ImGui.BeginDisabled(selection.Vertices.Count < 2);
         if (ImGui.Button(T("Merge vertices"))) window.MergeNavmeshVertices();
         ImGui.EndDisabled();
+        ImGui.BeginDisabled(selection.Triangles.Count == 0);
+        if (ImGui.Button(T("Move to a new navmesh"))) window.MoveNavmeshSelectionToNew(app);
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(T("The selected triangles become a navmesh of their own in the same cell (CK: Move Selection to Separate NavMesh); press Finalize afterwards"));
+        ImGui.EndDisabled();
         DrawLegend();
+    }
+
+    /// <summary>CK: Select Triangle by Index — and a vertex — in one of the loaded navmeshes.</summary>
+    private void DrawFindByIndex(EditorApp app, Render.Scene scene)
+    {
+        if (scene.Navmeshes.Count == 0) return;
+        var window = app.RenderWindow;
+        if (window.NavSelection is { } selected && scene.Navmeshes.FindIndex(n => n.Key == selected.Mesh) is >= 0 and var at) _findMesh = at;
+        _findMesh = Math.Clamp(_findMesh, 0, scene.Navmeshes.Count - 1);
+        if (!ImGui.TreeNode(T("Find by index"))) return;
+        var names = scene.Navmeshes.Select(n => app.Session!.Workspace.FormIdText(n.Key)).ToArray();
+        ImGui.SetNextItemWidth(ImGui.GetFontSize() * 9);
+        ImGui.Combo("##findmesh", ref _findMesh, names, names.Length);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(ImGui.GetFontSize() * 6);
+        ImGui.InputInt("##findindex", ref _findIndex, 0);
+        ImGui.SameLine();
+        var mesh = scene.Navmeshes[_findMesh].Key;
+        if (ImGui.SmallButton(T("triangle")) && !window.SelectNavmeshIndex(mesh, _findIndex, true)) Log.Warn(TF($"navmesh: no triangle {_findIndex}"));
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("vertex")) && !window.SelectNavmeshIndex(mesh, _findIndex, false)) Log.Warn(TF($"navmesh: no vertex {_findIndex}"));
+        ImGui.TreePop();
     }
 
     private static void DrawLegend()

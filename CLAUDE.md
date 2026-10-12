@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.27.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.28.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -56,6 +56,7 @@ v0.24.0: package / scene fragments (`Core/RecordFragments.cs`: slots Begin / End
 v0.25.0: alias Use Report (`Core/AliasUses.cs`, `Panels/QuestEditor.AliasUses.cs`, background task per quest + alias).
 v0.26.0: texts for translation (`Core/TextTranslation.cs` JSON export / import, `TextSearch.DisplayTexts`; `Services/TextEdits.cs`
 puts many text edits where the writer expects them — INFO under the topic, CELL / WRLD as Header — used by Find text too).
+v0.28.0: navmesh find by index, move selection to a new navmesh (`NavmeshTools.MoveTriangles`, `RenderWindow.MoveNavmeshSelectionToNew`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -208,6 +208,40 @@ public static class NavmeshTools
         return changed;
     }
 
+    /// <summary>
+    /// CK: Move Selection to Separate NavMesh. The triangles go into <paramref name="target"/> (an empty navmesh of the
+    /// same cell) with their vertices and flags; links between moved triangles are rebuilt there, links to the rest and
+    /// to other navmeshes and door data are left for Finalize. Returns the source's old → new triangle indices (for
+    /// neighbours' links into it).
+    /// </summary>
+    public static int[] MoveTriangles(NavigationMesh source, IReadOnlySet<int> moved, NavigationMesh target)
+    {
+        var data = source.Data!;
+        var into = target.Data!;
+        var vertices = new Dictionary<int, short>();
+        short Vertex(int i)
+        {
+            if (!vertices.TryGetValue(i, out var n))
+            {
+                vertices[i] = n = (short)into.Vertices.Count;
+                into.Vertices.Add(data.Vertices[i]);
+            }
+            return n;
+        }
+        const NavmeshTriangle.Flag links = NavmeshTriangle.Flag.EdgeLink_0_1 | NavmeshTriangle.Flag.EdgeLink_1_2 | NavmeshTriangle.Flag.EdgeLink_2_0 | NavmeshTriangle.Flag.Door;
+        foreach (var t in moved.Where(t => t >= 0 && t < data.Triangles.Count).OrderBy(t => t))
+        {
+            var copy = data.Triangles[t].DeepCopy();
+            var v = copy.Vertices;
+            copy.Vertices = new P3Int16(Vertex(v.X), Vertex(v.Y), Vertex(v.Z));
+            copy.EdgeLink_0_1 = copy.EdgeLink_1_2 = copy.EdgeLink_2_0 = -1;
+            copy.Flags &= ~links;
+            into.Triangles.Add(copy);
+        }
+        Rebuild(target);
+        return DeleteTriangles(source, moved);
+    }
+
     /// <summary>Removes triangles; links into them from this mesh are cleared, later indices shift down. Returns old → new indices.</summary>
     public static int[] DeleteTriangles(NavigationMesh mesh, IReadOnlySet<int> doomed)
     {

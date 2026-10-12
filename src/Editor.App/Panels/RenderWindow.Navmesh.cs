@@ -246,7 +246,7 @@ internal sealed partial class RenderWindow
     }
 
     /// <summary>One undo step for the edited navmesh and every loaded neighbour whose links into it were renumbered.</summary>
-    private void CommitWithNeighbours(string name, FormKey key, NavigationMesh edited, int[] map)
+    private void CommitWithNeighbours(string name, FormKey key, NavigationMesh edited, int[] map, params IEditCommand[] extra)
     {
         var steps = new List<IEditCommand>();
         void Step(FormKey k, NavigationMesh mesh)
@@ -258,6 +258,7 @@ internal sealed partial class RenderWindow
         }
 
         Step(key, edited);
+        steps.AddRange(extra);
         var neighbours = 0;
         foreach (var other in _scene!.Navmeshes.Where(v => v.Key != key))
         {
@@ -428,6 +429,65 @@ internal sealed partial class RenderWindow
         _navSelection = new NavmeshSelection { Mesh = mesh.FormKey };
         _navSelection.Vertices.Add(0);
         Log.Info("navmesh: new navmesh started — press Finalize when it is done (links to neighbours, NAVI entry)");
+    }
+
+    /// <summary>
+    /// CK: Select Triangle by Index (and a vertex): selects it in a loaded navmesh and turns the camera to it.
+    /// False when there is no such navmesh, triangle or vertex.
+    /// </summary>
+    public bool SelectNavmeshIndex(FormKey mesh, int index, bool triangle)
+    {
+        if (View(mesh)?.Record.Data is not { } data) return false;
+        Vector3 point;
+        if (triangle)
+        {
+            if (index < 0 || index >= data.Triangles.Count) return false;
+            var v = data.Triangles[index].Vertices;
+            point = (P(data.Vertices[v.X]) + P(data.Vertices[v.Y]) + P(data.Vertices[v.Z])) / 3;
+        }
+        else
+        {
+            if (index < 0 || index >= data.Vertices.Count) return false;
+            point = P(data.Vertices[index]);
+        }
+        _navSelection = new NavmeshSelection { Mesh = mesh };
+        (triangle ? _navSelection.Triangles : _navSelection.Vertices).Add(index);
+        _camera.Position = point + new Vector3(0, -700, 600);
+        _camera.LookAt(point);
+        return true;
+    }
+
+    /// <summary>
+    /// CK: Move Selection to Separate NavMesh — the selected triangles become a new navmesh of the same cell in the
+    /// active file (one undo step with the shrunk source and its neighbours' renumbered links); Finalize links them.
+    /// </summary>
+    public FormKey? MoveNavmeshSelectionToNew(EditorApp app)
+    {
+        if (_navSelection is not { Triangles.Count: > 0 } selection || View(selection.Mesh) is not { } view || _document is null) return null;
+        if (app.ActivePlugin is not { } active || app.Session is not { } session)
+        {
+            app.ShowActiveFileDialog(T("A new navmesh goes into the active file — choose it first."));
+            return null;
+        }
+        var source = (NavigationMesh)_document.WorkingCopy(selection.Mesh, view.Record);
+        if (selection.Triangles.Count >= source.Data!.Triangles.Count)
+        {
+            Log.Warn(T("navmesh: that is every triangle — nothing would be left"));
+            return null;
+        }
+        var mesh = new NavigationMesh(active.Allocate(), session.Game.Release)
+        {
+            Data = new NavigationMeshData { NavmeshVersion = source.Data.NavmeshVersion, Parent = source.Data.Parent.DeepCopy(), NavmeshGridDivisor = 1 },
+        };
+        var count = selection.Triangles.Count;
+        var map = NavmeshTools.MoveTriangles(source, selection.Triangles, mesh);
+        var name = TF($"Move {count} navmesh triangle(s) to a new navmesh");
+        CommitWithNeighbours(name, selection.Mesh, source, map, new RecordEditCommand(name, null, new OverrideDraft(mesh, RecordPlace.Navmesh, null, view.Cell, view.World)));
+        RefreshNavmeshes(app);
+        _navSelection = new NavmeshSelection { Mesh = mesh.FormKey };
+        _navSelection.Triangles.UnionWith(Enumerable.Range(0, mesh.Data.Triangles.Count));
+        Log.Info($"navmesh: {count} triangle(s) moved to {app.Session.Workspace.FormIdText(mesh.FormKey)} — press Finalize to link it");
+        return mesh.FormKey;
     }
 
     /// <summary>Autotests: select parts of a navmesh directly.</summary>

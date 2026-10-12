@@ -1192,6 +1192,17 @@ internal static class LangRu
         ["Perk entry {0}: activate"] = "Запись перка {0}: активация",
         ["Perk entry {0}: activate \"{1}\""] = "Запись перка {0}: активация «{1}»",
 
+        // ---- Navmesh index and split
+        ["Move to a new navmesh"] = "Вынести в новый навмеш",
+        ["The selected triangles become a navmesh of their own in the same cell (CK: Move Selection to Separate NavMesh); press Finalize afterwards"] = "Выбранные треугольники становятся отдельным навмешем в той же ячейке (CK: Move Selection to Separate NavMesh); потом нажми Finalize",
+        ["Find by index"] = "Найти по номеру",
+        ["triangle"] = "треугольник",
+        ["navmesh: no triangle {0}"] = "навмеш: нет треугольника {0}",
+        ["vertex"] = "вершина",
+        ["navmesh: no vertex {0}"] = "навмеш: нет вершины {0}",
+        ["navmesh: that is every triangle — nothing would be left"] = "навмеш: это все треугольники — ничего бы не осталось",
+        ["Move {0} navmesh triangle(s) to a new navmesh"] = "Вынести треугольников навмеша в новый навмеш: {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

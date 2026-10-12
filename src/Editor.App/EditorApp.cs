@@ -305,6 +305,7 @@ internal sealed class EditorApp : IDisposable
         RunSceneAutotest();
         RunAliasUseAutotest();
         RunTextsAutotest();
+        RunNavSplitAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -555,6 +556,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-scene") || _sceneStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-aliasuse") || _aliasUseStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-texts") || _textsStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-navsplit") || _navSplitStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1422,6 +1424,51 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_textsFrames > 15:
                 _textsStage = 9;
+                break;
+        }
+    }
+
+    private int _navSplitStage, _navSplitFrames;
+
+    /// <summary>
+    /// --autotest-navsplit &lt;dir&gt; (with --cell &lt;interior&gt;): a scratch active file in &lt;dir&gt;; triangle 5 of the cell's first
+    /// navmesh found by index, then the first third of its triangles moved to a new navmesh (one undo step); undone and
+    /// redone; the new navmesh stays selected for the screenshot. Nothing is saved.
+    /// </summary>
+    private void RunNavSplitAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-navsplit");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _navSplitStage == 9) return;
+        var scene = RenderWindow.Scene;
+        string Counts() => string.Join(", ", RenderWindow.Scene?.Navmeshes.Select(n => $"{session.Workspace.FormIdText(n.Key)}:{n.Record.Data?.Triangles.Count}") ?? []);
+        switch (_navSplitStage)
+        {
+            case 0 when scene is { Navmeshes.Count: > 0 } && ++_navSplitFrames > 30:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorNavSplitAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                RenderWindow.SetNavmeshMode(true);
+                var mesh = scene.Navmeshes[0];
+                var found = RenderWindow.SelectNavmeshIndex(mesh.Key, 5, true);
+                Log.Info($"autotest-navsplit: before: {Counts()}; triangle 5 found {found}, selected {RenderWindow.NavSelection?.Triangles.FirstOrDefault()}");
+                var third = Enumerable.Range(0, (mesh.Record.Data?.Triangles.Count ?? 0) / 3).ToList();
+                RenderWindow.SelectNavmeshForTest(mesh.Key, [], third);
+                var before = Document.History.UndoName;
+                var created = RenderWindow.MoveNavmeshSelectionToNew(this);
+                Log.Info($"autotest-navsplit: moved {third.Count} into {created}: {Counts()}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                Document.Undo();
+                RenderWindow.RefreshNavmeshesNow(this);
+                Log.Info($"autotest-navsplit: undone: {Counts()}; pending {Document.PendingCount}");
+                Document.Redo();
+                RenderWindow.RefreshNavmeshesNow(this);
+                if (created is { } key) RenderWindow.SelectNavmeshForTest(key, [], Enumerable.Range(0, third.Count));
+                Log.Info($"autotest-navsplit: redone: {Counts()}; pending {Document.PendingCount}");
+                _navSplitStage = 1;
+                _navSplitFrames = 0;
+                break;
+            }
+            case 1 when ++_navSplitFrames > 15:
+                _navSplitStage = 9;
                 break;
         }
     }

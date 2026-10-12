@@ -1938,6 +1938,70 @@ switch (command)
         Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
         break;
     }
+    case "navsplittest":
+    {
+        // navsplittest <game> [n]: for n interior navmeshes, the first third of the triangles moved into a new navmesh
+        // (MoveTriangles): counts add up, moved triangles keep their corner positions and flags, every link between
+        // triangles of either mesh joins two triangles that share that edge (writing a NAVM is the writer's, under its cell).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var limit = args.Length > 2 ? int.Parse(args[2]) : 50;
+        int meshes = 0, failures = 0;
+        static System.Numerics.Vector3 Pt(Mutagen.Bethesda.Skyrim.NavigationMeshData d, int i) => new(d.Vertices[i].X, d.Vertices[i].Y, d.Vertices[i].Z);
+        static int BadLinks(Mutagen.Bethesda.Skyrim.NavigationMeshData d)
+        {
+            var bad = 0;
+            for (var t = 0; t < d.Triangles.Count; t++)
+            {
+                var tri = d.Triangles[t];
+                int[] c = [tri.Vertices.X, tri.Vertices.Y, tri.Vertices.Z];
+                short[] links = [tri.EdgeLink_0_1, tri.EdgeLink_1_2, tri.EdgeLink_2_0];
+                for (var e = 0; e < 3; e++)
+                {
+                    if (tri.Flags.HasFlag((Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag)(1 << e)) || links[e] < 0) continue;
+                    if (links[e] >= d.Triangles.Count) { bad++; continue; }
+                    var other = d.Triangles[links[e]].Vertices;
+                    var set = new HashSet<int> { other.X, other.Y, other.Z };
+                    if (!set.Contains(c[e]) || !set.Contains(c[(e + 1) % 3])) bad++;
+                }
+            }
+            return bad;
+        }
+        foreach (var cellRec in catalog.BySignature["CELL"].Where(c => c.Winner.Cell is { IsInterior: true }).OrderBy(c => c.FormKey.GetHashCode()))
+        {
+            foreach (var nav in lookup.CellVersions(cellRec.FormKey).LastOrDefault()?.NavigationMeshes ?? [])
+            {
+                if (nav.Data is not { Triangles.Count: >= 30 } || meshes >= limit) continue;
+                meshes++;
+                var source = (Mutagen.Bethesda.Skyrim.NavigationMesh)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(nav);
+                var before = source.Data!.Triangles.Select(t => (A: Pt(source.Data, t.Vertices.X), B: Pt(source.Data, t.Vertices.Y), C: Pt(source.Data, t.Vertices.Z), t.Flags)).ToList();
+                var moved = Enumerable.Range(0, before.Count / 3).ToHashSet();
+                var target = new Mutagen.Bethesda.Skyrim.NavigationMesh(Mutagen.Bethesda.Plugins.FormKey.Factory("000800:STBNavSplitTest.esp"), game.Release)
+                {
+                    Data = new Mutagen.Bethesda.Skyrim.NavigationMeshData { NavmeshVersion = source.Data.NavmeshVersion, Parent = Mutagen.Bethesda.Skyrim.ANavmeshParentMixIn.DeepCopy(source.Data.Parent), NavmeshGridDivisor = 1 },
+                };
+                StbEditor.Core.NavmeshTools.MoveTriangles(source, moved, target);
+                var problems = new List<string>();
+                if (source.Data.Triangles.Count + target.Data.Triangles.Count != before.Count) problems.Add($"counts {source.Data.Triangles.Count}+{target.Data.Triangles.Count} != {before.Count}");
+                for (var i = 0; i < target.Data.Triangles.Count; i++)
+                {
+                    var t = target.Data.Triangles[i];
+                    var (a, b, c, flags) = before[i];
+                    const Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag kept = Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag.Water | Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag.Preferred | Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag.NoLargeCreatures | Mutagen.Bethesda.Skyrim.NavmeshTriangle.Flag.Overlapping;
+                    if (Pt(target.Data, t.Vertices.X) != a || Pt(target.Data, t.Vertices.Y) != b || Pt(target.Data, t.Vertices.Z) != c || (t.Flags & kept) != (flags & kept)) { problems.Add($"moved triangle {i} differs"); break; }
+                }
+                var badSource = BadLinks(source.Data);
+                var badTarget = BadLinks(target.Data);
+                if (badSource + badTarget > 0) problems.Add($"bad links: source {badSource}, new {badTarget}");
+                if (problems.Count > 0) { failures++; Console.WriteLine($"  {cellRec.EditorId} {nav.FormKey}: {string.Join("; ", problems)}"); }
+            }
+            if (meshes >= limit) break;
+        }
+        Console.WriteLine($"{meshes} navmeshes split; {failures} with problems");
+        Console.WriteLine(failures == 0 ? "OK" : "FAILED");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

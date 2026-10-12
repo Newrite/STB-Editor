@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -308,6 +308,7 @@ internal sealed class EditorApp : IDisposable
         RunArchiveAutotest();
         RunCompactAutotest();
         RunCompareCopyAutotest();
+        RunFindTextAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -347,6 +348,7 @@ internal sealed class EditorApp : IDisposable
         PluginCheck.Draw(this);
         Archive.Draw(this);
         Compact.Draw(this);
+        FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
         UseInfo.Draw(this);
@@ -511,6 +513,9 @@ internal sealed class EditorApp : IDisposable
     /// <summary>File → Compact FormIDs.</summary>
     public Panels.CompactWindow Compact { get; } = new();
 
+    /// <summary>Edit → Find text.</summary>
+    public Panels.FindTextWindow FindText { get; } = new();
+
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-new") || _newTestStage == 4)
@@ -543,7 +548,47 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-bsa") || _bsaStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-compact") || _compactStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-comparecopy") || _compareCopyStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-comparecopy") || _compareCopyStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-findtext") || _findStage == 9);
+
+    private int _findStage;
+
+    /// <summary>--autotest-findtext [text]: what to look for (default Ulfric).</summary>
+    private static string FindQuery => Environment.GetCommandLineArgs().SkipWhile(a => a != "--autotest-findtext").Skip(1).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? "Ulfric";
+
+    /// <summary>
+    /// --autotest-findtext: "Ulfric" in every text field of Skyrim.esm (records, topics, dialogue lines) and over the
+    /// catalog; every result replaced with "Ulfrik" in one step: a dialogue line and a record checked; undone; nothing saved.
+    /// </summary>
+    private void RunFindTextAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-findtext") || Session is not { } session || Loader is not null || _findStage == 9) return;
+        switch (_findStage)
+        {
+            case 0:
+                FindText.Show();
+                FindText.Start(this, FindQuery, "Skyrim.esm", false);
+                _findStage = 1;
+                break;
+            case 1 when !FindText.IsBusy && FindText.Hits is { } hits:
+            {
+                Log.Info($"autotest-findtext: {hits.Count} hit(s): {string.Join(", ", hits.GroupBy(h => h.Signature).OrderByDescending(g => g.Count()).Take(6).Select(g => $"{g.Key} {g.Count()}"))}");
+                var before = Document.History.UndoName;
+                var changed = Panels.FindTextWindow.ReplaceAll(this, hits, FindQuery, FindQuery + "X", false);
+                var line = hits.FirstOrDefault(h => h.Signature == "INFO" && h.Display);
+                var technical = hits.FirstOrDefault(h => h.PathText.EndsWith("VariableName", StringComparison.Ordinal));
+                var record = hits.FirstOrDefault(h => h.Signature == "NPC_" && h.PathText == "EditorID");
+                string Text(StbEditor.Core.TextHit? h) => h is null ? "-" : StbEditor.Core.OverrideEditing.Override(Document, h.Key)?.Record is { } r
+                    ? StbEditor.Core.RecordFields.Get(r, h.Path) switch { string s => s, Mutagen.Bethesda.Strings.ITranslatedStringGetter t => t.String ?? "", _ => "?" } : "not edited";
+                Log.Info($"autotest-findtext: {changed} record(s) changed, pending {Document.PendingCount}; line {line?.PathText}: '{Text(line)}'; NPC_ EditorID: '{Text(record)}'; place of the line {StbEditor.Core.OverrideEditing.Override(Document, line?.Key ?? default)?.Place}; script variable {technical?.PathText}: '{Text(technical)}'");
+                var steps = 0;
+                while (Document.History.UndoName != before && steps < 5) { Document.Undo(); steps++; }
+                Log.Info($"autotest-findtext: {steps} undo step(s), pending {Document.PendingCount}; catalog search: {StbEditor.Core.TextSearch.InCatalog(session.Catalog, "Ulfric", false).Count} hit(s)");
+                _findStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _compareCopyStage;
 
@@ -2153,6 +2198,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(history.UndoName is { } u ? TF($"Undo {u}") : T("Undo"), T("Ctrl+Z"), false, history.CanUndo)) Document.Undo();
             if (ImGui.MenuItem(history.RedoName is { } r ? TF($"Redo {r}") : T("Redo"), T("Ctrl+Y"), false, history.CanRedo)) Document.Redo();
             ImGui.Separator();
+            if (ImGui.MenuItem(T("Find text..."), T("Ctrl+Shift+F"), false, Session is not null)) FindText.Show();
+            ImGui.Separator();
             // Render Window references, as the CK's Cut / Copy / Paste Render.
             if (ImGui.MenuItem(T("Cut objects"), T("Ctrl+X"), false, RenderWindow.HasSelection)) RenderWindow.CutSelection(this);
             if (ImGui.MenuItem(T("Copy objects"), T("Ctrl+C"), false, RenderWindow.HasSelection)) RenderWindow.CopySelection(this);
@@ -2252,6 +2299,7 @@ internal sealed class EditorApp : IDisposable
         var io = ImGui.GetIO();
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.O, false)) _dataDialog.Show();
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S, false)) Save();
+        if (io.KeyCtrl && io.KeyShift && ImGui.IsKeyPressed(ImGuiKey.F, false) && Session is not null) FindText.Show();
         if (io.KeyAlt && ImGui.IsKeyPressed(ImGuiKey.LeftArrow, false)) Back();
         if (io.KeyAlt && ImGui.IsKeyPressed(ImGuiKey.RightArrow, false)) Forward();
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F, false)) ObjectWindow.FocusSearch();

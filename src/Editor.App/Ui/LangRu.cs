@@ -913,6 +913,23 @@ internal static class LangRu
         ["Copy this value to the other records"] = "Скопировать это значение в остальные записи",
         ["Right-click: copy this value"] = "ПКМ — скопировать это значение",
 
+        // ---- find text
+        ["Find text..."] = "Найти текст…",
+        ["Find text"] = "Поиск текста",
+        ["Text to find"] = "Что искать",
+        ["All plugins: EditorID and name"] = "Все плагины: EditorID и название",
+        ["A plugin: every text field of its records (dialogue, descriptions, books…); all plugins: EditorIDs and names only (instant)"] = "Плагин — все текстовые поля его записей (диалоги, описания, книги…); все плагины — только EditorID и названия (мгновенно)",
+        ["Match case"] = "Учитывать регистр",
+        ["searching…"] = "поиск…",
+        ["Find"] = "Найти",
+        ["Replace with"] = "Заменить на",
+        ["Replace in {0} result(s)"] = "Заменить в найденном: {0}",
+        ["Text the player sees (names, dialogue, descriptions, books…) in the records as they are now; saved into the active file (Ctrl+S). Script variables, file paths and other technical strings are never replaced; references, cells and navmeshes are not changed here."] = "Видимый игроку текст (названия, диалоги, описания, книги…) в записях как они сейчас; сохраняется в активный файл (Ctrl+S). Переменные скриптов, пути к файлам и прочие служебные строки не заменяются никогда; рефы, ячейки и навмеши здесь не меняются.",
+        ["also EditorIDs"] = "и EditorID",
+        ["{0} result(s)"] = "найдено: {0}",
+        ["Replace \"{0}\" with \"{1}\""] = "Замена «{0}» на «{1}»",
+        ["replaced in {0} record(s)"] = "заменено в записях: {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

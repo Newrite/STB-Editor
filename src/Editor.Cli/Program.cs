@@ -307,6 +307,21 @@ switch (command)
         }
         break;
     }
+    case "findtest":
+    {
+        // findtest <game> <plugin> <text>: Find Text over a plugin's records (every text field) and the catalog; time.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var hits = StbEditor.Core.TextSearch.InPlugin(plugin, catalog, args[3], false);
+        Console.WriteLine($"{plugin.Name}: {hits.Count} hit(s) in {clock.Elapsed.TotalSeconds:0.0} s; by type {string.Join(", ", hits.GroupBy(h => h.Signature).OrderByDescending(g => g.Count()).Take(8).Select(g => $"{g.Key} {g.Count()}"))}");
+        foreach (var h in hits.Take(6)) Console.WriteLine($"  {h.Signature} {h.EditorId} {h.PathText}: {(h.Text.Length > 70 ? h.Text[..70] : h.Text)}{(h.Topic is { } t ? $" (topic {t})" : "")}");
+        clock.Restart();
+        var quick = StbEditor.Core.TextSearch.InCatalog(catalog, args[3], false);
+        Console.WriteLine($"catalog: {quick.Count} hit(s) in {clock.Elapsed.TotalMilliseconds:0} ms");
+        break;
+    }
     case "deepcopyprobe":
     {
         var asm = typeof(Mutagen.Bethesda.Skyrim.Armor).Assembly;

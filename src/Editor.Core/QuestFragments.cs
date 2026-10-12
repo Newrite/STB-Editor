@@ -17,6 +17,9 @@ public sealed class FragmentScript
     {
         public required string Name { get; init; }
 
+        /// <summary>The "Function …" line as written (dialogue fragments take akSpeakerRef); null: no parameters.</summary>
+        public string? Header { get; set; }
+
         /// <summary>Lines between "Function" and ";BEGIN CODE" (the kmyQuest autocast), kept.</summary>
         public string Prologue { get; set; } = "";
         public string Code { get; set; } = "";
@@ -71,7 +74,11 @@ public sealed class FragmentScript
                 continue;
             }
             if (current is null) continue;
-            if (trimmed.StartsWith("Function ", StringComparison.OrdinalIgnoreCase) && code is null && prologue!.Length == 0) continue;
+            if (trimmed.StartsWith("Function ", StringComparison.OrdinalIgnoreCase) && code is null && prologue!.Length == 0)
+            {
+                current.Header = trimmed;
+                continue;
+            }
             if (trimmed.Equals(";BEGIN CODE", StringComparison.OrdinalIgnoreCase)) { code = new StringBuilder(); continue; }
             if (trimmed.Equals(";END CODE", StringComparison.OrdinalIgnoreCase))
             {
@@ -112,7 +119,7 @@ public sealed class FragmentScript
         foreach (var fragment in Fragments)
         {
             Line($";BEGIN FRAGMENT {fragment.Name}");
-            Line($"Function {fragment.Name}()");
+            Line(fragment.Header ?? $"Function {fragment.Name}()");
             if (fragment.Prologue.Length > 0) Line(fragment.Prologue.Replace("\n", "\r\n"));
             Line(";BEGIN CODE");
             if (fragment.Code.Length > 0) Line(fragment.Code.Replace("\r\n", "\n").Replace("\n", "\r\n"));
@@ -124,6 +131,67 @@ public sealed class FragmentScript
         Line(End);
         s.Append(Tail);
         return s.ToString();
+    }
+}
+
+/// <summary>
+/// Dialogue line fragments (CK: Begin / End in the Topic Info window): a TIF__&lt;FormID&gt; script extending
+/// TopicInfo, each fragment taking the speaker (akSpeakerRef, cast to akSpeaker).
+/// </summary>
+public static class InfoFragments
+{
+    public static string ScriptName(IDialogResponsesGetter line, string formIdText)
+    {
+        if (line.VirtualMachineAdapter?.ScriptFragments?.FileName is { Length: > 0 } name) return name;
+        var id = Regex.IsMatch(formIdText, "^[0-9A-Fa-f]{8}$") ? formIdText.ToUpperInvariant() : line.FormKey.ID.ToString("X8");
+        return $"TIF__{id}";
+    }
+
+    public static string? FragmentOf(IDialogResponsesGetter line, bool begin) =>
+        (begin ? line.VirtualMachineAdapter?.ScriptFragments?.OnBegin : line.VirtualMachineAdapter?.ScriptFragments?.OnEnd)?.FragmentName;
+
+    /// <summary>
+    /// Puts edited Begin / End code into the script (null: unchanged, blank: removed); returns the
+    /// fragment names the line's script data should have.
+    /// </summary>
+    public static (string? Begin, string? End) Merge(IDialogResponsesGetter line, FragmentScript script, string? beginCode, string? endCode)
+    {
+        string? One(bool begin, string? code)
+        {
+            var existing = FragmentOf(line, begin);
+            if (code is null) return existing is not null && script.Get(existing) is not null ? existing : existing;
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                if (existing is not null) script.Fragments.RemoveAll(f => string.Equals(f.Name, existing, StringComparison.OrdinalIgnoreCase));
+                return null;
+            }
+            var name = existing ?? $"Fragment_{script.NextIndex++}";
+            if (script.Get(name) is { } fragment) fragment.Code = code.TrimEnd();
+            else script.Fragments.Add(new FragmentScript.Fragment
+            {
+                Name = name,
+                Header = $"Function {name}(ObjectReference akSpeakerRef)",
+                Prologue = "Actor akSpeaker = akSpeakerRef as Actor",
+                Code = code.TrimEnd(),
+            });
+            return name;
+        }
+        var begin = One(true, beginCode);
+        var end = One(false, endCode);
+        script.Fragments.RemoveAll(f => !string.Equals(f.Name, begin, StringComparison.OrdinalIgnoreCase) && !string.Equals(f.Name, end, StringComparison.OrdinalIgnoreCase));
+        return (begin, end);
+    }
+
+    /// <summary>The line's script data after a compile: the TIF script attached, Begin / End pointing at its fragments.</summary>
+    public static void Apply(DialogResponses line, string scriptName, string? begin, string? end)
+    {
+        var vmad = line.VirtualMachineAdapter ??= new DialogResponsesAdapter { Version = 5, ObjectFormat = 2 };
+        var fragments = vmad.ScriptFragments ??= new ScriptFragments { ExtraBindDataVersion = 2 };
+        fragments.FileName = scriptName;
+        fragments.OnBegin = begin is null ? null : new ScriptFragment { ExtraBindDataVersion = 1, ScriptName = scriptName, FragmentName = begin };
+        fragments.OnEnd = end is null ? null : new ScriptFragment { ExtraBindDataVersion = 1, ScriptName = scriptName, FragmentName = end };
+        if (!vmad.Scripts.Any(s => string.Equals(s.Name, scriptName, StringComparison.OrdinalIgnoreCase)))
+            vmad.Scripts.Add(new ScriptEntry { Name = scriptName, Flags = ScriptEntry.Flag.Local });
     }
 }
 

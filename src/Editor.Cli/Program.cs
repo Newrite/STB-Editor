@@ -654,6 +654,56 @@ switch (command)
         }
         break;
     }
+    case "dialtest":
+    {
+        // dialtest <game> <out folder> [existing plugin]: a vanilla topic's line edited, a new line, the topic's priority
+        // changed; the plugin must hold the topic with exactly those two lines (not the topic's other lines).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var outDir = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(outDir);
+        ActivePlugin active;
+        if (args.Length > 3)
+        {
+            var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+            var copy = Path.Combine(outDir, plugin.Name);
+            File.Copy(plugin.Location.Path, copy, overwrite: true);
+            active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        }
+        else active = ActivePlugin.ForNew(Path.Combine(outDir, "STBEditorDialTest.esp"), light: false, master: false, game, ws.DefaultEncoding);
+
+        var topic = catalog.BySignature["DIAL"].Where(r => r.Plugins.Count == 1 && r.Plugins[0].Name == "Skyrim.esm")
+            .Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.IDialogTopicGetter>(r.FormKey)).First(t => t?.Responses.Count >= 3)!;
+        Console.WriteLine($"topic {topic.EditorID} {topic.FormKey}: {topic.Responses.Count} lines, priority {topic.Priority}");
+        var doc = new EditDocument();
+        var first = topic.Responses[0];
+        var line = (Mutagen.Bethesda.Skyrim.DialogResponses)doc.WorkingCopy(first.FormKey, first);
+        if (line.Responses.Count == 0) line.Responses.Add(new Mutagen.Bethesda.Skyrim.DialogResponse { ResponseNumber = 1 });
+        line.Responses[0].Text = "STB dialtest edited line";
+        doc.CommitEdit("line", line, RecordPlace.DialogInfo, cell: topic.FormKey);
+        var newKey = active.Allocate();
+        var added = new Mutagen.Bethesda.Skyrim.DialogResponses(newKey, game.Release);
+        added.Responses.Add(new Mutagen.Bethesda.Skyrim.DialogResponse { ResponseNumber = 1, Text = "STB dialtest new line", Emotion = Mutagen.Bethesda.Skyrim.Emotion.Happy, EmotionValue = 50 });
+        added.PreviousDialog.SetTo(topic.Responses[^1].FormKey);
+        doc.CommitEdit("new line", added, RecordPlace.DialogInfo, cell: topic.FormKey);
+        var topicCopy = (Mutagen.Bethesda.Skyrim.DialogTopic)doc.WorkingCopy(topic.FormKey, topic);
+        topicCopy.Priority = 77;
+        doc.CommitEdit("topic", topicCopy, RecordPlace.TopLevel);
+
+        var writer = new PluginWriter(ws, catalog);
+        var result = writer.Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; overridden {result.Overridden}, lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings.Take(5)) Console.WriteLine("  warn " + w);
+        foreach (var l in result.LossyRecords.Take(10)) Console.WriteLine("  lossy " + l);
+        if (!result.Success) break;
+        File.Move(result.TempPath!, active.Path, overwrite: true);
+        using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(active.Path, game.Release);
+        var written = check.DialogTopics.FirstOrDefault(t => t.FormKey == topic.FormKey);
+        Console.WriteLine(written is null ? "topic missing!" :
+            $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
+        break;
+    }
     case "savetest":
     {
         // savetest <game> <cell EditorID> <out folder> [existing plugin name]
@@ -851,18 +901,26 @@ switch (command)
         foreach (var f in setup.SourceFolders.Take(4)) Console.WriteLine($"  import {f}");
         int parsed = 0, same = 0;
         var firstBad = new List<string>();
-        foreach (var file in setup.SourceFolders.SelectMany(f => Directory.EnumerateFiles(f, "QF_*.psc")).DistinctBy(Path.GetFileName).Take(3000))
+        foreach (var file in setup.SourceFolders.SelectMany(f => Directory.EnumerateFiles(f, "QF_*.psc").Concat(Directory.EnumerateFiles(f, "TIF__*.psc"))).DistinctBy(Path.GetFileName).Take(12000))
         {
             var text = File.ReadAllText(file);
             var a = StbEditor.Core.FragmentScript.Parse(text);
             var b = StbEditor.Core.FragmentScript.Parse(a.Write([]));
             parsed++;
             var ok = a.Name == b.Name && a.Fragments.Count == b.Fragments.Count && a.Tail.Trim() == b.Tail.Trim()
-                && a.Fragments.Zip(b.Fragments).All(p => p.First.Name == p.Second.Name && p.First.Code == p.Second.Code && p.First.Prologue == p.Second.Prologue);
+                && a.Fragments.Zip(b.Fragments).All(p => p.First.Name == p.Second.Name && p.First.Code == p.Second.Code && p.First.Prologue == p.Second.Prologue && p.First.Header == p.Second.Header);
             if (ok) same++; else if (firstBad.Count < 5) firstBad.Add(Path.GetFileName(file));
         }
         Console.WriteLine($"fragment scripts: {parsed} parsed, {same} written back the same{(firstBad.Count > 0 ? "; differ: " + string.Join(", ", firstBad) : "")}");
 
+        // How vanilla dialogue lines store their fragments.
+        foreach (var t in ws.Active.First(p => p.Name == "Skyrim.esm").Mod!.DialogTopics.Take(3000))
+        {
+            var info = t.Responses.FirstOrDefault(r => r.VirtualMachineAdapter?.ScriptFragments?.OnBegin is not null || r.VirtualMachineAdapter?.ScriptFragments?.OnEnd is not null);
+            if (info?.VirtualMachineAdapter?.ScriptFragments is not { } f) continue;
+            Console.WriteLine($"INFO {info.FormKey}: file {f.FileName} bind {f.ExtraBindDataVersion}; begin {f.OnBegin?.FragmentName} bind {f.OnBegin?.ExtraBindDataVersion}; end {f.OnEnd?.FragmentName} bind {f.OnEnd?.ExtraBindDataVersion}; scripts [{string.Join(", ", info.VirtualMachineAdapter.Scripts.Select(x => x.Name))}]");
+            break;
+        }
         var outDir = Path.GetFullPath(args[2]);
         var sourceDir = Path.Combine(outDir, "Source", "Scripts");
         Directory.CreateDirectory(sourceDir);

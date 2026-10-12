@@ -149,6 +149,9 @@ internal sealed class RecordForm
                 Body(() => FormView.DrawTab(app, current, tab, target));
             }
 
+            if (current is Mutagen.Bethesda.Skyrim.IQuestGetter quest && Batch is not { Count: > 1 } && Tab(T("Dialogue") + "###dialogue"))
+                Body(() => DialogueEditor.Draw(app, quest, editable));
+
             if (Batch is not { Count: > 1 } && ScriptsEditor.Supports(current) && Tab(TF($"Scripts ({ScriptsEditor.Count(current)})###scripts")))
             {
                 Body(() => ScriptsEditor.Draw(app, current, (name, change) =>

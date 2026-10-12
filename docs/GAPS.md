@@ -29,7 +29,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
 | ✅ 0.10.0 **Квесты**: Quest Data, стадии (лог, флаги), цели (Objectives, цели на алиасы), **алиасы** (Reference / Location Alias: заполнение, условия, пакеты, inventory). Нет: скрипты алиасов, фрагменты (п. «Papyrus»), Quest Stages/Objectives export | CK: Quest, Reference Alias, Location Alias | ★★★ | L |
-| **Диалоги**: темы (DIAL), ветки (DLBR), реплики (INFO — сейчас даже не показываются), ответы с эмоциями, Shared Info, Player Dialogue, Dialogue Views (граф) | CK: Topic, Info, Edit Response, Branch, Dialogue Connections | ★★★ | L |
+| ✅ 0.12.0 (темы, ветки, реплики, ответы, условия, фрагменты; нет — граф Dialogue Views, удаление реплик, порядок перетаскиванием) **Диалоги**: темы (DIAL), ветки (DLBR), реплики (INFO), ответы с эмоциями, Shared Info, Player Dialogue, Dialogue Views (граф) | CK: Topic, Info, Edit Response, Branch, Dialogue Connections | ★★★ | L |
 | ✅ 0.11.0 (компиляция, новые скрипты, фрагменты стадий квеста; фрагменты реплик, пакетов, сцен, перков — нет) **Компиляция Papyrus и фрагменты** (стадий квеста, реплик, пакетов, сцен, перков): без этого квест или диалог со скриптом не сделать. Компилятор уже лежит в `C:\Skyrim\Papyrus Compiler` | CK: Papyrus Manager, Compile, Edit Papyrus Script | ★★★ | M |
 | ✅ 0.11.0 **SEQ-файл** для квестов «Start Game Enabled» с диалогами (без него диалоги не работают) | xEdit: Create SEQ File | ★★ | S |
 | Сцены (SCEN): фазы, актёры, действия (Dialogue / Package / Timer) на таймлайне | CK: Scene Data, Phase, Dialogue Scene Action | ★★ | L |
@@ -97,7 +97,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 3. ✅ 0.9.0 **Редактор условий** (M): нужен квестам, диалогам, перкам, пакетам, эффектам.
 4. ✅ 0.10.0 **Квесты** (L): стадии, цели, алиасы.
 5. ✅ 0.11.0 **Papyrus: компиляция и фрагменты** (M), **SEQ** (S). Фрагменты реплик — вместе с диалогами.
-6. **Диалоги** (L): темы, ветки, реплики, ответы.
+6. ✅ 0.12.0 **Диалоги** (L): темы, ветки, реплики, ответы.
 7. **Свойства ячейки и мира** (M), **Finalize навмеша** (M).
 8. **FaceGen** (L), очистка ITM/UDR и Check for Errors (M), упаковка BSA (M).
 9. Остальное по запросам.

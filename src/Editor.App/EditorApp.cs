@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || ScriptSources.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy;
 
     /// <summary>Papyrus source windows (Scripts tab: Source / New script).</summary>
     public Panels.ScriptSourceWindows ScriptSources { get; } = new();
@@ -292,11 +292,13 @@ internal sealed class EditorApp : IDisposable
         RunUseInfoAutotest();
         RunBatchAutotest();
         Panels.QuestEditor.Update(this);
+        Panels.DialogueEditor.Update(this);
         RunTogetherAutotest();
         RunRefMoreAutotest();
         RunConditionsAutotest();
         RunQuestAutotest();
         RunFragmentsAutotest();
+        RunDialogueAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -512,7 +514,96 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-refmore") || _refMoreStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9);
+
+    private int _dialStage, _dialFrames;
+    private FormKey _dialQuest, _dialTopic, _dialNewTopic, _dialNewLine;
+
+    /// <summary>
+    /// --autotest-dialogue &lt;dir&gt; (with --inspector-tab Dialogue): a new plugin in &lt;dir&gt; is the active file; DA01's
+    /// Dialogue tab; a vanilla line edited (text, a second response, Goodbye, a condition), a new line, the topic's
+    /// priority, a new branch with its topic and a line; save, reload: the topic holds only our lines, the new
+    /// branch / topic / line are there and listed under the quest. Writes only into &lt;dir&gt;.
+    /// </summary>
+    private void RunDialogueAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-dialogue");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _dialStage == 9) return;
+        string Describe(FormKey topic) => string.Join(" | ", Panels.DialogueEditor.Lines(this, topic).Select(l => $"{l.Line.FormKey.ID:X6}:'{l.Line.Responses.FirstOrDefault()?.Text?.String}'x{l.Line.Responses.Count}{(l.Line.Flags?.Flags.HasFlag(Mutagen.Bethesda.Skyrim.DialogResponses.Flag.Goodbye) == true ? "+bye" : "")}/c{l.Line.Conditions.Count}@{l.Plugin}").Take(6));
+        switch (_dialStage)
+        {
+            case 0 when session.Dialogue.IsCompletedSuccessfully:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorDialogueAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _dialQuest = session.Catalog.BySignature["QUST"].First(r => r.EditorId == "DA01").FormKey;
+                _dialTopic = session.Dialogue.Result.TopicsOf(_dialQuest).First(t => Panels.DialogueEditor.Lines(this, t).Count >= 2);
+                FormWindows.Open(_dialQuest);
+                Panels.DialogueEditor.SelectForTest(_dialQuest, _dialTopic);
+                Log.Info($"autotest-dialogue: DA01: {session.Dialogue.Result.TopicsOf(_dialQuest).Count} topics, {session.Dialogue.Result.BranchesOf(_dialQuest).Count} branches; topic {session.Catalog.Get(_dialTopic)?.EditorId}: {Describe(_dialTopic)}");
+                _dialStage = 1;
+                break;
+            }
+            case 1 when ++_dialFrames > 15:
+            {
+                var lines = Panels.DialogueEditor.Lines(this, _dialTopic);
+                var line = lines[0].Line;
+                var target = new Ui.EditTarget(() => StbEditor.Core.OverrideEditing.WorkingCopy(Document, line.FormKey, Panels.DialogueEditor.Lines(this, _dialTopic)[0].Line),
+                    (name, edited) => StbEditor.Core.OverrideEditing.CommitEdit(Document, name, edited, StbEditor.Core.RecordPlace.DialogInfo, cell: _dialTopic));
+                target.Apply("text", r => StbEditor.Core.RecordFields.Set(r, ["Responses", 0, "Text"], "STB autotest line"));
+                target.Apply("response", r => ((Mutagen.Bethesda.Skyrim.DialogResponses)r).Responses.Add(new Mutagen.Bethesda.Skyrim.DialogResponse { ResponseNumber = 2, Text = "second", Emotion = Mutagen.Bethesda.Skyrim.Emotion.Anger, EmotionValue = 70 }));
+                target.Apply("goodbye", r => StbEditor.Core.RecordFields.Set(r, ["Flags", "Flags"], (line.Flags?.Flags ?? 0) | Mutagen.Bethesda.Skyrim.DialogResponses.Flag.Goodbye));
+                target.Apply("condition", r => StbEditor.Core.Conditions.ListAt(r, ["Conditions"]).Add(StbEditor.Core.Conditions.New()));
+                var topic = (Mutagen.Bethesda.Skyrim.IDialogTopicGetter)StbEditor.Core.OverrideEditing.WorkingCopy(Document, _dialTopic, new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.IDialogTopicGetter>(_dialTopic)!);
+                ((Mutagen.Bethesda.Skyrim.DialogTopic)topic).Priority = 61;
+                StbEditor.Core.OverrideEditing.CommitEdit(Document, "priority", (Mutagen.Bethesda.Plugins.Records.IMajorRecord)topic, StbEditor.Core.RecordPlace.TopLevel);
+                Panels.DialogueEditor.NewLine(this, topic, Panels.DialogueEditor.Lines(this, _dialTopic));
+                var quest = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(_dialQuest)!;
+                var branchKey = Panels.DialogueEditor.NewBranch(this, quest)!.Value;
+                _dialNewTopic = Document.Drafts.Values.OfType<StbEditor.Core.OverrideDraft>().Select(d => d.Record).OfType<Mutagen.Bethesda.Skyrim.IDialogTopicGetter>()
+                    .First(x => x.Branch.FormKeyNullable == branchKey).FormKey;
+                var newTopic = (Mutagen.Bethesda.Skyrim.IDialogTopicGetter)StbEditor.Core.OverrideEditing.Override(Document, _dialNewTopic)!.Record;
+                _dialNewLine = Panels.DialogueEditor.NewLine(this, newTopic, []) ?? default;
+                var newTarget = new Ui.EditTarget(() => StbEditor.Core.OverrideEditing.WorkingCopy(Document, _dialNewLine, (Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter)StbEditor.Core.OverrideEditing.Override(Document, _dialNewLine)!.Record),
+                    (name, edited) => StbEditor.Core.OverrideEditing.CommitEdit(Document, name, edited, StbEditor.Core.RecordPlace.DialogInfo, cell: _dialNewTopic));
+                newTarget.Apply("text", r => StbEditor.Core.RecordFields.Set(r, ["Responses", 0, "Text"], "Hello from a new branch"));
+                Panels.DialogueEditor.SetFragmentsForTest(_dialNewLine, null, "akSpeaker.SetRelationshipRank(Game.GetPlayer(), 1)");
+                Panels.DialogueEditor.StartCompile(this, (Mutagen.Bethesda.Skyrim.IDialogResponsesGetter)StbEditor.Core.OverrideEditing.Override(Document, _dialNewLine)!.Record, newTarget);
+                _dialStage = 10;
+                break;
+            }
+            case 10 when !Panels.DialogueEditor.IsCompiling:
+            {
+                var newLine = (Mutagen.Bethesda.Skyrim.IDialogResponsesGetter)StbEditor.Core.OverrideEditing.Override(Document, _dialNewLine)!.Record;
+                var fragments = newLine.VirtualMachineAdapter?.ScriptFragments;
+                Log.Info($"autotest-dialogue: end fragment: compiled {Panels.DialogueEditor.LastResultFor(_dialNewLine)?.Success}, file {fragments?.FileName}, end {fragments?.OnEnd?.FragmentName}, begin {fragments?.OnBegin?.FragmentName ?? "none"}, scripts [{string.Join(", ", newLine.VirtualMachineAdapter?.Scripts.Select(x => x.Name) ?? [])}]");
+                Log.Info($"autotest-dialogue: edited topic: {Describe(_dialTopic)}; new topic {session.Catalog.Get(_dialNewTopic)?.EditorId}: {Describe(_dialNewTopic)}; pending {Document.PendingCount}");
+                Save();
+                _dialStage = 2;
+                break;
+            }
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0 && Loader is null && session.Dialogue.IsCompletedSuccessfully:
+            {
+                var path = Path.Combine(cli[arg + 1], "STBEditorDialogueAutotest.esp");
+                using (var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(path, session.Game.Release))
+                {
+                    foreach (var t in check.DialogTopics)
+                        Log.Info($"autotest-dialogue: file topic {t.EditorID} priority {t.Priority} branch {t.Branch.FormKeyNullable}: {t.Responses.Count} line(s): {string.Join(" | ", t.Responses.Select(r => $"'{r.Responses.FirstOrDefault()?.Text?.String}'x{r.Responses.Count}"))}");
+                    Log.Info($"autotest-dialogue: file branches: {string.Join(", ", check.DialogBranches.Select(b => $"{b.EditorID} start {b.StartingTopic.FormKeyNullable}"))}");
+                }
+                Log.Info($"autotest-dialogue: reloaded: DA01 has {session.Dialogue.Result.TopicsOf(_dialQuest).Count} topics, {session.Dialogue.Result.BranchesOf(_dialQuest).Count} branches; topic: {Describe(_dialTopic)}");
+                FormWindows.Open(_dialQuest);
+                Panels.DialogueEditor.SelectForTest(_dialQuest, _dialTopic);
+                _dialStage = 3;
+                _dialFrames = 0;
+                break;
+            }
+            case 3 when ++_dialFrames > 20:
+                _dialStage = 9;
+                break;
+        }
+    }
 
     private int _fragStage, _fragFrames;
     private FormKey _fragQuest;

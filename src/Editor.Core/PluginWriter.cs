@@ -119,7 +119,34 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                     warnings.Add($"{edit.EditorId}: no group for {edit.Record.GetType().Name}, skipped");
                     continue;
                 }
-                SetInGroup(group, (IMajorRecord)edit.Record.DeepCopy());
+                var copy = (IMajorRecord)edit.Record.DeepCopy();
+                if (copy is DialogTopic topic)
+                {
+                    // A topic edit carries the lines of the version it was copied from (maybe another plugin's):
+                    // the plugin keeps its own lines only; edited lines are put in below.
+                    var own = mod.DialogTopics.FirstOrDefault(t => t.FormKey == topic.FormKey);
+                    topic.Responses.Clear();
+                    if (own is not null) topic.Responses.AddRange(own.Responses);
+                }
+                SetInGroup(group, copy);
+                touched.Add(edit.Key);
+                overridden++;
+            }
+
+            // Dialogue lines: into their topic in the plugin (a header-only override of the topic when it has none).
+            foreach (var edit in document.Drafts.Values.OfType<OverrideDraft>().Where(d => d.Place == RecordPlace.DialogInfo))
+            {
+                if (edit.Cell is not { } topicKey || TopicFor(mod, topicKey) is not { } topic)
+                {
+                    warnings.Add($"{edit.EditorId}: its topic {edit.Cell} not found, line skipped");
+                    continue;
+                }
+                var line = (DialogResponses)edit.Record.DeepCopy();
+                var index = topic.Responses.FindIndex(r => r.FormKey == edit.Key);
+                if (index >= 0) topic.Responses[index] = line;
+                else topic.Responses.Add(line);
+                // The topic's line count (TIFC) changes with its lines: not restored from the old bytes.
+                touched.Add(topicKey);
                 touched.Add(edit.Key);
                 overridden++;
             }
@@ -678,6 +705,18 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
         Landscape = false,
         NavigationMeshes = false,
     };
+
+    private static readonly DialogTopic.TranslationMask TopicHeaderOnly = new(defaultOn: true) { Responses = false };
+
+    /// <summary>The topic in the plugin: its own or edited one, else a header-only override of the winner.</summary>
+    private DialogTopic? TopicFor(SkyrimMod mod, FormKey topicKey)
+    {
+        if (mod.DialogTopics.FirstOrDefault(t => t.FormKey == topicKey) is { } existing) return existing;
+        if (_lookup.Resolve<IDialogTopicGetter>(topicKey) is not { } winning) return null;
+        var copy = winning.DeepCopy(TopicHeaderOnly);
+        mod.DialogTopics.Add(copy);
+        return copy;
+    }
 
     private static readonly Worldspace.TranslationMask WorldHeaderOnly = new(defaultOn: true)
     {

@@ -25,6 +25,16 @@ internal sealed class EditorSession : IDisposable
         return index;
     });
 
+    private Task<DialogueIndex>? _dialogue;
+
+    /// <summary>Quest → its topics and branches; built in the background the first time a quest's Dialogue tab is shown.</summary>
+    public Task<DialogueIndex> Dialogue => _dialogue ??= System.Threading.Tasks.Task.Run(() =>
+    {
+        var index = DialogueIndex.Build(Workspace, Catalog, _closing.Token);
+        Log.Info($"dialogue index: {index.TopicCount:N0} quest topics in {index.BuildTime.TotalSeconds:0.0} s");
+        return index;
+    }, _closing.Token);
+
     private Task<UseIndex>? _uses;
     private readonly CancellationTokenSource _closing = new();
 
@@ -44,7 +54,7 @@ internal sealed class EditorSession : IDisposable
     public void Dispose()
     {
         _closing.Cancel();
-        try { _uses?.Wait(TimeSpan.FromSeconds(30)); }
+        try { _uses?.Wait(TimeSpan.FromSeconds(30)); _dialogue?.Wait(TimeSpan.FromSeconds(30)); }
         catch (AggregateException) { } // cancelled or failed: either way it is done
         Workspace.Dispose();
     }

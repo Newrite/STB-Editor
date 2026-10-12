@@ -14,6 +14,9 @@ public enum RecordPlace
 
     /// <summary>A navmesh (NAVM) under its cell.</summary>
     Navmesh,
+
+    /// <summary>A dialogue line (INFO) under its topic; the draft's <c>Cell</c> is the topic (DIAL).</summary>
+    DialogInfo,
 }
 
 /// <summary>
@@ -31,7 +34,7 @@ public sealed class OverrideDraft(IMajorRecord record, RecordPlace place, RefCon
     /// <summary>For references: where they live and what they are.</summary>
     public RefContext? Reference { get; } = reference;
 
-    /// <summary>For navmeshes: the owning cell and its worldspace (null for interiors).</summary>
+    /// <summary>For navmeshes: the owning cell and its worldspace (null for interiors); for dialogue lines: the topic.</summary>
     public FormKey? Cell { get; } = cell;
     public FormKey? World { get; } = world;
 

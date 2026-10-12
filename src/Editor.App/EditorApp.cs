@@ -41,7 +41,7 @@ internal sealed class EditorApp : IDisposable
     /// <summary>Bumped on every selection change so panels can scroll to it once.</summary>
     public int SelectionVersion { get; private set; }
 
-    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw
+    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning
         || Thumbnails?.HasPending == true || Saver.IsBusy;
     public uint IdleWaitMilliseconds => 500;
 
@@ -66,6 +66,7 @@ internal sealed class EditorApp : IDisposable
     /// <summary>Records open in their own form windows.</summary>
     public FormWindows FormWindows { get; } = new();
     public CompareWindows Compare { get; } = new();
+    public NewFormDialog NewForm { get; private set; } = null!;
 
     public EditorApp(Settings settings, ImGuiLayer imgui, GraphicsDevice graphics, CommandLine options)
     {
@@ -101,6 +102,9 @@ internal sealed class EditorApp : IDisposable
         // --theme <name>: this run only (screenshots).
         var theme = Array.IndexOf(cliArgs0, "--theme");
         Theme.Use(theme >= 0 && theme + 1 < cliArgs0.Length ? cliArgs0[theme + 1] : settings.Theme);
+        // --ui-scale <factor>: this run only (screenshots).
+        var uiScale = Array.IndexOf(cliArgs0, "--ui-scale");
+        Theme.SetUiScale(uiScale >= 0 && uiScale + 1 < cliArgs0.Length && float.TryParse(cliArgs0[uiScale + 1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : settings.UiScale);
         _openForm = cliArgs0.SkipWhile(x => x != "--open-form").Skip(1).FirstOrDefault();
 
         if (options.Game is not null) settings.GameFolder = options.Game;
@@ -108,11 +112,12 @@ internal sealed class EditorApp : IDisposable
         if (options.Profile is not null) settings.Mo2Profile = options.Profile;
 
         _dataDialog = new DataDialog(this);
+        NewForm = new NewFormDialog(this);
         _activeDialog = new ActiveFileDialog(this);
         _newRecordDialog = new NewRecordDialog(this);
         _pendingCommandLineSelection = options.Select is not null || options.Search is not null || options.Cell is not null
             || Environment.GetCommandLineArgs().Contains("--object-shot") || Environment.GetCommandLineArgs().Contains("--psys")
-            || Environment.GetCommandLineArgs().Contains("--dialog");
+            || Environment.GetCommandLineArgs().Contains("--dialog") || Environment.GetCommandLineArgs().Contains("--type");
 
         if (options.Open || (settings.OpenOnStartup && settings.GameFolder is not null && options.Screenshot is null))
             _dataDialog.OpenImmediately();
@@ -260,6 +265,9 @@ internal sealed class EditorApp : IDisposable
         RunPickerAutotest();
         RunCompareAutotest();
         RunSaveCheckAutotest();
+        RunOpsAutotest();
+        RunFilterAutotest();
+        RunMastersAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
         if (!_gizmoDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-gizmo")) _gizmoDone = RenderWindow.GizmoTestStep();
@@ -294,8 +302,10 @@ internal sealed class EditorApp : IDisposable
         }
         _help.Draw(this);
         _settingsWindow.Draw(this);
+        _mastersWindow.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
+        NewForm.Draw();
         _newRecordDialog.Draw();
         HandleShortcuts();
     }
@@ -441,6 +451,7 @@ internal sealed class EditorApp : IDisposable
     private readonly NewRecordDialog _newRecordDialog;
     private readonly HelpWindow _help = new();
     private readonly SettingsWindow _settingsWindow = new();
+    private readonly MastersWindow _mastersWindow = new();
 
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
@@ -456,7 +467,161 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-form") || _formStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-picker") || _pickerStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-compare") || _compareStage == 3)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-savecheck") || _saveCheckStage == 2);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-savecheck") || _saveCheckStage == 2)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-ops") || _opsStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-filter") || _filterStage == 2)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-masters") || _mastersStage == 9);
+
+    private int _mastersStage;
+    private FormKey _mastersMisc;
+
+    /// <summary>
+    /// --autotest-masters &lt;folder&gt;: a new plugin with a MISC pointing at a Skyrim and a Dawnguard keyword,
+    /// Update.esm added as an extra master (unused, between the two) → save; then Clean Masters → save:
+    /// Update.esm must go, Dawnguard move down a slot and the keywords still point at the same records.
+    /// </summary>
+    private void RunMastersAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-masters");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session || Loader is not null || _mastersStage == 9) return;
+        string Masters() => ActivePlugin is { } a && File.Exists(a.Path) ? string.Join(", ", StbEditor.Data.Raw.PluginHeader.Read(a.Path).Masters) : "-";
+        string Keywords() => new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.IMiscItemGetter>(_mastersMisc)?.Keywords?
+            .Select(k => session.Catalog.Get(k.FormKey)?.EditorId ?? k.FormKey.ToString()).Aggregate((a, b) => a + ", " + b) ?? "-";
+        switch (_mastersStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorMastersAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _mastersMisc = NewForm.CreateForTest("MISC", 0, "STBMastersMisc", "") ?? default;
+                var misc = (Mutagen.Bethesda.Skyrim.MiscItem)StbEditor.Core.OverrideEditing.Override(Document, _mastersMisc)!.Record.DeepCopy();
+                var skyrim = session.Catalog.BySignature["KYWD"].First(k => k.FormKey.ModKey.FileName == "Skyrim.esm" && k.EditorId == "VendorItemClutter");
+                var dawnguard = session.Catalog.BySignature["KYWD"].First(k => k.FormKey.ModKey.FileName == "Dawnguard.esm");
+                misc.Keywords = [new Mutagen.Bethesda.Plugins.FormLink<Mutagen.Bethesda.Skyrim.IKeywordGetter>(skyrim.FormKey), new Mutagen.Bethesda.Plugins.FormLink<Mutagen.Bethesda.Skyrim.IKeywordGetter>(dawnguard.FormKey)];
+                StbEditor.Core.OverrideEditing.CommitEdit(Document, "keywords", misc, StbEditor.Core.RecordPlace.TopLevel);
+                Document.EditMasters("add", new StbEditor.Core.MasterEdit([Mutagen.Bethesda.Plugins.ModKey.FromFileName("Update.esm")], false));
+                Log.Info($"autotest-masters: MISC with {skyrim.EditorId} + {dawnguard.EditorId}, Update.esm requested; saving");
+                Save();
+                _mastersStage = 1;
+                break;
+            }
+            case 1 when !Saver.IsBusy && Document.PendingCount == 0:
+                Log.Info($"autotest-masters: saved; masters [{Masters()}], keywords [{Keywords()}]; cleaning");
+                Document.EditMasters("clean", new StbEditor.Core.MasterEdit([], true));
+                Save();
+                _mastersStage = 2;
+                break;
+            case 2 when Saver.AwaitingConfirmation is { } pending:
+                Log.Warn($"autotest-masters: save check asks: {string.Join("; ", pending.LossyRecords)}");
+                Saver.Confirm(this);
+                break;
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0:
+                Log.Info($"autotest-masters: cleaned; masters [{Masters()}], keywords [{Keywords()}]");
+                _mastersStage = 9;
+                break;
+        }
+    }
+
+    private int _filterStage;
+    private System.Diagnostics.Stopwatch? _filterClock;
+
+    /// <summary>
+    /// --autotest-filter &lt;plugin&gt; [conflicts] (with --type SIG): the Object Window's plugin filter, then
+    /// the conflict filter; logs the row counts and how long the field-by-field check took.
+    /// </summary>
+    private void RunFilterAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-filter");
+        if (i < 0 || i + 1 >= cli.Length || Session is null || _filterStage == 2) return;
+        var conflicts = cli.Skip(i + 2).FirstOrDefault() == "conflicts";
+        switch (_filterStage)
+        {
+            case 0:
+                ObjectWindow.SetFiltersForTest(cli[i + 1], conflicts);
+                _filterClock = System.Diagnostics.Stopwatch.StartNew();
+                _filterStage = 1;
+                break;
+            case 1 when !ObjectWindow.IsScanning && _filterClock!.ElapsedMilliseconds > 500:
+                Log.Info($"autotest-filter: plugin {cli[i + 1]}{(conflicts ? ", conflicts" : "")}: {ObjectWindow.RowCount} row(s); {ObjectWindow.ConflictsChecked} record(s) checked in {_filterClock.ElapsedMilliseconds} ms");
+                foreach (var key in ObjectWindow.VisibleKeys.Take(6))
+                {
+                    var versions = CompareWindows.Versions(this, key);
+                    var root = RecordCompare.Build(this, versions.Select(v => (object?)v.Record).Reverse().ToList(), versions: true, showHeader: false);
+                    var lost = new List<string>();
+                    void Walk(CompareNode n, string path) { foreach (var c in n.Children) { if (c.Children.Count == 0 && c.State == CompareState.Conflict) lost.Add($"{path}{c.Label}: {string.Join(" | ", c.Text)}"); Walk(c, path + c.Label + "/"); } }
+                    Walk(root, "");
+                    Log.Info($"autotest-filter:   {Session!.Catalog.Get(key)?.EditorId} [{string.Join(", ", versions.Select(v => v.Plugin).Reverse())}]: {string.Join("; ", lost.Take(4))}");
+                }
+                _filterStage = 2;
+                break;
+        }
+    }
+
+    private int _opsStage;
+    private FormKey _opsMisc, _opsGlobal, _opsDropped, _opsSourceRef;
+    private System.Numerics.Vector3 _opsSourcePosition;
+    private int _opsSourceFlags;
+
+    /// <summary>
+    /// --autotest-ops &lt;folder&gt; (with --cell of an interior): the Object Window's New (a named MISC, a float
+    /// global), Delete of a new record, copy + paste of a reference (its record copied), save into a new plugin,
+    /// reload and check; then Delete of the plugin's own record, save, reload, check it is gone.
+    /// </summary>
+    private void RunOpsAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var i = Array.IndexOf(cli, "--autotest-ops");
+        if (i < 0 || i + 1 >= cli.Length || Session is not { } session || Loader is not null || _opsStage == 9) return;
+        switch (_opsStage)
+        {
+            case 0 when RenderWindow.IsSettled && RenderWindow.Scene is { IsInterior: true } scene:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[i + 1], "STBEditorOpsAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _opsMisc = NewForm.CreateForTest("MISC", 0, "STBOpsMisc", "Тестовая вещь") ?? default;
+                _opsGlobal = NewForm.CreateForTest("GLOB", 0, "STBOpsGlobal", "") ?? default;
+                _opsDropped = NewForm.CreateForTest("MISC", 0, "STBOpsDropped", "") ?? default;
+                var removal = RecordActions.RemovalOf(this, _opsDropped);
+                RecordActions.Remove(this, _opsDropped);
+                Log.Info($"autotest-ops: new {Describe(_opsMisc)}, {Describe(_opsGlobal)}; dropped ({removal}) still in catalog: {session.Catalog.Get(_opsDropped) is not null}");
+
+                var source = scene.Objects.First(o => o.Kind == StbEditor.Render.SceneObjectKind.Mesh && o.Record is Mutagen.Bethesda.Skyrim.IPlacedObjectGetter p && p.Placement is not null && !o.IsPersistent);
+                _opsSourceRef = source.Reference;
+                _opsSourcePosition = source.Position;
+                _opsSourceFlags = ((Mutagen.Bethesda.Skyrim.IPlacedObjectGetter)source.Record!).MajorRecordFlagsRaw;
+                RenderWindow.SelectForTest(source);
+                RenderWindow.CopySelection(this);
+                var before = scene.Objects.Count;
+                RenderWindow.Paste(this, inPlace: false, new System.Numerics.Vector2(-1, -1));
+                var pasted = RenderWindow.SingleSelection;
+                Log.Info($"autotest-ops: copied {source.BaseEditorId} {source.Reference} at {source.Position}; pasted {pasted?.Reference} at {pasted?.Position}, objects {before} -> {scene.Objects.Count}, record copied: {StbEditor.Core.OverrideEditing.Override(Document, pasted!.Reference) is not null}; undo: {Document.History.UndoName}");
+                Save();
+                _opsStage = 1;
+                break;
+            }
+            case 1 when !Saver.IsBusy && Document.PendingCount == 0 && RenderWindow.IsSettled && RenderWindow.Scene is { } scene:
+            {
+                var misc = session.Catalog.Get(_opsMisc);
+                var mine = scene.Objects.Where(o => o.Reference.ModKey == ActivePlugin!.ModKey).ToList();
+                var copy = mine.FirstOrDefault(o => o.Base == scene.Objects.FirstOrDefault(s => s.Reference == _opsSourceRef)?.Base);
+                var flags = copy?.Record is Mutagen.Bethesda.Skyrim.IPlacedObjectGetter p ? p.MajorRecordFlagsRaw : -1;
+                Log.Info($"autotest-ops: reloaded; MISC {misc?.EditorId} '{misc?.Name}' from {misc?.WinningPlugin.Name}, GLOB {session.Catalog.Get(_opsGlobal)?.EditorId}, dropped present: {session.Catalog.Get(_opsDropped) is not null}; " +
+                    $"own references in the cell {mine.Count}, copy at {copy?.Position} flags 0x{flags:X} (source 0x{_opsSourceFlags:X})");
+                var removal = RecordActions.RemovalOf(this, _opsMisc);
+                RecordActions.Remove(this, _opsMisc);
+                Log.Info($"autotest-ops: delete {misc?.EditorId}: {removal}, marked {StbEditor.Core.OverrideEditing.IsRemoved(Document, _opsMisc)}; saving");
+                Save();
+                _opsStage = 2;
+                break;
+            }
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0 && RenderWindow.IsSettled:
+                Log.Info($"autotest-ops: reloaded; deleted MISC present: {session.Catalog.Get(_opsMisc) is not null}, GLOB present: {session.Catalog.Get(_opsGlobal) is not null}");
+                _opsStage = 9;
+                break;
+        }
+
+        string Describe(FormKey key) => session.Catalog.Get(key) is { } r ? $"{r.Signature} {r.EditorId} \"{r.Name}\" {key}" : $"{key} (not in catalog)";
+    }
 
     private int _saveCheckStage;
 
@@ -1081,6 +1246,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Data..."), T("Ctrl+O"))) _dataDialog.Show();
             ImGui.Separator();
             if (ImGui.MenuItem(T("Active File..."), (string?)null, false, Session is not null)) ShowActiveFileDialog();
+            if (ImGui.MenuItem(T("Masters..."), (string?)null, false, Session is not null)) _mastersWindow.Show();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The active file's masters: add one, remove unused ones (as xEdit)"));
             var saveLabel = ActivePlugin is { } ap ? TF($"Save into {ap.Name}") : T("Save...");
             if (ImGui.MenuItem(saveLabel, T("Ctrl+S"), false, Session is not null && !Saver.IsBusy)) Save();
             ImGui.Separator();
@@ -1094,7 +1261,15 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(history.UndoName is { } u ? TF($"Undo {u}") : T("Undo"), T("Ctrl+Z"), false, history.CanUndo)) Document.Undo();
             if (ImGui.MenuItem(history.RedoName is { } r ? TF($"Redo {r}") : T("Redo"), T("Ctrl+Y"), false, history.CanRedo)) Document.Redo();
             ImGui.Separator();
-            ImGui.TextColored(Theme.TextDim, TF($"{Document.ChangedCount} changed reference(s), {Document.Drafts.Count} new record(s), not saved"));
+            // Render Window references, as the CK's Cut / Copy / Paste Render.
+            if (ImGui.MenuItem(T("Cut objects"), T("Ctrl+X"), false, RenderWindow.HasSelection)) RenderWindow.CutSelection(this);
+            if (ImGui.MenuItem(T("Copy objects"), T("Ctrl+C"), false, RenderWindow.HasSelection)) RenderWindow.CopySelection(this);
+            if (ImGui.MenuItem(T("Paste objects"), T("Ctrl+V"), false, RenderWindow.ClipboardCount > 0)) RenderWindow.Paste(this, inPlace: false, new System.Numerics.Vector2(-1, -1));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Into the loaded cell, at the centre of the view (Ctrl+V over the view: under the cursor)"));
+            if (ImGui.MenuItem(T("Paste in place"), T("Ctrl+Shift+V"), false, RenderWindow.ClipboardCount > 0)) RenderWindow.Paste(this, inPlace: true, default);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Same coordinates as the originals (copy in one cell, paste in another)"));
+            ImGui.Separator();
+            ImGui.TextColored(Theme.TextDim, TF($"{Document.ChangedCount} changed reference(s), {Document.Drafts.Count} record edit(s), not saved"));
             ImGui.EndMenu();
         }
 
@@ -1164,8 +1339,22 @@ internal sealed class EditorApp : IDisposable
         ImGui.EndMainMenuBar();
     }
 
+    /// <summary>Ctrl+= / Ctrl+- / Ctrl+0: interface larger / smaller / 100 % (saved like the setting).</summary>
+    public void SetUiScale(float scale)
+    {
+        Theme.SetUiScale(scale);
+        _settings.UiScale = Theme.UiScale;
+    }
+
     private void HandleShortcuts()
     {
+        var keys = ImGui.GetIO();
+        if (keys.KeyCtrl && !keys.WantTextInput)
+        {
+            if (ImGui.IsKeyPressed(ImGuiKey.Equal, false) || ImGui.IsKeyPressed(ImGuiKey.KeypadAdd, false)) SetUiScale(Theme.UiScale + 0.1f);
+            if (ImGui.IsKeyPressed(ImGuiKey.Minus, false) || ImGui.IsKeyPressed(ImGuiKey.KeypadSubtract, false)) SetUiScale(Theme.UiScale - 0.1f);
+            if (ImGui.IsKeyPressed(ImGuiKey.Key0, false) || ImGui.IsKeyPressed(ImGuiKey.Keypad0, false)) SetUiScale(1f);
+        }
         var io = ImGui.GetIO();
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.O, false)) _dataDialog.Show();
         if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S, false)) Save();

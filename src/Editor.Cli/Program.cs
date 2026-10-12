@@ -719,6 +719,109 @@ switch (command)
         Console.WriteLine($"  expected: moved {moved.Reference} to {mstate.Position}, disabled {deleted.Reference}, new {newKey}");
         break;
     }
+    case "strtest":
+    {
+        // strtest <game> <EditorID>: the record's Name in every plugin that has it (localized string lookup).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var rec = catalog.ByKey.Values.First(r => string.Equals(r.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var type = StbEditor.Data.RecordLookup.GetterType(rec.Signature)!;
+        foreach (var context in ws.LinkCache.ResolveAllSimpleContexts(rec.FormKey, type))
+        {
+            var named = context.Record as Mutagen.Bethesda.Plugins.Aspects.ITranslatedNamedGetter;
+            var name = named?.Name;
+            var langs = name is null ? "" : string.Join(", ", name.Select(kv => $"{kv.Key}={kv.Value}"));
+            Console.WriteLine($"{context.ModKey}: '{name?.String}' [{langs}] lang {name?.TargetLanguage}");
+        }
+        break;
+    }
+    case "recordtest":
+    {
+        // recordtest <game> <out folder> <plugin>: a blank record of every creatable type must write and
+        // read back; then, on a copy of the plugin: new records, one own record and one override removed.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var outDir = args[2];
+        Directory.CreateDirectory(outDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var encoding = StbEditor.Data.Raw.StringEncodingDetector.WriteEncoding(active.Encoding, game.Language);
+
+        var doc = new EditDocument();
+        int ok = 0, failed = 0;
+        var created = new List<Mutagen.Bethesda.Plugins.FormKey>();
+        foreach (var signature in StbEditor.Data.Catalog.RecordTypes.Signatures.Distinct())
+        {
+            if (NewRecords.NotCreatable.Contains(signature) || StbEditor.Data.RecordLookup.GetterType(signature) is not { } getter) continue;
+            var classes = NewRecords.RecordClasses(getter);
+            if (classes.Count == 0) { Console.WriteLine($"  {signature}: no class"); failed++; continue; }
+            foreach (var cls in classes)
+            {
+                var id = (NewRecords.GameSettingPrefix(cls) ?? "") + "STBTest" + cls.Name;
+                try
+                {
+                    var record = NewRecords.Blank(cls, active.Allocate(), game.Release, id);
+                    if (RecordRoundTrip.Read(record, game.Release, encoding) is null)
+                    {
+                        Console.WriteLine($"  {signature} {cls.Name}: does not read back: {RecordRoundTrip.LastError}");
+                        failed++;
+                        continue;
+                    }
+                    doc.CommitEdit("new", record, RecordPlace.TopLevel);
+                    created.Add(record.FormKey);
+                    ok++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"  {signature} {cls.Name}: {ex.GetType().Name}: {ex.Message}");
+                    failed++;
+                }
+            }
+        }
+        Console.WriteLine($"blank records: {ok} ok, {failed} failed");
+
+        var own = catalog.ByKey.Values.FirstOrDefault(r => r.FormKey.ModKey == plugin.ModKey && r.Plugins.Count == 1 && r.Signature is "MISC" or "STAT");
+        var over = catalog.ByKey.Values.FirstOrDefault(r => r.FormKey.ModKey != plugin.ModKey && r.WinningPlugin == plugin && r.Plugins.Count == 2 && r.Signature is "MISC" or "WEAP" or "ARMO");
+        if (own is not null) doc.RemoveRecord("remove", own.FormKey, own.Signature, own.EditorId, inPlugin: true, ownRecord: true);
+        if (over is not null) doc.RemoveRecord("remove", over.FormKey, over.Signature, over.EditorId, inPlugin: true, ownRecord: false);
+        Console.WriteLine($"remove own {own?.EditorId} {own?.FormKey}, override {over?.EditorId} {over?.FormKey}");
+
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; overridden {result.Overridden}, removed {result.Removed}, lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings) Console.WriteLine("  warn " + w);
+        foreach (var l in result.LossyRecords.Take(10)) Console.WriteLine("  lossy " + l);
+        if (!result.Success) break;
+        using var back = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(new Mutagen.Bethesda.Plugins.ModPath(active.ModKey, result.TempPath!), game.Release);
+        var present = back.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
+        Console.WriteLine($"read back: new records present {created.Count(present.Contains)}/{created.Count}, own removed {(own is null ? "-" : (!present.Contains(own.FormKey)).ToString())}, override removed {(over is null ? "-" : (!present.Contains(over.FormKey)).ToString())}");
+        break;
+    }
+    case "cleanmasters":
+    {
+        // cleanmasters <game> <out folder> <plugin> [add plugin]: on a copy, the masters nothing points at
+        // (as xEdit's Clean Masters), then a save that drops them (and adds one) — the save check must stay clean.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        Directory.CreateDirectory(args[2]);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+        var copy = Path.Combine(args[2], plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var header = StbEditor.Data.Raw.PluginHeader.Read(copy);
+        var used = PluginWriter.UsedMasters(plugin.Mod!, plugin.ModKey);
+        Console.WriteLine($"masters of {plugin.Name}: {string.Join(", ", header.Masters.Select(m => used.Any(u => u.FileName.String.Equals(m, StringComparison.OrdinalIgnoreCase)) ? m : m + " (unused)"))}");
+        var add = args.Length > 4 ? new List<Mutagen.Bethesda.Plugins.ModKey> { Mutagen.Bethesda.Plugins.ModKey.FromFileName(args[4]) } : [];
+        var doc = new EditDocument();
+        doc.EditMasters("masters", new MasterEdit(add, Clean: true));
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; added [{string.Join(", ", result.AddedMasters)}], removed [{string.Join(", ", result.RemovedMasters)}], lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings) Console.WriteLine("  warn " + w);
+        foreach (var l in result.LossyRecords.Take(10)) Console.WriteLine("  lossy " + l);
+        if (result.Success) Console.WriteLine($"written masters: {string.Join(", ", StbEditor.Data.Raw.PluginHeader.Read(result.TempPath!).Masters)}");
+        break;
+    }
     case "mastertest":
     {
         // mastertest <game> <out folder> <plugin>: on a copy of the plugin, override a record of a

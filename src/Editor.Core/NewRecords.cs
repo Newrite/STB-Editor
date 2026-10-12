@@ -113,4 +113,55 @@ public static class NewRecords
 
     public static CellDraft ExteriorCell(FormKey key, SkyrimRelease release, FormKey world, int x, int y) =>
         new(new Cell(key, release) { Grid = new CellGrid { Point = new P2Int(x, y) } }, world);
+
+    /// <summary>
+    /// Records that are not made from the Object Window: cells, worlds and what lives in them have
+    /// their own tools; quests and dialogue wait for their editors; the header and the default
+    /// object manager exist once.
+    /// </summary>
+    public static readonly HashSet<string> NotCreatable =
+        ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "REFR", "ACHR", "PGRE", "PHZD", "PMIS", "PARW", "PBAR", "PBEA", "PCON", "PFLA",
+         "DIAL", "INFO", "QUST", "SCEN", "DLBR", "DLVW", "TES4", "DOBJ"];
+
+    /// <summary>
+    /// Classes a new record of a type can be: one for most, several for abstract ones (a global is
+    /// GlobalFloat / GlobalInt / GlobalShort, a game setting Float / Int / String / Bool).
+    /// </summary>
+    public static IReadOnlyList<Type> RecordClasses(Type getter)
+    {
+        if (!getter.IsInterface || !getter.Name.StartsWith('I') || !getter.Name.EndsWith("Getter", StringComparison.Ordinal)) return [];
+        var cls = getter.Assembly.GetType($"{getter.Namespace}.{getter.Name[1..^6]}");
+        if (cls is null) return [];
+        if (!cls.IsAbstract) return HasRecordConstructor(cls) ? [cls] : [];
+        return getter.Assembly.GetTypes()
+            .Where(t => !t.IsAbstract && cls.IsAssignableFrom(t) && HasRecordConstructor(t) && !t.Name.EndsWith("Unknown", StringComparison.Ordinal))
+            .OrderBy(t => t.Name, StringComparer.Ordinal).ToArray();
+    }
+
+    private static bool HasRecordConstructor(Type type) => type.GetConstructor([typeof(FormKey), typeof(SkyrimRelease)]) is not null;
+
+    /// <summary>
+    /// A new, empty record of <paramref name="cls"/> with the parts the file format requires filled
+    /// in (as the CK's «New» gives a blank form).
+    /// </summary>
+    public static Mutagen.Bethesda.Plugins.Records.IMajorRecord Blank(Type cls, FormKey key, SkyrimRelease release, string editorId)
+    {
+        var record = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)System.Activator.CreateInstance(cls, key, release)!;
+        record.EditorID = editorId;
+        RecordFields.FillRequired(record);
+        // A global's value subrecord is required (FLTV): 0, as the CK starts it.
+        if (record is Global && cls.GetProperty("Data") is { } data && Nullable.GetUnderlyingType(data.PropertyType) is { } valueType)
+            data.SetValue(record, System.Activator.CreateInstance(valueType));
+        return record;
+    }
+
+    /// <summary>Game settings name their kind by the EditorID's first letter (fJumpHeight, iLevel, sName, bFlag).</summary>
+    public static string? GameSettingPrefix(Type cls) => cls.Name switch
+    {
+        "GameSettingFloat" => "f",
+        "GameSettingInt" => "i",
+        "GameSettingString" => "s",
+        "GameSettingBool" => "b",
+        _ => null,
+    };
 }

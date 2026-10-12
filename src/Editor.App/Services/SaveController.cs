@@ -23,7 +23,7 @@ internal sealed class SaveController
         LastError = null;
         var writer = new PluginWriter(session.Workspace, session.Catalog);
         var document = app.Document;
-        Log.Info($"saving {document.ChangedCount} reference change(s) and {document.Drafts.Count} new record(s) into {active.Path}");
+        Log.Info($"saving {document.ChangedCount} reference change(s) and {document.Drafts.Count} record edit(s) (new, changed, removed) into {active.Path}");
         _preparing = Task.Run(() => writer.Prepare(active, document));
     }
 

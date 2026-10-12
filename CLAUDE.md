@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.6.1, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.7.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -19,6 +19,11 @@ v0.6.0: xEdit-like comparison (`Ui/RecordCompare.cs` builds the aligned field tr
 `Panels/CompareWindows.cs`; Object Window Ctrl/Shift multi-pick), colour themes (`Ui/Theme.cs`
 `Palettes`, `Theme.Use`; use `Theme.*` colours, never hard-coded ones), record header fields hidden
 unless `Settings.ShowRecordHeader` (`RecordFields.IsRecordHeader`).
+v0.7.0: New record of any type (`NewRecords.RecordClasses` / `Blank`, `Panels/NewFormDialog.cs`), removing a record or
+override from the active file (`RemovalDraft` / `RemoveRecordCommand` in `Core/Overrides.cs`, `Panels/RecordActions.cs`),
+reference clipboard with record copies (`RenderWindow.Editing.cs` `CopySelection` / `Paste`), Object Window plugin and
+conflict filters (`Ui/ConflictScan.cs`, time-sliced), master edits (`EditDocument.Masters` / `MasterEdit`, writer
+`UsedMasters`; `CompareUntouched` maps every old master index to the new one).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,
@@ -100,6 +105,9 @@ Data layer diagnostics: `dotnet build src/Editor.Cli -c Release -o build/cli`, t
   plugins mixing both (Valtheim.esp). Reading uses strict UTF-8 with cp1251 fallback per string
   (`StringEncodingDetector.ReadEncoding`); writing uses the plugin's dominant encoding. Never
   read non-localized strings with one fixed encoding.
+- **Localized masters inside MO2 mods** (cleaned Update / DLC masters): Mutagen looks for .strings only next to the
+  plugin, so names came out empty. `Workspace.StringSources` points it at the winning mod's loose `Strings` or at
+  Data's archives (`StringsFolderOverride` / `BsaFolderOverride`). Check with `stbedit-cli strtest C:\Skyrim <EditorID>`.
 - FormID prefixes come from the list of *active* plugins, not of those Mutagen opened — a broken
   plugin must not shift everyone below it.
 - MO2 `plugins.txt` and `loadorder.txt` can be in different encodings — `TextFiles.ReadLines`

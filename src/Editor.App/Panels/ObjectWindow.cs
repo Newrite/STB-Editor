@@ -1,6 +1,7 @@
 using System.Numerics;
 using Hexa.NET.ImGui;
 using StbEditor.App.Ui;
+using StbEditor.Core;
 using StbEditor.Data.Catalog;
 using static StbEditor.App.Ui.Loc;
 
@@ -17,7 +18,30 @@ internal sealed class ObjectWindow : Panel
     private string _type = "STAT";
     private string _filter = string.Empty;
     private bool _focusSearch;
-    private bool _onlyOverrides;
+    private enum Show { All, Overridden, Conflicts }
+
+    private Show _show;
+
+    /// <summary>Only records this plugin defines or overrides (null = any).</summary>
+    private string? _plugin;
+    private string _pluginFilter = string.Empty;
+    private readonly ConflictScan _scan = new();
+    private int _scanVersion = -1;
+
+    /// <summary>The conflict filter is still checking records (keeps frames coming).</summary>
+    public bool IsScanning => _show == Show.Conflicts && _scan.IsRunning;
+
+    /// <summary>Filters as the toolbar sets them (autotests).</summary>
+    public void SetFiltersForTest(string? plugin, bool conflicts)
+    {
+        _plugin = plugin;
+        _show = conflicts ? Show.Conflicts : Show.All;
+        _dirty = true;
+    }
+
+    public int RowCount => _rows.Count;
+    public IEnumerable<Mutagen.Bethesda.Plugins.FormKey> VisibleKeys => _rows.Select(r => r.FormKey);
+    public int ConflictsChecked => _scan.Checked;
     private List<CatalogRecord> _rows = [];
     private bool _dirty = true;
     private int _catalogVersion = -1;
@@ -71,6 +95,8 @@ internal sealed class ObjectWindow : Panel
             .Where(t => t.Signature != "CELL")
             .GroupBy(t => t.Category)
             .ToDictionary(g => g.Key, g => g.OrderBy(t => t.Name).ToList());
+        _scan.Reset();
+        if (_plugin is not null && !app.Session.Workspace.Active.Any(p => p.Name.Equals(_plugin, StringComparison.OrdinalIgnoreCase))) _plugin = null;
         _dirty = true;
     }
 
@@ -93,11 +119,22 @@ internal sealed class ObjectWindow : Panel
             _focusSearch = false;
         }
 
-        ImGui.SetNextItemWidth(-ImGui.GetFontSize() * 9);
+        var em = ImGui.GetFontSize();
+        ImGui.SetNextItemWidth(-em * 4.5f);
         if (ImGui.InputTextWithHint("##filter", T("Filter: EditorID, name or FormID   (Ctrl+F)"), ref _filter, 256)) _dirty = true;
         ImGui.SameLine();
-        if (ImGui.Checkbox(T("Overrides"), ref _onlyOverrides)) _dirty = true;
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Only records that more than one plugin defines"));
+        if (ImGui.SmallButton(_tiles ? T("List") : T("Tiles"))) _tiles ^= true;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Thumbnails of placeable objects, or the record table"));
+
+        // Second row: which records (all / overridden / conflicts), from which plugin, how many, New.
+        ImGui.SetNextItemWidth(em * 6.5f);
+        string[] shows = [T("All records"), T("Overridden"), T("Conflicts")];
+        var show = (int)_show;
+        if (ImGui.Combo("##show", ref show, shows, shows.Length)) { _show = (Show)show; _dirty = true; }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(T("Overridden: more than one plugin has the record. Conflicts: some plugin's change is lost to the winner (as xEdit's conflict filter; checked field by field)"));
+        ImGui.SameLine();
+        DrawPluginFilter(app, em);
 
         if (app.Session!.Catalog.Version != _catalogVersion)
         {
@@ -106,16 +143,71 @@ internal sealed class ObjectWindow : Panel
         }
         if (_dirty) Rebuild(app);
 
+        if (_show == Show.Conflicts)
+        {
+            _scan.Step(app);
+            if (_scan.Version != _scanVersion)
+            {
+                _scanVersion = _scan.Version;
+                Rebuild(app);
+            }
+        }
+
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim, $"{_rows.Count:N0}");
-        ImGui.SameLine();
-        if (ImGui.SmallButton(_tiles ? T("List") : T("Tiles"))) _tiles ^= true;
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Thumbnails of placeable objects, or the record table"));
+        if (_show == Show.Conflicts && _scan.IsRunning)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(Theme.Warning, TF($"checking: {_scan.Checked:N0} done, {_scan.Pending:N0} left"));
+        }
+        if (_type != AllTypes && NewFormDialog.CanCreate(_type))
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("+ New"))) app.NewForm.Show(_type);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(TF($"A new {T(RecordTypes.Get(_type).Name)} in the active file (as the CK's New)"));
+        }
+
+        // Delete in the record list: take the selected records out of the active file (Ctrl+Z brings them back).
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows) && !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+        {
+            foreach (var key in _picked.Count > 1 ? Picked : app.Selected is { } one ? [one] : [])
+                RecordActions.Remove(app, key);
+        }
 
         var tileable = _type != AllTypes && RecordTypes.IsPlaceable(_type);
         if (_tiles && tileable && app.Thumbnails is not null) DrawTiles(app);
         else DrawTable(app);
         ImGui.EndChild();
+    }
+
+    /// <summary>Plugin combo: any, the active file, or one plugin of the load order (with a filter box).</summary>
+    private void DrawPluginFilter(EditorApp app, float em)
+    {
+        // Fills the row, leaving room for the count and «+ New».
+        var reserve = em * (_type != AllTypes && NewFormDialog.CanCreate(_type) ? 8.5f : 4f);
+        ImGui.SetNextItemWidth(Math.Max(em * 6, ImGui.GetContentRegionAvail().X - reserve));
+        if (!ImGui.BeginCombo("##plugin", _plugin ?? T("Any plugin"), ImGuiComboFlags.HeightLarge))
+        {
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Only records that this plugin adds or overrides (xEdit: the plugin's branch)"));
+            return;
+        }
+        if (ImGui.IsWindowAppearing()) ImGui.SetKeyboardFocusHere();
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##pf", T("Filter plugins"), ref _pluginFilter, 128);
+        if (ImGui.Selectable(T("Any plugin"), _plugin is null)) { _plugin = null; _dirty = true; }
+        if (app.ActivePlugin is { } active && ImGui.Selectable(TF($"{active.Name}  (active file)"), _plugin == active.Name)) { _plugin = active.Name; _dirty = true; }
+        ImGui.Separator();
+        foreach (var plugin in app.Session!.Workspace.Active)
+        {
+            if (plugin.Mod is null) continue;
+            if (_pluginFilter.Length > 0 && !plugin.Name.Contains(_pluginFilter, StringComparison.OrdinalIgnoreCase)) continue;
+            if (ImGui.Selectable($"{plugin.IndexLabel,-6} {plugin.Name}", string.Equals(_plugin, plugin.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                _plugin = plugin.Name;
+                _dirty = true;
+            }
+        }
+        ImGui.EndCombo();
     }
 
     private void DrawTypeTree(RecordCatalog catalog)
@@ -160,7 +252,14 @@ internal sealed class ObjectWindow : Panel
             ? catalog.ByKey.Values.Where(r => r.Signature != "CELL")
             : catalog.BySignature.GetValueOrDefault(_type) ?? [];
 
-        if (_onlyOverrides) source = source.Where(r => r.IsOverridden);
+        if (_plugin is { } plugin) source = source.Where(r => r.Plugins.Any(p => p.Name.Equals(plugin, StringComparison.OrdinalIgnoreCase)));
+        if (_show == Show.Overridden) source = source.Where(r => r.IsOverridden);
+        if (_show == Show.Conflicts)
+        {
+            var candidates = source.Where(r => r.Plugins.Count >= 3).ToList();
+            _scan.Request(candidates);
+            source = candidates.Where(r => _scan.IsConflict(r.FormKey) == true);
+        }
 
         var filter = _filter.Trim();
         if (filter.Length > 0)
@@ -340,8 +439,14 @@ internal sealed class ObjectWindow : Panel
                 ImGui.TableNextColumn();
 
                 var selected = app.Selected == record.FormKey || _picked.Contains(record.FormKey);
+                var removed = app.Document.IsRemoved(record.FormKey);
                 ImGui.PushID(i);
-                if (ImGui.Selectable(record.EditorId ?? T("<no editor id>"), selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
+                if (removed) ImGui.PushStyleColor(ImGuiCol.Text, Theme.Error);
+                var clickedRow = ImGui.Selectable(removed ? $"{record.EditorId}  ({T("removed on save")})" : record.EditorId ?? T("<no editor id>"), selected,
+                    ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick);
+                if (removed) ImGui.PopStyleColor();
+                if (removed && ImGui.IsItemHovered()) ImGui.SetTooltip(T("Taken out of the active file when you save; Ctrl+Z brings it back"));
+                if (clickedRow)
                 {
                     if (Pick(app, i)) app.Select(record.FormKey);
                     else if (_picked.Count > 0) app.Select(_picked.First());
@@ -354,6 +459,13 @@ internal sealed class ObjectWindow : Panel
 
                 if (ImGui.BeginPopupContextItem("##ctx"))
                 {
+                    if (NewFormDialog.CanCreate(record.Signature) && ImGui.MenuItem(TF($"New {T(RecordTypes.Get(record.Signature).Name)}...")))
+                        app.NewForm.Show(record.Signature);
+                    var removal = RecordActions.RemovalOf(app, record.FormKey);
+                    if (ImGui.MenuItem(RecordActions.Label(app, removal), "Del", false, removal != RecordActions.Removal.None))
+                        RecordActions.Remove(app, record.FormKey);
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(RecordActions.Tooltip(app, removal));
+                    ImGui.Separator();
                     if (_picked.Count > 1 && _picked.Contains(record.FormKey))
                     {
                         if (ImGui.MenuItem(TF($"Compare selected ({_picked.Count})"))) app.Compare.OpenRecords(Picked);

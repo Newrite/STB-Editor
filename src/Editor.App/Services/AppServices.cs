@@ -127,6 +127,9 @@ internal sealed class Settings
     /// <summary>Show record header bookkeeping (form version, version control, raw flags) in the field views.</summary>
     public bool ShowRecordHeader { get; set; }
 
+    /// <summary>Interface size: 1 = 100 % (fonts and spacing), 0.75–2.</summary>
+    public float UiScale { get; set; } = 1f;
+
     /// <summary>Colour theme by name (<c>Theme.Palettes</c>).</summary>
     public string Theme { get; set; } = "STB";
 

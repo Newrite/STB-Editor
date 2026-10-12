@@ -33,6 +33,9 @@ public sealed class SaveResult
 
     /// <summary>Masters the edits needed that the plugin did not have: the file is then written anew, not spliced.</summary>
     public List<string> AddedMasters { get; init; } = [];
+
+    /// <summary>Unused masters dropped by a Clean Masters edit.</summary>
+    public List<string> RemovedMasters { get; init; } = [];
 }
 
 /// <summary>
@@ -119,6 +122,21 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 SetInGroup(group, (IMajorRecord)edit.Record.DeepCopy());
                 touched.Add(edit.Key);
                 overridden++;
+            }
+
+            // Records taken out of the plugin: its own (deleted from the file) or its overrides (the previous version wins again).
+            foreach (var removal in document.Drafts.Values.OfType<RemovalDraft>())
+            {
+                var getter = RecordLookup.GetterType(removal.Signature);
+                var cls = getter is null ? null : NewRecords.RecordClasses(getter).FirstOrDefault();
+                if (cls is null || GroupFor(mod, cls) is not { } group)
+                {
+                    warnings.Add($"{removal.EditorId}: no group for {removal.Signature}, not removed");
+                    continue;
+                }
+                if (RemoveFromGroup(group, removal.Key)) removed++;
+                else warnings.Add($"{removal.EditorId}: not in {active.Name}, nothing to remove");
+                touched.Add(removal.Key);
             }
 
             // Navmeshes: the edited copy replaces the cell's NAVM (cell header copied if needed).
@@ -216,18 +234,22 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
             mod.ModHeader.Stats.NextFormID = active.NextObjectId;
             mod.ModHeader.Stats.Version = active.HeaderVersion;
 
-            Write(mod, temp, active, originalMasters);
+            Write(mod, temp, active, originalMasters, document.Masters);
 
             var writtenMasters = PluginHeader.Read(temp).Masters;
+            var originalNames = originalMasters.Select(m => m.FileName.String).ToList();
             var mastersKept = !active.IsNew && writtenMasters.Count == originalMasters.Count
-                && writtenMasters.Select(m => m.ToLowerInvariant()).SequenceEqual(originalMasters.Select(m => m.FileName.String.ToLowerInvariant()));
+                && writtenMasters.Select(m => m.ToLowerInvariant()).SequenceEqual(originalNames.Select(m => m.ToLowerInvariant()));
 
             var addedMasters = new List<string>();
+            var removedMasters = new List<string>();
             if (!active.IsNew && !mastersKept)
             {
-                var added = writtenMasters.Except(originalMasters.Select(m => m.FileName.String), StringComparer.OrdinalIgnoreCase).ToList();
-                addedMasters.AddRange(added);
-                warnings.Add($"new master(s) needed: {string.Join(", ", added)} — the plugin's own FormIDs shift, so the whole file is rewritten (no byte-for-byte splice)");
+                addedMasters.AddRange(writtenMasters.Except(originalNames, StringComparer.OrdinalIgnoreCase));
+                removedMasters.AddRange(originalNames.Except(writtenMasters, StringComparer.OrdinalIgnoreCase));
+                if (addedMasters.Count > 0) warnings.Add($"master(s) added: {string.Join(", ", addedMasters)}");
+                if (removedMasters.Count > 0) warnings.Add($"unused master(s) removed: {string.Join(", ", removedMasters)}");
+                warnings.Add("masters changed: FormIDs renumbered, so the whole file is rewritten (no byte-for-byte splice)");
             }
 
             if (mastersKept)
@@ -243,7 +265,7 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 warnings.Add($"{restored} untouched record(s) kept byte for byte");
             }
 
-            var lossy = active.IsNew ? [] : CompareUntouched(active.Path, temp, touched, originalMasters.Count, writtenMasters, active.ModKey);
+            var lossy = active.IsNew ? [] : CompareUntouched(active.Path, temp, touched, originalNames, writtenMasters, active.ModKey);
             Verify(temp, active, document);
 
             return new SaveResult
@@ -257,6 +279,7 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 LossyRecords = lossy,
                 Warnings = warnings,
                 AddedMasters = addedMasters,
+                RemovedMasters = removedMasters,
             };
         }
         catch (Exception ex)
@@ -292,25 +315,37 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
         return SkyrimMod.CreateFromBinary(new ModPath(active.ModKey, active.Path), workspace.Game.Release, param);
     }
 
-    private void Write(SkyrimMod mod, string path, ActivePlugin active, List<ModKey> originalMasters)
+    /// <summary>Plugins the records of <paramref name="mod"/> point at (their own keys and every link), other than itself.</summary>
+    public static HashSet<ModKey> UsedMasters(IModGetter mod, ModKey self)
     {
-        // Masters: every original master stays where it is — Mutagen would drop unused ones and
-        // renumber the plugin's own FormIDs — and masters the edits need are appended in load order.
         var needed = new HashSet<ModKey>();
         foreach (var record in mod.EnumerateMajorRecords())
         {
-            if (record.FormKey.ModKey != active.ModKey) needed.Add(record.FormKey.ModKey);
+            if (record.FormKey.ModKey != self) needed.Add(record.FormKey.ModKey);
             foreach (var link in record.EnumerateFormLinks())
-                if (!link.FormKey.IsNull && link.FormKey.ModKey != active.ModKey) needed.Add(link.FormKey.ModKey);
+                if (!link.FormKey.IsNull && link.FormKey.ModKey != self) needed.Add(link.FormKey.ModKey);
         }
+        return needed;
+    }
+
+    private void Write(SkyrimMod mod, string path, ActivePlugin active, List<ModKey> originalMasters, MasterEdit? masters)
+    {
+        // Masters: every original master stays where it is — Mutagen would drop unused ones and
+        // renumber the plugin's own FormIDs — and masters the edits need are appended in load order.
+        // A master edit adds the requested ones and, with Clean, drops the ones nothing points at.
+        var needed = UsedMasters(mod, active.ModKey);
+        var requested = masters?.Add ?? [];
 
         var loadOrder = workspace.Active.Select(p => p.ModKey).ToList();
-        var added = needed.Where(k => !originalMasters.Contains(k))
+        var added = needed.Concat(requested).Distinct().Where(k => !originalMasters.Contains(k) && k != active.ModKey)
             .OrderBy(k => loadOrder.IndexOf(k) is var i && i < 0 ? int.MaxValue : i)
             .ToList();
+        var kept = masters?.Clean == true
+            ? originalMasters.Where(m => needed.Contains(m) || requested.Contains(m)).ToList()
+            : originalMasters;
 
         mod.ModHeader.MasterReferences.Clear();
-        foreach (var master in originalMasters.Concat(added))
+        foreach (var master in kept.Concat(added))
             mod.ModHeader.MasterReferences.Add(new MasterReference { Master = master });
 
         var encoding = new MutagenEncodingWrapper(StringEncodingDetector.WriteEncoding(active.Encoding, workspace.Game.Language));
@@ -338,31 +373,40 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                 throw new InvalidDataException($"verification failed: {key} missing from the written plugin");
         }
 
-        foreach (var key in document.Drafts.Keys)
-            if (!present.Contains(key))
+        foreach (var (key, draft) in document.Drafts)
+        {
+            if (draft is RemovalDraft)
+            {
+                if (present.Contains(key)) throw new InvalidDataException($"verification failed: removed record {key} is still in the written plugin");
+            }
+            else if (!present.Contains(key))
                 throw new InvalidDataException($"verification failed: new record {key} missing from the written plugin");
+        }
     }
 
     /// <summary>
     /// Untouched records must come out byte-identical (decompressed body + flags). Anything else
     /// means the writer normalised or lost data the user did not ask to change.
     /// </summary>
-    private static List<string> CompareUntouched(string originalPath, string writtenPath, HashSet<FormKey> touched, int oldOwnIndex, IReadOnlyList<string> writtenMasters, ModKey self)
+    private static List<string> CompareUntouched(string originalPath, string writtenPath, HashSet<FormKey> touched, IReadOnlyList<string> originalMasters, IReadOnlyList<string> writtenMasters, ModKey self)
     {
-        var newOwnIndex = writtenMasters.Count;
         // "RACE 071E6A:Skyrim.esm": FormKeys, since the file's own indices mean nothing outside it.
         string Name(string type, uint formId) =>
             $"{type} {new FormKey((formId >> 24) < writtenMasters.Count ? ModKey.FromFileName(writtenMasters[(int)(formId >> 24)]) : self, formId & 0xFFFFFF)}";
+
+        // Old master index -> new one (-1: removed); the plugin's own index moves to after the new masters.
+        var written = writtenMasters.ToList();
+        var map = new int[256];
+        Array.Fill(map, -1);
+        for (var i = 0; i < originalMasters.Count; i++)
+            map[i] = written.FindIndex(m => m.Equals(originalMasters[i], StringComparison.OrdinalIgnoreCase));
+        map[Math.Min(originalMasters.Count, 255)] = writtenMasters.Count;
+
         var before = Contents(originalPath);
         var after = Contents(writtenPath);
-
-        // Own records move to the new self index when masters were added.
-        if (oldOwnIndex != newOwnIndex)
-        {
-            before = before.ToDictionary(
-                kv => (kv.Key.Type, (kv.Key.FormId >> 24) == oldOwnIndex ? ((uint)newOwnIndex << 24) | (kv.Key.FormId & 0xFFFFFF) : kv.Key.FormId),
-                kv => kv.Value);
-        }
+        before = before.ToDictionary(
+            kv => (kv.Key.Type, map[kv.Key.FormId >> 24] is var to && to >= 0 ? ((uint)to << 24) | (kv.Key.FormId & 0xFFFFFF) : kv.Key.FormId),
+            kv => kv.Value);
         var touchedIds = touched.Select(k => k.ID).ToHashSet();
         var lossy = new List<string>();
 
@@ -371,9 +415,9 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
             if (key.Type == "TES4") continue;
             if (touchedIds.Contains(key.FormId & 0xFFFFFF)) continue;
             // Cells and worldspaces that gained or lost children change only in their groups.
-            if (!after.TryGetValue(key, out var written))
+            if (!after.TryGetValue(key, out var now))
                 lossy.Add($"{Name(key.Type, key.FormId)} missing");
-            else if (key.Type is not ("CELL" or "WRLD") && !SameRecord(old, written, oldOwnIndex, newOwnIndex))
+            else if (key.Type is not ("CELL" or "WRLD") && !SameRecord(old, now, map))
                 lossy.Add($"{Name(key.Type, key.FormId)} changed");
             if (lossy.Count >= 50) break;
         }
@@ -382,18 +426,16 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
     }
 
     /// <summary>
-    /// The same record, allowing for the plugin's own FormIDs renumbered by an added master: every
-    /// byte that differs must be the top byte of such a FormID (old self index → new self index).
+    /// The same record, allowing for FormIDs renumbered by a change of masters: every byte that
+    /// differs must be the top byte of a FormID, old master index -> its new index.
     /// </summary>
-    private static bool SameRecord((byte[] Data, uint Flags) old, (byte[] Data, uint Flags) written, int oldOwnIndex, int newOwnIndex)
+    private static bool SameRecord((byte[] Data, uint Flags) old, (byte[] Data, uint Flags) written, int[] map)
     {
         if (old.Flags != written.Flags || old.Data.Length != written.Data.Length) return false;
-        if (old.Data.AsSpan().SequenceEqual(written.Data)) return true;
-        if (oldOwnIndex == newOwnIndex) return false;
         for (var i = 0; i < old.Data.Length; i++)
         {
             if (old.Data[i] == written.Data[i]) continue;
-            if (old.Data[i] != oldOwnIndex || written.Data[i] != newOwnIndex) return false;
+            if (map[old.Data[i]] != written.Data[i]) return false;
         }
         return true;
     }
@@ -494,6 +536,14 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
         var set = group.GetType().GetMethods().FirstOrDefault(m => m.Name == "Set" && m.GetParameters() is [{ ParameterType: var t }] && t.IsInstanceOfType(record));
         if (set is not null) set.Invoke(group, [record]);
         else group.AddUntyped(record);
+    }
+
+    private static bool RemoveFromGroup(IGroup group, FormKey key)
+    {
+        if (!group.ContainsKey(key)) return false;
+        var remove = group.GetType().GetMethods().FirstOrDefault(m => m.Name == "Remove" && m.GetParameters() is [{ ParameterType: var t }] && t == typeof(FormKey));
+        remove?.Invoke(group, [key]);
+        return remove is not null;
     }
 
     private static readonly Dictionary<Type, System.Reflection.PropertyInfo?> Groups = new();

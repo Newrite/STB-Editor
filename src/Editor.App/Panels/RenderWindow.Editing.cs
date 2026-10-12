@@ -2,6 +2,8 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGuizmo;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Skyrim;
 using StbEditor.App.Services;
 using StbEditor.Core;
 using StbEditor.Render;
@@ -314,6 +316,9 @@ internal sealed partial class RenderWindow
             if (ImGui.IsKeyPressed(ImGuiKey.W, false) && io.KeyShift) _renderer!.Options.Wireframe ^= true;
             if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _tool != EditTool.Navmesh) DeleteSelection();
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.D, false)) DuplicateSelection(app);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.C, false)) CopySelection(app);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.X, false)) CutSelection(app);
+            if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.V, false)) Paste(app, inPlace: io.KeyShift, ImGui.GetMousePos());
             if (ImGui.IsKeyPressed(ImGuiKey.Escape, false)) _selection.Clear();
         }
     }
@@ -759,17 +764,119 @@ internal sealed partial class RenderWindow
             return;
         }
 
-        var copies = new List<SceneObject>();
-        foreach (var source in _selection.ToList())
+        var items = _selection.Select(o => ClipOf(app, o)).ToList();
+        var copies = CreateCopies(app, items, Vector3.Zero);
+        if (copies.Count == 0) return;
+        CommitCopies(copies.Count == 1 ? TF($"Duplicate {copies[0].Object.BaseEditorId}") : TF($"Duplicate {copies.Count} objects"), copies);
+    }
+
+    // ------------------------------------------------------------------ clipboard
+
+    /// <summary>A copied reference: its base, placement and record (properties, links, flags) as it is now.</summary>
+    private sealed record ClipItem(FormKey Base, string BaseSignature, string? BaseEditorId, Vector3 Position, Vector3 Rotation, float Scale, IMajorRecord? Record);
+
+    /// <summary>Copied references, kept across cell loads (copy in one cell, paste in another).</summary>
+    private static List<ClipItem> _clipboard = [];
+
+    /// <summary>How many references are on the clipboard (Edit menu, tests).</summary>
+    public int ClipboardCount => _clipboard.Count;
+
+    public bool HasSelection => _selection.Count > 0;
+
+    private ClipItem ClipOf(EditorApp app, SceneObject obj)
+    {
+        // The unsaved edit if there is one, else the record as loaded; a mutable copy (the plugin may reload).
+        var source = (IMajorRecordGetter?)app.Document.Override(obj.Reference)?.Record ?? obj.Record;
+        var record = source?.DeepCopy() as IMajorRecord;
+        return new ClipItem(obj.Base, obj.BaseSignature, obj.BaseEditorId, obj.Position, obj.Rotation, obj.Scale, record);
+    }
+
+    /// <summary>Ctrl+C: the selected references onto the clipboard.</summary>
+    public void CopySelection(EditorApp app)
+    {
+        if (_selection.Count == 0) return;
+        _clipboard = _selection.Select(o => ClipOf(app, o)).ToList();
+        Log.Info($"copied {_clipboard.Count} reference(s)");
+    }
+
+    /// <summary>Ctrl+X: copy, then delete (one undo step brings them back).</summary>
+    public void CutSelection(EditorApp app)
+    {
+        if (_selection.Count == 0) return;
+        CopySelection(app);
+        DeleteSelection();
+    }
+
+    /// <summary>
+    /// Ctrl+V: new references from the clipboard with the group's lowest point under the cursor
+    /// (or the view's centre), offsets between them kept. Ctrl+Shift+V (in place): same coordinates.
+    /// Pasted into the loaded cell — or, outside, the exterior cell under each one.
+    /// </summary>
+    public void Paste(EditorApp app, bool inPlace, Vector2 mouse)
+    {
+        if (_clipboard.Count == 0 || _scene is null) return;
+        if (app.ActivePlugin is null)
         {
-            var copy = CreateNew(app, source.Base, source.BaseSignature, source.Position, source.Rotation, source.Scale, record: false);
-            if (copy is not null) copies.Add(copy);
+            app.ShowActiveFileDialog(T("Pasted objects need an active file for their FormIDs."));
+            return;
         }
 
+        var offset = Vector3.Zero;
+        if (!inPlace)
+        {
+            var size = _viewSize;
+            var inside = mouse.X >= _viewOrigin.X && mouse.Y >= _viewOrigin.Y && mouse.X < _viewOrigin.X + size.X && mouse.Y < _viewOrigin.Y + size.Y;
+            var local = inside ? mouse - _viewOrigin : size * 0.5f;
+            var (origin, direction) = _camera.Ray(local, size);
+            var point = Picking.Pick(_scene, origin, direction, _renderer!.Options)?.Point
+                ?? Picking.PickTerrain(_scene, origin, direction)
+                ?? origin + direction * 400f;
+            var centre = _clipboard.Aggregate(Vector3.Zero, (sum, c) => sum + c.Position) / _clipboard.Count;
+            var lowest = _clipboard.Min(c => c.Position.Z);
+            offset = new Vector3(point.X - centre.X, point.Y - centre.Y, point.Z - lowest);
+        }
+
+        var copies = CreateCopies(app, _clipboard, offset);
         if (copies.Count == 0) return;
-        CommitCreation(copies.Count == 1 ? $"Duplicate {copies[0].BaseEditorId}" : $"Duplicate {copies.Count} objects", copies);
+        CommitCopies(copies.Count == 1 ? TF($"Paste {copies[0].Object.BaseEditorId}") : TF($"Paste {copies.Count} objects"), copies);
+    }
+
+    /// <summary>New references from clip items, moved by <paramref name="offset"/>; not committed yet.</summary>
+    private List<(SceneObject Object, Draft? Record)> CreateCopies(EditorApp app, IReadOnlyList<ClipItem> items, Vector3 offset)
+    {
+        var copies = new List<(SceneObject, Draft?)>();
+        foreach (var item in items)
+        {
+            var obj = CreateNew(app, item.Base, item.BaseSignature, item.Position + offset, item.Rotation, item.Scale, record: false);
+            if (obj is null) continue;
+            copies.Add((obj, CopyRecord(item.Record, obj.Reference)));
+        }
+        return copies;
+    }
+
+    /// <summary>
+    /// The copied reference's record under the new FormKey, so the copy keeps its properties (flags,
+    /// enable parent, linked refs, lock, ownership). A teleport is not copied: the other door still
+    /// points at the original, and a one-sided pair breaks both. Neither is an EditorID (it must stay unique).
+    /// </summary>
+    private OverrideDraft? CopyRecord(IMajorRecord? record, FormKey key)
+    {
+        if (record is null || _document?.Context(key) is not { } context) return null;
+        var copy = (IMajorRecord)record.Duplicate(key);
+        copy.EditorID = null;
+        if (copy is IPlacedObject placed) placed.TeleportDestination = null;
+        return new OverrideDraft(copy, RecordPlace.Reference, context);
+    }
+
+    private void CommitCopies(string name, List<(SceneObject Object, Draft? Record)> copies)
+    {
+        var drafts = copies.Select(c => c.Record).OfType<Draft>().ToList();
+        var changes = copies.Select(c => (c.Object.Reference, EditDocument.Nonexistent, EditDocument.Nonexistent, c.Object.State)).ToList();
+        _document!.Execute(name, changes, [.. _pendingCells, .. drafts]);
+        _pendingCells.Clear();
+        foreach (var (o, _) in copies) o.IsModified = true;
         _selection.Clear();
-        foreach (var copy in copies) _selection.Add(copy);
+        foreach (var (o, _) in copies) _selection.Add(o);
     }
 
     /// <summary>Places a reference programmatically (autotests); same path as a drop from the Object Window.</summary>

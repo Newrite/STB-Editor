@@ -4,6 +4,8 @@
 вытащены из ресурсов exe), меню, фильтры и настройки `SSEEdit 4.1.5f` (формы Delphi из exe), документация
 xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; здесь только то, чего нет.
 
+Сделанное помечено ✅ с версией.
+
 Важность: **★★★** без этого CK не заменить, **★★** часто нужно, **★** редко или есть внешние программы.
 Объём: **S** — день-два, **M** — неделя, **L** — больше.
 
@@ -11,15 +13,15 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
-| **Новая запись любого типа** (сейчас только Duplicate и ячейки/миры) | CK: Object Window → New; xEdit: Copy as new record | ★★★ | S |
-| **Удалить запись / убрать override из своего плагина** | CK: Delete; xEdit: Remove | ★★★ | S |
+| ✅ 0.7.0 **Новая запись любого типа** («+ Новая» в Object Window; квесты и диалоги — со своими редакторами) | CK: Object Window → New; xEdit: Copy as new record | ★★★ | S |
+| ✅ 0.7.0 **Удалить запись / убрать override из своего плагина** | CK: Delete; xEdit: Remove | ★★★ | S |
 | **Use Info / Referenced By** — кто ссылается на запись (рефы, списки, скрипты, условия) | CK: Use Info; xEdit: вкладка Referenced By | ★★★ | M |
 | **Редактор условий (CTDA)**: выбор функции, параметры, Run On, OR/AND, копировать/вставить условия | CK: Condition Item, Select Function Parameters, Copy/Paste Conditions | ★★★ | M |
 | Search & Replace: заменить базовый объект у рефов, текст в записях; Find Text по всем строкам | CK: Ctrl+F, Find Text | ★★ | S–M |
 | Copy as override / deep copy / as new record **в другой плагин**; перенос записей между плагинами | xEdit | ★★ | S |
 | Правка прямо в сравнении: перетащить значение из колонки в колонку, «Copy to selected records» | xEdit | ★★ | M |
 | Одно поле сразу у нескольких записей (выделил 20 брони → поменял вес); таблицы Weapon/Armor/Ammo Spreadsheet | xEdit | ★★ | M |
-| Фильтр Object Window: только записи плагина X / активного файла / только конфликты | xEdit: Apply Filter, by conflict status | ★★ | S |
+| ✅ 0.7.0 Фильтр Object Window: только записи плагина X / активного файла / только конфликты | xEdit: Apply Filter, by conflict status | ★★ | S |
 | Use Report для алиасов квеста, «Find use in conditions» | CK | ★ | S |
 
 ## 2. Квесты, диалоги, скрипты (сейчас только просмотр)
@@ -50,7 +52,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
 | **Свойства существующей ячейки**: освещение, вода, акустика, музыка, encounter zone, локация, регионы, владелец, флаги | CK: Cell | ★★★ | M |
-| **Копировать / вырезать / вставить рефы** (в т.ч. в другую ячейку), Paste in Place | CK: Ctrl+C / X / V, Ctrl+Shift+V | ★★★ | S |
+| ✅ 0.7.0 **Копировать / вырезать / вставить рефы** (в т.ч. в другую ячейку), Paste in Place | CK: Ctrl+C / X / V, Ctrl+Shift+V | ★★★ | S |
 | Свойства мира (WRLD сейчас только просмотр): родитель, климат, вода, карта, LOD, флаги | CK: World Spaces | ★★ | M |
 | Примитивы: триггер-боксы, активаторы-зоны, room bounds и порталы, multibound, occlusion planes | CK: Primitives, Validate room/portal | ★★ | M |
 | Reference Batch Action: поменять что-то у всех выделенных рефов; Search & Replace базы | CK | ★★ | S |
@@ -78,7 +80,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 |---|---|---|---|
 | **Check for Errors** (несуществующие ссылки, неверные данные), циклические leveled list | xEdit; CK: Validate Loaded Data | ★★ | M |
 | **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
-| Мастера: Add / Sort / Clean Masters | xEdit | ★★ | S |
+| ✅ 0.7.0 Мастера: Add / Clean Masters (Sort — нет) | xEdit | ★★ | S |
 | Change FormID, Renumber, **Compact FormIDs for ESL**, Convert to Light Master | CK + xEdit | ★★ | M |
 | Упаковка в **BSA** (Create Archive), список ассетов плагина, проверка отсутствующих мешей и текстур | CK: Create Archive, Test Models; xEdit: Assets manager | ★★ | M |
 | Compare to: сравнить с другой версией того же плагина, delta-патч | xEdit | ★ | M |
@@ -89,7 +91,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 
 ## Предлагаемый порядок
 
-1. **Мелкие ежедневные операции** (S): новая запись, удаление записи и override, копирование и вставка рефов,
+1. ✅ 0.7.0 **Мелкие ежедневные операции**: новая запись, удаление записи и override, копирование и вставка рефов,
    фильтр «только плагин X / только конфликты», Add/Clean Masters.
 2. **Use Info / Referenced By** (M): нужен везде, в том числе перед удалением записи.
 3. **Редактор условий** (M): нужен квестам, диалогам, перкам, пакетам, эффектам.

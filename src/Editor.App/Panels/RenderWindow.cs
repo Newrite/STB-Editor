@@ -62,6 +62,13 @@ internal sealed partial class RenderWindow : Panel
 
     public bool IsSelected(SceneObject obj) => _selection.Contains(obj);
 
+    /// <summary>Selects just these objects (autotests).</summary>
+    public void SelectForTest(params SceneObject[] objects)
+    {
+        _selection.Clear();
+        foreach (var o in objects) _selection.Add(o);
+    }
+
     /// <summary>RMB flying speed (units per second); kept in the settings.</summary>
     public float FlySpeed
     {
@@ -219,6 +226,9 @@ internal sealed partial class RenderWindow : Panel
 
     private bool _streaming;
     private Vector2 _viewCenter;
+
+    /// <summary>Where the 3D view was drawn last frame (screen pixels): pasting under the cursor.</summary>
+    private Vector2 _viewOrigin, _viewSize;
     private double _lastTrim;
 
     /// <summary>
@@ -328,6 +338,8 @@ internal sealed partial class RenderWindow : Panel
 
         var origin = ImGui.GetCursorScreenPos();
         _viewCenter = origin + size / 2;
+        _viewOrigin = origin;
+        _viewSize = size;
         // ImGuizmo only starts a drag when no ImGui item is hovered (this frame or the last), and the
         // viewport button covers the whole view: while the mouse is on a gizmo handle leave it out.
         var gizmoHot = _gizmoOver || _gizmoWasUsing;

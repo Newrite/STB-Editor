@@ -54,8 +54,52 @@ public sealed class RecordEditCommand(string name, OverrideDraft? before, Overri
     }
 }
 
+/// <summary>
+/// A top-level record to take out of the active plugin on save: its own record (deleted from the
+/// file) or its override of another plugin's record (the previous version wins again).
+/// </summary>
+public sealed class RemovalDraft(FormKey key, string signature, string? editorId, bool ownRecord) : Draft(key)
+{
+    public string Signature { get; } = signature;
+    public bool OwnRecord { get; } = ownRecord;
+    public override string EditorId => editorId ?? Key.ToString();
+}
+
+/// <summary>Removing a record: what the document held for it before (an edit, a new record or nothing) and the removal (null = just drop a new record).</summary>
+public sealed class RemoveRecordCommand(string name, Draft? before, RemovalDraft? removal, FormKey key) : IEditCommand
+{
+    public string Name { get; } = name;
+
+    public void Apply(EditDocument document)
+    {
+        if (removal is not null) document.PutDraft(removal);
+        else document.DropDraft(key);
+    }
+
+    public void Revert(EditDocument document)
+    {
+        if (before is not null) document.PutDraft(before is OverrideDraft o ? o.With((IMajorRecord)o.Record.DeepCopy()) : before);
+        else document.DropDraft(key);
+    }
+}
+
 public static class OverrideEditing
 {
+    /// <summary>
+    /// Takes a top-level record out of the active plugin (one undo step). <paramref name="inPlugin"/>:
+    /// the active plugin already has a version of it on disk; otherwise only an unsaved new record or
+    /// edit is dropped.
+    /// </summary>
+    public static void RemoveRecord(this EditDocument document, string name, FormKey key, string signature, string? editorId, bool inPlugin, bool ownRecord)
+    {
+        var before = document.Draft(key);
+        if (!inPlugin && before is null) return;
+        document.Record(new RemoveRecordCommand(name, before, inPlugin ? new RemovalDraft(key, signature, editorId, ownRecord) : null, key));
+    }
+
+    /// <summary>The record is to be taken out of the active plugin on save.</summary>
+    public static bool IsRemoved(this EditDocument document, FormKey key) => document.Draft(key) is RemovalDraft;
+
     /// <summary>The edited copy of a record, if any.</summary>
     public static OverrideDraft? Override(this EditDocument document, FormKey key) => document.Draft(key) as OverrideDraft;
 

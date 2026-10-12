@@ -11,7 +11,7 @@ namespace StbEditor.Data.Catalog;
 internal static class CatalogCache
 {
     private const uint Magic = 0x43425453; // "STBC"
-    private const int Version = 2;
+    private const int Version = 3; // 3: names of localized masters loaded from mod folders (cleaned DLCs)
 
     public static string PathFor(string folder, PluginInfo plugin)
     {

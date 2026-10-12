@@ -213,10 +213,17 @@ internal sealed class ActiveFileDialog
             if (result is not null)
             {
                 var file = Path.GetFileName(result.TargetPath);
-                if (result.AddedMasters.Count > 0)
+                if (result.AddedMasters.Count > 0 && _app.Document.Masters is null)
                 {
                     // The usual cause: a new master renumbers the plugin's own FormIDs, so nothing can be kept byte for byte.
                     ImGui.TextWrapped(TF($"Your edits use records of {string.Join(", ", result.AddedMasters)}, which is not a master of {file} yet. With a new master the whole file is written anew, not only the edited records."));
+                    ImGui.Spacing();
+                }
+                else if (result.AddedMasters.Count + result.RemovedMasters.Count > 0)
+                {
+                    if (result.AddedMasters.Count > 0) ImGui.TextColored(Theme.Good, TF($"Masters added: {string.Join(", ", result.AddedMasters)}"));
+                    if (result.RemovedMasters.Count > 0) ImGui.TextColored(Theme.Warning, TF($"Unused masters removed: {string.Join(", ", result.RemovedMasters)}"));
+                    ImGui.TextWrapped(T("A change of masters renumbers FormIDs, so the whole file is written anew, not only the edited records."));
                     ImGui.Spacing();
                 }
                 var count = $"{result.LossyRecords.Count}{(result.LossyRecords.Count >= 50 ? "+" : "")}";

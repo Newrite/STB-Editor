@@ -158,15 +158,47 @@ public sealed class Workspace : IDisposable
     private static ISkyrimModGetter OpenOverlay(GameInstall game, PluginInfo plugin)
     {
         var text = StringEncodingDetector.ReadEncoding(game.Language);
+        var (folder, bsas) = plugin.Header?.IsLocalized == true ? StringSources(game, plugin) : (null, null);
         var strings = new StringsReadParameters
         {
             TargetLanguage = game.Language,
             NonLocalizedEncodingOverride = text,
             NonTranslatedEncodingOverride = text,
+            StringsFolderOverride = folder is null ? (Noggog.DirectoryPath?)null : new Noggog.DirectoryPath(folder),
+            BsaFolderOverride = bsas is null ? (Noggog.DirectoryPath?)null : new Noggog.DirectoryPath(bsas),
         };
 
         var param = new BinaryReadParameters { StringsParam = strings };
         return SkyrimMod.CreateFromBinaryOverlay(new ModPath(plugin.ModKey, plugin.Location.Path), game.Release, param);
+    }
+
+    /// <summary>
+    /// Where a localized plugin's .strings files are, as the game sees them through MO2: Mutagen looks
+    /// only next to the plugin, but a plugin from a mod folder (cleaned Update / DLC masters) keeps its
+    /// strings in the game's own archives. Loose strings in the highest-priority mod win, then Data\Strings,
+    /// then the archives of Data. (null, null): the default lookup next to the plugin is right.
+    /// </summary>
+    internal static (string? StringsFolder, string? BsaFolder) StringSources(GameInstall game, PluginInfo plugin)
+    {
+        var folder = Path.GetDirectoryName(plugin.Location.Path)!;
+        if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(game.DataFolder)), StringComparison.OrdinalIgnoreCase))
+            return (null, null);
+
+        var name = Path.GetFileNameWithoutExtension(plugin.Name);
+        bool HasStrings(string strings) => Directory.Exists(strings) && Directory.EnumerateFiles(strings, name + "_*.*strings").Any();
+        if (HasStrings(Path.Combine(folder, "Strings"))) return (null, null);
+
+        if (game.Mo2 is { } mo2)
+        {
+            // EnabledModFolders runs from low to high priority: the winner is searched first.
+            foreach (var mod in mo2.EnabledModFolders().Reverse())
+            {
+                var strings = Path.Combine(mod, "Strings");
+                if (HasStrings(strings)) return (strings, game.DataFolder);
+            }
+        }
+        var data = Path.Combine(game.DataFolder, "Strings");
+        return (HasStrings(data) ? data : null, game.DataFolder);
     }
 
     public PluginInfo? Find(ModKey key) => _byKey.GetValueOrDefault(key);

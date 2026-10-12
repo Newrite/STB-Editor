@@ -47,7 +47,8 @@ internal sealed class RecordForm
         }
         if (catalog?.Name is { Length: > 0 } name) ImGui.TextColored(Theme.Accent, name);
 
-        var editable = placedObject is not null || (catalog is not null && !NotFieldEditable.Contains(catalog.Signature));
+        var removed = app.Document.IsRemoved(key);
+        var editable = !removed && (placedObject is not null || (catalog is not null && !NotFieldEditable.Contains(catalog.Signature)));
         if (!inWindow && placedObject is null && _versions.Count > 0)
         {
             if (ImGui.SmallButton(T("Open in window"))) app.FormWindows.Open(key);
@@ -61,10 +62,21 @@ internal sealed class RecordForm
             if (ImGui.SmallButton(T("Duplicate"))) Duplicate(app, key);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("New record in the active file: a copy with a new FormID and EditorID (as the CK's Duplicate)"));
         }
+        if (placedObject is null && !removed && RecordActions.RemovalOf(app, key) is var removal && removal != RecordActions.Removal.None)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton(RecordActions.Label(app, removal))) RecordActions.Remove(app, key);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(RecordActions.Tooltip(app, removal));
+        }
         if (app.Document.Override(key) is not null)
         {
             ImGui.SameLine();
             ImGui.TextColored(Theme.Warning, T("changed, not saved (Ctrl+S)"));
+        }
+        if (removed)
+        {
+            ImGui.TextColored(Theme.Error, TF($"Taken out of {app.ActivePlugin?.Name ?? T("the active file")} when you save (Ctrl+Z brings it back)."));
+            ImGui.TextColored(Theme.TextDim, T("Shown as it is now; editing is off until the removal is undone."));
         }
 
         if (_error is not null)
@@ -121,6 +133,7 @@ internal sealed class RecordForm
             {
                 Body(() => ScriptsEditor.Draw(app, current, (name, change) =>
                 {
+                    if (removed) return; // a removal is undone first, else this edit would replace it
                     var copy = app.Document.WorkingCopy(key, current);
                     change(copy);
                     app.Document.CommitEdit(name, copy, RecordPlace.TopLevel);

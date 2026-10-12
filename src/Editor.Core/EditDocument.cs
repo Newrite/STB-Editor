@@ -38,8 +38,25 @@ public sealed class EditDocument
 
     public int ChangedCount => _current.Count;
 
-    /// <summary>Everything that would go into a save: changed references and new records.</summary>
-    public int PendingCount => _current.Count + _drafts.Count;
+    /// <summary>Everything that would go into a save: changed references, record edits and a change of masters.</summary>
+    public int PendingCount => _current.Count + _drafts.Count + (Masters is null ? 0 : 1);
+
+    /// <summary>Masters to add to the active file, and whether to drop unused ones (xEdit's Add / Clean Masters).</summary>
+    public MasterEdit? Masters { get; private set; }
+
+    internal void SetMasters(MasterEdit? masters)
+    {
+        Masters = masters;
+        Version++;
+        DraftsChanged?.Invoke();
+    }
+
+    /// <summary>Changes the pending master edit as one undoable step (null = none).</summary>
+    public void EditMasters(string name, MasterEdit? masters)
+    {
+        if (Equals(Masters, masters)) return;
+        Record(new MastersCommand(name, Masters, masters is { Add.Count: 0, Clean: false } ? null : masters));
+    }
 
     private readonly Dictionary<FormKey, Draft> _drafts = new();
 
@@ -173,13 +190,28 @@ public sealed class EditDocument
         _current.Clear();
         _original.Clear();
         _contexts.Clear();
-        var hadDrafts = _drafts.Count > 0;
+        var hadDrafts = _drafts.Count > 0 || Masters is not null;
         _drafts.Clear();
+        Masters = null;
         if (hadDrafts) DraftsChanged?.Invoke();
         History.Clear();
         Version++;
         foreach (var key in keys) Changed?.Invoke(key, originals[key]);
     }
+}
+
+/// <summary>Masters to add (in load order after the existing ones) and whether unused masters go.</summary>
+public sealed record MasterEdit(IReadOnlyList<ModKey> Add, bool Clean)
+{
+    public bool Equals(MasterEdit? other) => other is not null && Clean == other.Clean && Add.SequenceEqual(other.Add);
+    public override int GetHashCode() => HashCode.Combine(Clean, Add.Count);
+}
+
+public sealed class MastersCommand(string name, MasterEdit? before, MasterEdit? after) : IEditCommand
+{
+    public string Name { get; } = name;
+    public void Apply(EditDocument document) => document.SetMasters(after);
+    public void Revert(EditDocument document) => document.SetMasters(before);
 }
 
 public interface IEditCommand

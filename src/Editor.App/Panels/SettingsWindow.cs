@@ -8,6 +8,8 @@ namespace StbEditor.App.Panels;
 internal sealed class SettingsWindow
 {
     private bool _open;
+    private int _uiScale = 100;
+    private bool _draggingScale;
 
     public void Show() => _open = true;
 
@@ -47,6 +49,19 @@ internal sealed class SettingsWindow
             ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
             var language = Loc.Russian ? 1 : 0;
             if (ImGui.Combo("Language / Язык", ref language, ["English", "Русский"], 2)) app.SetLanguage(language == 1 ? "ru" : "en");
+
+            // Interface size: applied when the slider is let go (live resizing would move the slider under the mouse).
+            ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
+            if (!_draggingScale) _uiScale = (int)MathF.Round(Theme.UiScale * 100);
+            ImGui.SliderInt(T("Interface size"), ref _uiScale, (int)(Theme.MinUiScale * 100), (int)(Theme.MaxUiScale * 100), "%d %%");
+            _draggingScale = ImGui.IsItemActive();
+            if (ImGui.IsItemDeactivatedAfterEdit()) app.SetUiScale(_uiScale / 100f);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Text and spacing of the whole interface. Ctrl+= / Ctrl+- / Ctrl+0 anywhere (100 %)"));
+            foreach (var preset in new[] { 100, 115, 125, 150 })
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"{preset}%##ui{preset}")) app.SetUiScale(preset / 100f);
+            }
 
             ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
             if (ImGui.BeginCombo(T("Theme"), T(Theme.Current)))

@@ -141,6 +141,28 @@ internal static class Theme
         style.SeparatorTextBorderSize = 1;
         style.WindowMenuButtonPosition = ImGuiDir.None;
         style.ScaleAllSizes(scale);
+        unsafe { _baseStyle = *style.Handle; }
+        _hasBase = true;
+        Use(Current);
+    }
+
+    private static ImGuiStyle _baseStyle;
+    private static bool _hasBase;
+
+    /// <summary>Interface size (1 = 100 %): text and every padding, spacing and rounding scale together.</summary>
+    public static float UiScale { get; private set; } = 1f;
+
+    public const float MinUiScale = 0.75f, MaxUiScale = 2f;
+
+    /// <summary>Resizes the whole interface: fonts by FontScaleMain, the style's sizes from the unscaled copy (not cumulatively).</summary>
+    public static void SetUiScale(float scale)
+    {
+        if (!_hasBase) return;
+        UiScale = Math.Clamp(MathF.Round(scale * 20f) / 20f, MinUiScale, MaxUiScale);
+        var style = ImGui.GetStyle();
+        unsafe { *style.Handle = _baseStyle; }
+        style.ScaleAllSizes(UiScale);
+        style.FontScaleMain = UiScale;
         Use(Current);
     }
 

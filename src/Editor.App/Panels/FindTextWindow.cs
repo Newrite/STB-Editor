@@ -143,44 +143,35 @@ internal sealed class FindTextWindow
     /// <summary>The found texts replaced in the records as they are now: one undo step; returns how many records changed.</summary>
     public static int ReplaceAll(EditorApp app, IReadOnlyList<TextHit> hits, string query, string replacement, bool matchCase, bool editorIds = false)
     {
-        if (app.Session is not { } session || query.Length == 0) return 0;
-        var document = app.Document;
-        var lookup = new RecordLookup(session.Workspace, session.Catalog);
-        var name = TF($"Replace \"{query}\" with \"{replacement}\"");
-        var steps = new List<IEditCommand>();
+        if (app.Session is null || query.Length == 0) return 0;
+        var edits = new TextEdits(app, TF($"Replace \"{query}\" with \"{replacement}\""));
         foreach (var group in hits.Where(h => Replaceable(h, editorIds)).GroupBy(h => h.Key))
         {
             var first = group.First();
-            IMajorRecordGetter? current = document.Override(first.Key)?.Record;
-            if (current is null && first.Topic is { } topic)
-                current = DialogueEditor.Lines(app, topic).FirstOrDefault(l => l.Line.FormKey == first.Key).Line;
-            current ??= lookup.Resolve(first.Key);
-            if (current is null) continue;
-            var copy = document.WorkingCopy(first.Key, current);
-            var changed = false;
-            foreach (var hit in group)
+            edits.Edit(first.Key, first.Topic, copy =>
             {
-                object? value;
-                try { value = RecordFields.Get(copy, hit.Path); } catch { continue; }
-                var text = value switch { string s => s, Mutagen.Bethesda.Strings.ITranslatedStringGetter t => t.String, _ => null };
-                if (text is null || !text.Contains(query, matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase)) continue;
-                try
+                var changed = false;
+                foreach (var hit in group)
                 {
-                    RecordFields.Set(copy, hit.Path, TextSearch.Replace(text, query, replacement, matchCase));
-                    changed = true;
+                    object? value;
+                    try { value = RecordFields.Get(copy, hit.Path); } catch { continue; }
+                    var text = value switch { string s => s, Mutagen.Bethesda.Strings.ITranslatedStringGetter t => t.String, _ => null };
+                    if (text is null || !text.Contains(query, matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase)) continue;
+                    try
+                    {
+                        RecordFields.Set(copy, hit.Path, TextSearch.Replace(text, query, replacement, matchCase));
+                        changed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warn($"replace {hit.EditorId} {hit.PathText}: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Log.Warn($"replace {hit.EditorId} {hit.PathText}: {ex.Message}");
-                }
-            }
-            if (!changed) continue;
-            var before = document.Override(first.Key);
-            var after = before?.With(copy) ?? new OverrideDraft(copy, first.Topic is null ? RecordPlace.TopLevel : RecordPlace.DialogInfo, null, first.Topic);
-            steps.Add(new RecordEditCommand(name, before?.With((IMajorRecord)before.Record.DeepCopy()), after));
+                return changed;
+            });
         }
-        if (steps.Count > 0) document.Record(new CompositeCommand(name, steps));
-        Log.Info(TF($"replaced in {steps.Count} record(s)"));
-        return steps.Count;
+        edits.Commit();
+        Log.Info(TF($"replaced in {edits.Records} record(s)"));
+        return edits.Records;
     }
 }

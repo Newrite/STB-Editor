@@ -25,9 +25,19 @@ public static class TextSearch
     /// <summary>Every record of one plugin whose text fields contain <paramref name="query"/>.</summary>
     public static List<TextHit> InPlugin(PluginInfo plugin, RecordCatalog catalog, string query, bool matchCase, IProgress<string>? progress = null, CancellationToken cancel = default)
     {
-        var hits = new List<TextHit>();
-        if (plugin.Mod is not { } mod || query.Length == 0) return hits;
+        if (query.Length == 0) return [];
         var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return Walk(plugin, catalog, text => text.Contains(query, comparison), displayOnly: false, progress, cancel);
+    }
+
+    /// <summary>Every text the player sees in one plugin (names, descriptions, dialogue, book text…): what a translation covers.</summary>
+    public static List<TextHit> DisplayTexts(PluginInfo plugin, RecordCatalog catalog, IProgress<string>? progress = null, CancellationToken cancel = default) =>
+        Walk(plugin, catalog, text => !string.IsNullOrWhiteSpace(text), displayOnly: true, progress, cancel);
+
+    private static List<TextHit> Walk(PluginInfo plugin, RecordCatalog catalog, Func<string, bool> match, bool displayOnly, IProgress<string>? progress, CancellationToken cancel)
+    {
+        var hits = new List<TextHit>();
+        if (plugin.Mod is not { } mod) return hits;
         // A dialogue line is edited under its topic.
         var topicOf = new Dictionary<FormKey, FormKey>();
         foreach (var topic in mod.DialogTopics)
@@ -46,8 +56,9 @@ public static class TextSearch
         void Header(IMajorRecordGetter record)
         {
             // Containers and placed things: their own EditorID and name only (their contents are records of their own).
-            if (record.EditorID is { } id && id.Contains(query, comparison)) hits.Add(Hit(record, ["EditorID"], "EditorID", id));
-            if (record is INamedGetter { Name: { } name } && name.Contains(query, comparison)) hits.Add(Hit(record, ["Name"], "Name", name) with { Display = true });
+            if (!displayOnly && record.EditorID is { } id && match(id)) hits.Add(Hit(record, ["EditorID"], "EditorID", id));
+            if (record is ITranslatedNamedGetter { Name: { } translated } && match(translated.String ?? "")) hits.Add(Hit(record, ["Name"], "Name", translated.String!) with { Display = true });
+            else if (!displayOnly && record is INamedGetter { Name: { } name } && match(name)) hits.Add(Hit(record, ["Name"], "Name", name));
         }
 
         void Search(IMajorRecordGetter record)
@@ -57,13 +68,15 @@ public static class TextSearch
             catch { return; }
             foreach (var leaf in leaves)
             {
+                // A topic's lines are records of their own (found as INFO, edited under the topic).
+                if (record is IDialogTopicGetter && leaf.Path is ["Responses", ..]) continue;
                 var text = leaf.Value switch
                 {
                     string s => s,
                     ITranslatedStringGetter t => t.String,
                     _ => null,
                 };
-                if (text is null || !text.Contains(query, comparison)) continue;
+                if (text is null || (displayOnly && leaf.Value is not ITranslatedStringGetter) || !match(text)) continue;
                 hits.Add(Hit(record, leaf.Path, leaf.PathText, text) with { Display = leaf.Value is ITranslatedStringGetter });
             }
         }

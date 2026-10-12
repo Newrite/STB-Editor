@@ -304,6 +304,7 @@ internal sealed class EditorApp : IDisposable
         RunPackageAutotest();
         RunSceneAutotest();
         RunAliasUseAutotest();
+        RunTextsAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -352,6 +353,7 @@ internal sealed class EditorApp : IDisposable
         PluginCheck.Draw(this);
         Archive.Draw(this);
         Compact.Draw(this);
+        Texts.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -519,6 +521,7 @@ internal sealed class EditorApp : IDisposable
 
     /// <summary>File → Compact FormIDs.</summary>
     public Panels.CompactWindow Compact { get; } = new();
+    public Panels.TextsWindow Texts { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -551,6 +554,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-package") || _packStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-scene") || _sceneStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-aliasuse") || _aliasUseStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-texts") || _textsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -564,7 +568,7 @@ internal sealed class EditorApp : IDisposable
     private int _findStage;
 
     /// <summary>--autotest-findtext [text]: what to look for (default Ulfric).</summary>
-    private static string FindQuery => Environment.GetCommandLineArgs().SkipWhile(a => a != "--autotest-findtext").Skip(1).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? "Ulfric";
+    private static string FindQuery => Environment.GetCommandLineArgs().SkipWhile(a => a != "--autotest-findtext").Skip(1).FirstOrDefault() is { } next && !next.StartsWith("--", StringComparison.Ordinal) ? next : "Ulfric";
 
     /// <summary>
     /// --autotest-findtext: "Ulfric" in every text field of Skyrim.esm (records, topics, dialogue lines) and over the
@@ -1371,6 +1375,53 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_aliasUseFrames > 15:
                 _aliasUseStage = 9;
+                break;
+        }
+    }
+
+    private int _textsStage, _textsFrames;
+    private string _textsPath = "";
+
+    /// <summary>
+    /// --autotest-texts &lt;dir&gt; [plugin]: the plugin's texts (default: the Heart of Dibella quest mod) exported into &lt;dir&gt;,
+    /// every 5th "translated", imported into a scratch active file in &lt;dir&gt;; the window stays open for the screenshot;
+    /// undone and redone; nothing saved.
+    /// </summary>
+    private void RunTextsAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-texts");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _textsStage == 9) return;
+        switch (_textsStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorTextsAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var plugin = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "The Heart Of Dibella - Quest Expansion.esp";
+                _textsPath = Path.Combine(cli[arg + 1], Path.GetFileNameWithoutExtension(plugin) + ".texts.json");
+                Texts.Show(this);
+                Texts.StartExport(this, plugin, _textsPath);
+                _textsStage = 1;
+                break;
+            }
+            case 1 when !Texts.IsBusy:
+            {
+                Log.Info($"autotest-texts: export: {Texts.LastExport}");
+                var file = StbEditor.Core.TextTranslation.Read(_textsPath);
+                for (var i = 0; i < file.Strings.Count; i += 5) file.Strings[i].Translation = file.Strings[i].Source + " [перевод]";
+                var translated = Path.ChangeExtension(_textsPath, ".ru.json");
+                StbEditor.Core.TextTranslation.Write(translated, file);
+                var before = Document.History.UndoName;
+                Log.Info($"autotest-texts: import: {Texts.Import(this, translated, force: false)}; pending {Document.PendingCount}");
+                Document.Undo();
+                Log.Info($"autotest-texts: undone: pending {Document.PendingCount}, undo now '{Document.History.UndoName}' (was '{before}')");
+                Document.Redo();
+                Log.Info($"autotest-texts: redone: pending {Document.PendingCount}");
+                _textsStage = 2;
+                break;
+            }
+            case 2 when ++_textsFrames > 15:
+                _textsStage = 9;
                 break;
         }
     }
@@ -2413,6 +2464,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Check and clean..."), (string?)null, false, Session is not null)) PluginCheck.Show();
             if (ImGui.MenuItem(T("Pack into BSA..."), (string?)null, false, Session is not null)) Archive.Show();
             if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
+            if (ImGui.MenuItem(T("Texts for translation..."), (string?)null, false, Session is not null)) Texts.Show(this);
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));

@@ -1867,6 +1867,64 @@ switch (command)
         Console.WriteLine($"{uses.Count} uses in {clock.Elapsed.TotalSeconds:0.0} s");
         break;
     }
+    case "texttest":
+    {
+        // texttest <game> <plugin> <out folder>: the plugin's display texts exported to JSON, read back the same; every
+        // 7th text "translated" and applied to a working copy of its record (dialogue lines found under their topic),
+        // each record written and read back with the translation in place.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        var clock = Stopwatch.StartNew();
+        var hits = StbEditor.Core.TextSearch.DisplayTexts(plugin, catalog);
+        var file = StbEditor.Core.TextTranslation.FromHits(plugin.Name, hits);
+        var path = Path.Combine(args[3], plugin.Name + ".texts.json");
+        StbEditor.Core.TextTranslation.Write(path, file);
+        var back = StbEditor.Core.TextTranslation.Read(path);
+        Console.WriteLine($"{file.Strings.Count} texts in {clock.Elapsed.TotalSeconds:0.0} s ({new FileInfo(path).Length / 1024} KB): " +
+            string.Join(", ", file.Strings.GroupBy(e => e.Signature).OrderByDescending(g => g.Count()).Take(8).Select(g => $"{g.Key} {g.Count()}")));
+        var failures = 0;
+        var same = back.Strings.Count == file.Strings.Count && back.Strings.Zip(file.Strings).All(p => p.First.Source == p.Second.Source && p.First.Form == p.Second.Form
+            && p.First.Path.Length == p.Second.Path.Length && p.First.Path.Zip(p.Second.Path).All(q => Equals(q.First, q.Second)));
+        Console.WriteLine($"read back the same: {same}");
+        if (!same) failures++;
+        for (var i = 0; i < back.Strings.Count; i += 7) back.Strings[i].Translation = back.Strings[i].Source + " [перевод]";
+        var outcomes = new Dictionary<StbEditor.Core.TextTranslation.Outcome, int>();
+        Dictionary<Mutagen.Bethesda.Plugins.FormKey, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>? own = null;
+        int records = 0, checkedBack = 0;
+        foreach (var group in StbEditor.Core.TextTranslation.Translated(back).GroupBy(e => e.Form))
+        {
+            var first = group.First();
+            // The plugin's own version (the winner may be another plugin's, with other texts).
+            own ??= plugin.Mod!.EnumerateMajorRecords().GroupBy(r => r.FormKey).ToDictionary(g => g.Key, g => g.First());
+            var current = own.GetValueOrDefault(first.Key);
+            if (current is null) { outcomes[StbEditor.Core.TextTranslation.Outcome.Missing] = outcomes.GetValueOrDefault(StbEditor.Core.TextTranslation.Outcome.Missing) + group.Count(); continue; }
+            var copy = (Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Plugins.Records.MajorRecordMixIn.DeepCopy(current);
+            var applied = new List<StbEditor.Core.TextEntry>();
+            foreach (var entry in group)
+            {
+                var outcome = StbEditor.Core.TextTranslation.Apply(copy, entry);
+                outcomes[outcome] = outcomes.GetValueOrDefault(outcome) + 1;
+                if (outcome == StbEditor.Core.TextTranslation.Outcome.Applied) applied.Add(entry);
+            }
+            if (applied.Count == 0) continue;
+            records++;
+            // A dialogue line is only written under its topic, a cell or worldspace as a header: checked on the copy.
+            var read = first.Signature is "INFO" or "CELL" or "WRLD" ? copy : StbEditor.Core.RecordRoundTrip.Read(copy, game.Release, System.Text.Encoding.UTF8);
+            if (read is null) { Console.WriteLine($"  {first.EditorId} [{first.Signature}]: round trip FAILED {StbEditor.Core.RecordRoundTrip.LastError}"); failures++; continue; }
+            foreach (var entry in applied)
+            {
+                var value = StbEditor.Core.RecordFields.Get(read, entry.Path);
+                var text = value switch { Mutagen.Bethesda.Strings.ITranslatedStringGetter t => t.String, string s => s, _ => null };
+                if (text == entry.Translation) checkedBack++;
+                else { failures++; if (failures < 5) Console.WriteLine($"  {first.EditorId} {string.Join("/", entry.Path)}: read back '{text}'"); }
+            }
+        }
+        Console.WriteLine($"import: {string.Join(", ", outcomes.Select(kv => $"{kv.Key} {kv.Value}"))}; {records} records written and read back, {checkedBack} translations in place");
+        Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

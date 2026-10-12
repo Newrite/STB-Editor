@@ -1169,6 +1169,25 @@ internal static class LangRu
         ["Action {0}: head-tracks"] = "Действие {0}: смотрит на него",
         ["Action {0} "] = "Действие {0} ",
 
+        // ---- Texts for translation
+        ["Texts for translation..."] = "Тексты для перевода...",
+        ["{0} is not in the load order"] = "{0} нет в порядке загрузки",
+        ["{0} texts written to {1}"] = "Записано текстов: {0} → {1}",
+        ["Imported texts go into the active file — choose it first."] = "Импортированные тексты пишутся в активный файл — сначала выбери его.",
+        ["Cannot read {0}: {1}"] = "Не читается {0}: {1}",
+        ["Import texts {0}"] = "Импорт текстов {0}",
+        ["{0} text(s) in {1} record(s) translated; already translated {2}; text differs from the export {3}; not found {4}"] = "Переведено текстов: {0} в записях: {1}; уже переведено {2}; текст отличается от выгруженного {3}; не найдено {4}",
+        ["Export failed: {0}"] = "Экспорт не удался: {0}",
+        ["Texts for translation"] = "Тексты для перевода",
+        ["Every text the player sees in a plugin — names, descriptions, books, dialogue, journal, messages — as a JSON file with an empty \"translation\" for each. Fill it in (by hand or with a tool) and import it back."] = "Все тексты плагина, которые видит игрок — названия, описания, книги, диалоги, журнал, сообщения — в JSON-файл с пустым \"translation\" у каждого. Заполни (вручную или инструментом) и импортируй обратно.",
+        ["Export"] = "Экспорт",
+        ["(plugin)"] = "(плагин)",
+        ["exporting…"] = "выгрузка…",
+        ["Import"] = "Импорт",
+        ["Also where the text is not the exported one (a later plugin changed it)"] = "Также там, где текст уже не тот, что выгружен (его изменил более поздний плагин)",
+        ["Translations go into {0} (overrides, or its own records); one Ctrl+Z undoes the import."] = "Переводы пишутся в {0} (переопределения или его собственные записи); один Ctrl+Z отменяет импорт.",
+        ["Choose the active file first: translations go into it."] = "Сначала выбери активный файл: переводы пишутся в него.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

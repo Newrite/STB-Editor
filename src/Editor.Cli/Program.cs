@@ -1618,6 +1618,110 @@ switch (command)
         Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
         break;
     }
+    case "sceneprobe":
+    {
+        // sceneprobe <game> [EditorID]: what vanilla scenes hold (phase widths, unused data, action kinds) and
+        // one scene's subrecords as Skyrim.esm has them.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var widths = new Dictionary<uint, int>();
+        int scenes = 0, phaseUnused = 0, phases = 0, sceneUnused = 0, vnam = 0, noQuest = 0, actorsNotInQuest = 0;
+        var kinds = new Dictionary<string, int>();
+        foreach (var r in catalog.BySignature["SCEN"])
+        {
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey) is not { } s) continue;
+            scenes++;
+            if (s.Unused is not null) sceneUnused++;
+            if (s.VNAM is not null) vnam++;
+            if (s.Quest.IsNull) noQuest++;
+            foreach (var p in s.Phases) { phases++; if (p.Unused is not null || p.Unused2 is not null) phaseUnused++; widths[p.EditorWidth ?? 0] = widths.GetValueOrDefault(p.EditorWidth ?? 0) + 1; }
+            foreach (var a in s.Actions) { var k = $"{a.Type} flags {a.Flags} unused {(a.Unused is null ? 0 : 1)}"; kinds[k] = kinds.GetValueOrDefault(k) + 1; }
+            if (!s.Quest.IsNull && lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(s.Quest.FormKey) is { } q)
+                actorsNotInQuest += s.Actors.Count(a => q.Aliases.All(al => al.ID != a.ID));
+        }
+        Console.WriteLine($"{scenes} scenes, {phases} phases ({phaseUnused} with unused data), scene unused {sceneUnused}, VNAM {vnam}, no quest {noQuest}, actors not in the quest {actorsNotInQuest}");
+        Console.WriteLine("phase widths: " + string.Join(", ", widths.OrderByDescending(kv => kv.Value).Take(6).Select(kv => $"{kv.Key} x{kv.Value}")));
+        var all = catalog.BySignature["SCEN"].Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey)).OfType<Mutagen.Bethesda.Skyrim.ISceneGetter>().ToList();
+        Console.WriteLine("actors: " + string.Join("; ", all.SelectMany(x => x.Actors).GroupBy(a => $"{a.Flags}/{a.BehaviorFlags}").OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key} x{g.Count()}")));
+        Console.WriteLine("dialog: " + string.Join("; ", all.SelectMany(x => x.Actions).Where(a => a.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Dialog)
+            .GroupBy(a => $"max {a.LoopingMax} min {a.LoopingMin} head {a.HeadtrackActorID} emo {a.Emotion}/{a.EmotionValue}").OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key} x{g.Count()}")));
+        Console.WriteLine("timer: " + string.Join("; ", all.SelectMany(x => x.Actions).Where(a => a.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Timer)
+            .GroupBy(a => $"sec {a.TimerSeconds} actor {a.ActorID}").OrderByDescending(g => g.Count()).Take(4).Select(g => $"{g.Key} x{g.Count()}")));
+        Console.WriteLine("vnam: " + string.Join("; ", all.Where(x => x.VNAM is not null).GroupBy(x => x.VNAM!.Value.Length == 16 && Enumerable.Range(0, 4).All(i => BitConverter.ToUInt32(x.VNAM.Value.Span[(i * 4)..]) == x.LastActionIndex) ? "4x last" : $"other {x.VNAM.Value.Length}").Select(g => $"{g.Key} x{g.Count()}")));
+        Console.WriteLine("actions: " + string.Join("; ", kinds.OrderByDescending(kv => kv.Value).Take(10).Select(kv => $"{kv.Key} x{kv.Value}")));
+        if (args.Length > 2)
+        {
+            var rec = catalog.BySignature["SCEN"].FirstOrDefault(r => string.Equals(r.EditorId, args[2], StringComparison.OrdinalIgnoreCase))
+                ?? catalog.BySignature["SCEN"].First(r => r.FormKey.ModKey.FileName == "Skyrim.esm" && lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey) is { Phases.Count: 2, Actions.Count: >= 3 } s && s.Actions.Any(a => a.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Package) && s.Actions.Any(a => a.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Timer));
+            Console.WriteLine($"{rec.EditorId} {rec.FormKey}");
+            var esm = ws.Active.First(p => p.Name.Equals(rec.FormKey.ModKey.FileName, StringComparison.OrdinalIgnoreCase)).Location.Path;
+            var raw = StbEditor.Data.Raw.RawFormat.Records(File.ReadAllBytes(esm), t => t == "SCEN").First(x => (x.FormId & 0xFFFFFF) == rec.FormKey.ID);
+            foreach (var sub in StbEditor.Data.Raw.RawFormat.Subrecords(raw.Data))
+                Console.WriteLine($"  {sub.Type} {Convert.ToHexString(sub.Data.Span[..Math.Min(sub.Data.Length, 24)])}");
+        }
+        break;
+    }
+    case "scenetest":
+    {
+        // scenetest <game> <out folder>: dunFellglow_ReleaseDogs rebuilt through Core.Scenes (two phases, its actor, a
+        // dialogue, a package and a timer action) into a new plugin; subrecords must follow the vanilla scene's. Then
+        // phase insert / remove keep the actions on their phases.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var failures = 0;
+        Directory.CreateDirectory(args[2]);
+        var vanilla = lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(Mutagen.Bethesda.Plugins.FormKey.Factory("08A372:Skyrim.esm"))!;
+        var active = ActivePlugin.ForNew(Path.Combine(args[2], "STBEditorSceneTest.esp"), light: true, master: false, game, ws.DefaultEncoding);
+        var scene = (Mutagen.Bethesda.Skyrim.Scene)NewRecords.Blank(typeof(Mutagen.Bethesda.Skyrim.Scene), active.Allocate(), game.Release, "STBTestScene");
+        scene.Quest.SetTo(vanilla.Quest.FormKey);
+        StbEditor.Core.Scenes.InsertPhase(scene, 0);
+        StbEditor.Core.Scenes.InsertPhase(scene, 1);
+        var actor = (int)vanilla.Actors[0].ID;
+        StbEditor.Core.Scenes.AddActor(scene, actor);
+        foreach (var source in vanilla.Actions)
+        {
+            var action = StbEditor.Core.Scenes.AddAction(scene, source.Type, source.ActorID ?? actor, (int)(source.StartPhase ?? 0));
+            action.EndPhase = source.EndPhase;
+            if (source.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Dialog) action.Topic.SetTo(source.Topic.FormKey);
+            if (source.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Package) foreach (var p in source.Packages) action.Packages.Add(new Mutagen.Bethesda.Plugins.FormLink<Mutagen.Bethesda.Skyrim.IPackageGetter>(p.FormKey));
+            if (source.Type == Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Timer) action.TimerSeconds = source.TimerSeconds;
+        }
+        var doc = new EditDocument();
+        doc.CommitEdit("New scene", scene, RecordPlace.TopLevel);
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}");
+        if (!result.Success) { Console.WriteLine("FAILED"); break; }
+        File.Move(result.TempPath!, active.Path, overwrite: true);
+        var esm = ws.Active.First(p => p.Name.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase)).Location.Path;
+        var original = StbEditor.Data.Raw.RawFormat.Records(File.ReadAllBytes(esm), t => t == "SCEN").First(r => (r.FormId & 0xFFFFFF) == 0x08A372);
+        var written = StbEditor.Data.Raw.RawFormat.Records(File.ReadAllBytes(active.Path), t => t == "SCEN").Single();
+        // VMAD (its fragment script) and VNAM (editor bookkeeping) are vanilla's own.
+        var mine = StbEditor.Data.Raw.RawFormat.Subrecords(written.Data).Where(x => x.Type is not ("EDID" or "VMAD" or "VNAM")).ToList();
+        var theirs = StbEditor.Data.Raw.RawFormat.Subrecords(original.Data).Where(x => x.Type is not ("EDID" or "VMAD" or "VNAM")).ToList();
+        Console.WriteLine("new:     " + string.Join(" ", mine.Select(x => x.Type)));
+        Console.WriteLine("vanilla: " + string.Join(" ", theirs.Select(x => x.Type)));
+        if (!mine.Select(x => x.Type).SequenceEqual(theirs.Select(x => x.Type))) { Console.WriteLine("  subrecords differ"); failures++; }
+        for (var i = 0; i < Math.Min(mine.Count, theirs.Count); i++)
+            if (!mine[i].Data.Span.SequenceEqual(theirs[i].Data.Span))
+                Console.WriteLine($"  {i} {mine[i].Type}: new {Convert.ToHexString(mine[i].Data.Span)} vanilla {Convert.ToHexString(theirs[i].Data.Span)}");
+
+        // Phase edits: a phase in front moves every action right, removing it moves them back.
+        string Phases(Mutagen.Bethesda.Skyrim.IScene s) => string.Join(",", s.Actions.Select(a => $"{a.StartPhase}-{a.EndPhase}"));
+        var before = Phases(scene);
+        StbEditor.Core.Scenes.InsertPhase(scene, 0);
+        var moved = Phases(scene);
+        StbEditor.Core.Scenes.RemovePhase(scene, 0);
+        Console.WriteLine($"phases: {before} -> insert {moved} -> remove {Phases(scene)}");
+        if (Phases(scene) != before || moved == before) failures++;
+        StbEditor.Core.Scenes.AddAction(scene, Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Timer, actor, 1);
+        var removed = StbEditor.Core.Scenes.RemovePhase(scene, 1);
+        Console.WriteLine($"remove phase 1: {removed} action(s) gone, left {Phases(scene)}, phases {scene.Phases.Count}, last index {scene.LastActionIndex}");
+        if (removed != 1 || scene.Phases.Count != 1) failures++;
+        Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

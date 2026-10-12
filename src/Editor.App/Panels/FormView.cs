@@ -127,6 +127,13 @@ internal static class FormView
             ("Begin / End / Change", ["OnBegin", "OnEnd", "OnChange"]),
             ("Procedure Tree", ["ProcedureTree"]),
         ],
+        ["SCEN"] =
+        [
+            // Drawn by SceneEditor: actors as the quest's aliases, phases and actions as a timeline.
+            ("Scene", ["EditorID", "Quest", "Flags", "Conditions"]),
+            ("Actors", ["Actors"]),
+            ("Phases and Actions", ["Phases", "Actions"]),
+        ],
         ["LIGH"] =
         [
             ("Main", ["EditorID", "Name", "Color", "Radius", "FadeValue", "Flags", "FalloffExponent", "FOV", "NearClip", "Time",
@@ -204,6 +211,18 @@ internal static class FormView
             try
             {
                 if (QuestEditor.Draws(tab)) QuestEditor.Draw(app, quest, tab, target);
+                else DrawMembers(app, record, tab.Members, [], target, 0);
+            }
+            finally { ConditionsEditor.Aliases = null; }
+            return;
+        }
+        if (record is Mutagen.Bethesda.Skyrim.ISceneGetter scene)
+        {
+            // Conditions of a scene and its phases name the quest's aliases.
+            ConditionsEditor.Aliases = SceneEditor.Quest(app, scene) is { } owner ? QuestEditor.AliasNames(owner) : null;
+            try
+            {
+                if (SceneEditor.Draws(tab)) SceneEditor.Draw(app, scene, tab, target);
                 else DrawMembers(app, record, tab.Members, [], target, 0);
             }
             finally { ConditionsEditor.Aliases = null; }

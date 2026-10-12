@@ -26,7 +26,7 @@ internal sealed class RecordForm
     private StbEditor.Render.Scene? _errorScene;
 
     /// <summary>Records that do not sit in a top-level group (or need their own tools) are not field-edited here.</summary>
-    private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "SCEN", "TES4"];
+    private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "TES4"];
 
     /// <summary>Draws the form of <paramref name="key"/>; <paramref name="inWindow"/>: a form window (no reference tab, no "open in window").</summary>
     public void Draw(EditorApp app, FormKey key, bool inWindow)

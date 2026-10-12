@@ -154,7 +154,7 @@ internal static partial class DialogueEditor
         if (topics.Count == 0) ImGui.TextColored(Theme.TextDim, T("This quest has no dialogue."));
     }
 
-    private static void DrawTopic(EditorApp app, IQuestGetter quest, IDialogTopicGetter topic, bool editable)
+    internal static void DrawTopic(EditorApp app, IQuestGetter quest, IDialogTopicGetter topic, bool editable)
     {
         var document = app.Document;
         var topicTarget = editable
@@ -281,14 +281,14 @@ internal static partial class DialogueEditor
 
     // ------------------------------------------------------------------ new records
 
-    private static bool NeedsActive(EditorApp app)
+    internal static bool NeedsActive(EditorApp app)
     {
         if (app.ActivePlugin is not null) return false;
         Log.Warn(T("Choose the active file first: new dialogue goes into it"));
         return true;
     }
 
-    private static string FreeEditorId(EditorApp app, string stem)
+    internal static string FreeEditorId(EditorApp app, string stem)
     {
         var catalog = app.Session!.Catalog;
         for (var i = 1; ; i++)

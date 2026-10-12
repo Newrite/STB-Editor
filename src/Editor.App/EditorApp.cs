@@ -301,6 +301,7 @@ internal sealed class EditorApp : IDisposable
         RunConditionsAutotest();
         RunQuestAutotest();
         RunPackageAutotest();
+        RunSceneAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -546,6 +547,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-conditions") || _condStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-package") || _packStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-scene") || _sceneStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1224,6 +1226,94 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_packFrames > 15:
                 _packStage = 9;
+                break;
+        }
+    }
+
+    private int _sceneStage, _sceneFrames;
+    private FormKey _scene;
+
+    /// <summary>
+    /// --autotest-scene &lt;dir&gt; [EditorID] (with --inspector-tab "Phases and Actions" / "Actors" / "Scene"): a new scene in a
+    /// scratch active file (&lt;dir&gt;) for dunFellglow_ReleaseDogs' quest: two actors, two phases, a dialogue action with a new
+    /// scene topic and a line, a package and a timer action, a phase inserted in front; read back; undone and redone. With an
+    /// EditorID that scene opens too with its first action selected. Nothing is saved.
+    /// </summary>
+    private void RunSceneAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-scene");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _sceneStage == 9) return;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        Mutagen.Bethesda.Skyrim.ISceneGetter? Scene() => (Mutagen.Bethesda.Skyrim.ISceneGetter?)StbEditor.Core.OverrideEditing.Override(Document, _scene)?.Record;
+        string Summary(Mutagen.Bethesda.Skyrim.ISceneGetter s) =>
+            $"quest {s.Quest.FormKey}, actors [{string.Join(",", s.Actors.Select(a => $"{a.ID}:{a.BehaviorFlags}"))}], phases {s.Phases.Count}, actions [" +
+            string.Join(", ", s.Actions.Select(a => $"{a.Index} {a.Type} actor {a.ActorID} {a.StartPhase}-{a.EndPhase} topic {a.Topic.FormKeyNullable}")) + $"], last {s.LastActionIndex}";
+        switch (_sceneStage)
+        {
+            case 0:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorSceneAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                _scene = NewForm.CreateForTest("SCEN", 0, "STBTestScene", "") ?? default;
+                if (_scene.IsNull) { Log.Warn("autotest-scene: scene not created"); _sceneStage = 9; return; }
+                FormWindows.Open(_scene);
+                Log.Info($"autotest-scene: new: {Summary(Scene()!)}");
+                _sceneStage = 1;
+                break;
+            }
+            case 1 when ++_sceneFrames > 10 && FormWindows.FormOf(_scene)?.Target is { } target:
+            {
+                var before = Document.History.UndoName;
+                var model = lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(Mutagen.Bethesda.Plugins.FormKey.Factory("08A372:Skyrim.esm"))!;
+                var quest = lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(model.Quest.FormKey)!;
+                var ids = quest.Aliases.Select(a => (int)a.ID).Take(2).ToList();
+                target.Apply("quest", r => StbEditor.Core.RecordFields.Set(r, ["Quest"], quest.FormKey));
+                foreach (var id in ids) target.Apply("actor", r => StbEditor.Core.Scenes.AddActor((Mutagen.Bethesda.Skyrim.Scene)r, id));
+                target.Apply("phase", r => StbEditor.Core.Scenes.InsertPhase((Mutagen.Bethesda.Skyrim.Scene)r, 0));
+                target.Apply("phase", r => StbEditor.Core.Scenes.InsertPhase((Mutagen.Bethesda.Skyrim.Scene)r, 1));
+                target.Apply("dialogue", r => StbEditor.Core.Scenes.AddAction((Mutagen.Bethesda.Skyrim.Scene)r, Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Dialog, ids[0], 0));
+                target.Apply("package", r =>
+                {
+                    var action = StbEditor.Core.Scenes.AddAction((Mutagen.Bethesda.Skyrim.Scene)r, Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Package, ids[^1], 0);
+                    action.EndPhase = 1;
+                    action.Packages.Add(new Mutagen.Bethesda.Plugins.FormLink<Mutagen.Bethesda.Skyrim.IPackageGetter>(model.Actions.First(a => a.Packages.Count > 0).Packages[0].FormKey));
+                });
+                target.Apply("timer", r => StbEditor.Core.Scenes.AddAction((Mutagen.Bethesda.Skyrim.Scene)r, Mutagen.Bethesda.Skyrim.SceneAction.TypeEnum.Timer, ids[0], 1));
+                // The editor's own «+ scene topic»: a topic of the quest, set on the dialogue action, then a line in it.
+                var topic = new Mutagen.Bethesda.Skyrim.DialogTopic(ActivePlugin!.Allocate(), session.Game.Release)
+                {
+                    EditorID = "STBTestSceneTopic", Priority = 50, Category = Mutagen.Bethesda.Skyrim.DialogTopic.CategoryEnum.Scene, Subtype = Mutagen.Bethesda.Skyrim.DialogTopic.SubtypeEnum.Scene,
+                };
+                topic.Quest.SetTo(quest.FormKey);
+                var copy = (Mutagen.Bethesda.Skyrim.Scene)StbEditor.Core.OverrideEditing.WorkingCopy(Document, _scene, Scene()!);
+                copy.Actions[0].Topic.SetTo(topic.FormKey);
+                StbEditor.Core.OverrideEditing.CommitEdits(Document, "scene topic", [(topic, StbEditor.Core.RecordPlace.TopLevel, null), (copy, StbEditor.Core.RecordPlace.TopLevel, null)]);
+                StbEditor.App.Panels.DialogueEditor.NewLine(this, topic, []);
+                target.Apply("phase in front", r => StbEditor.Core.Scenes.InsertPhase((Mutagen.Bethesda.Skyrim.Scene)r, 0));
+                var edited = Scene()!;
+                Log.Info($"autotest-scene: edited: {Summary(edited)}; topic lines {StbEditor.App.Panels.DialogueEditor.Lines(this, topic.FormKey).Count}");
+                var back = StbEditor.Core.RecordRoundTrip.Read(edited, session.Game.Release, System.Text.Encoding.UTF8) as Mutagen.Bethesda.Skyrim.ISceneGetter;
+                Log.Info(back is null ? $"autotest-scene: round trip FAILED: {StbEditor.Core.RecordRoundTrip.LastError}" : $"autotest-scene: round trip: {Summary(back)}");
+                var steps = 0;
+                while (Document.History.UndoName != before && steps < 40) { Document.Undo(); steps++; }
+                Log.Info($"autotest-scene: {steps} undo steps: {Summary(Scene()!)}; pending {Document.PendingCount}");
+                for (var i = 0; i < steps; i++) Document.Redo();
+                Log.Info($"autotest-scene: redone: {Summary(Scene()!)}; pending {Document.PendingCount}");
+                StbEditor.App.Panels.SceneEditor.SelectActionForTest(_scene, Scene()!.Actions[0].Index ?? 0);
+                if (arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal)
+                    && session.Catalog.BySignature["SCEN"].FirstOrDefault(r => string.Equals(r.EditorId, cli[arg + 2], StringComparison.OrdinalIgnoreCase)) is { } shown
+                    && lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(shown.FormKey) is { } other)
+                {
+                    FormWindows.Open(shown.FormKey);
+                    StbEditor.App.Panels.SceneEditor.SelectActionForTest(shown.FormKey, other.Actions.FirstOrDefault()?.Index ?? 0);
+                    Log.Info($"autotest-scene: {shown.EditorId}: {Summary(other)}");
+                }
+                _sceneStage = 2;
+                _sceneFrames = 0;
+                break;
+            }
+            case 2 when ++_sceneFrames > 15:
+                _sceneStage = 9;
                 break;
         }
     }

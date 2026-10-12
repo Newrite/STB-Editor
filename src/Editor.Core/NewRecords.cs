@@ -121,7 +121,7 @@ public static class NewRecords
     /// </summary>
     public static readonly HashSet<string> NotCreatable =
         ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "REFR", "ACHR", "PGRE", "PHZD", "PMIS", "PARW", "PBAR", "PBEA", "PCON", "PFLA",
-         "DIAL", "INFO", "SCEN", "DLBR", "DLVW", "TES4", "DOBJ"];
+         "DIAL", "INFO", "DLBR", "DLVW", "TES4", "DOBJ"];
 
     /// <summary>
     /// Classes a new record of a type can be: one for most, several for abstract ones (a global is
@@ -153,6 +153,8 @@ public static class NewRecords
         if (record is Global && cls.GetProperty("Data") is { } data && Nullable.GetUnderlyingType(data.PropertyType) is { } valueType)
             data.SetValue(record, System.Activator.CreateInstance(valueType));
         if (record is Package package) PackageDefaults(package);
+        // Every vanilla scene writes its flags (FNAM), even when none are set.
+        if (record is Scene scene) scene.Flags ??= 0;
         return record;
     }
 

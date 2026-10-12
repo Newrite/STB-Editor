@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -304,6 +304,7 @@ internal sealed class EditorApp : IDisposable
         RunDialogueAutotest();
         RunCellPropsAutotest();
         RunFinalizeAutotest();
+        RunCleanAutotest();
         RunSheetAutotest();
         if (!_zoomDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-zoom")) _zoomDone = RenderWindow.ZoomTestStep();
         if (!_doorDone && Session is not null && Environment.GetCommandLineArgs().Contains("--autotest-door")) _doorDone = RenderWindow.DoorTestStep(this);
@@ -340,6 +341,7 @@ internal sealed class EditorApp : IDisposable
         _help.Draw(this);
         _settingsWindow.Draw(this);
         _mastersWindow.Draw(this);
+        PluginCheck.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
         UseInfo.Draw(this);
@@ -495,6 +497,9 @@ internal sealed class EditorApp : IDisposable
     private readonly SettingsWindow _settingsWindow = new();
     private readonly MastersWindow _mastersWindow = new();
 
+    /// <summary>File → Check and clean.</summary>
+    public Panels.PluginCheckWindow PluginCheck { get; } = new();
+
     public bool AutotestDone =>
         (!Environment.GetCommandLineArgs().Contains("--autotest-save") || _autotestStage == 2)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-new") || _newTestStage == 4)
@@ -523,7 +528,65 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
-        && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9);
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-finalize") || _finalizeStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-clean") || _cleanStage == 9);
+
+    private int _cleanStage;
+    private List<FormKey> _cleanItm = [];
+    private string _cleanCopy = "";
+
+    /// <summary>
+    /// --autotest-clean &lt;dir&gt; &lt;plugin&gt;: a copy of the plugin in &lt;dir&gt; is the active file; Check and clean finds its errors,
+    /// ITM and deleted references; the ITM are removed (one undo step, undone and redone) and saved into the copy; the copy
+    /// must lack exactly those overrides and keep the rest.
+    /// </summary>
+    private void RunCleanAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-clean");
+        if (arg < 0 || arg + 2 >= cli.Length || Session is not { } session || Loader is not null || _cleanStage == 9) return;
+        switch (_cleanStage)
+        {
+            case 0:
+            {
+                var plugin = session.Workspace.Active.First(p => p.Name.Equals(cli[arg + 2], StringComparison.OrdinalIgnoreCase));
+                _cleanCopy = Path.Combine(cli[arg + 1], plugin.Name);
+                File.Copy(plugin.Location.Path, _cleanCopy, overwrite: true);
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForExisting(plugin, session.Game).RetargetedTo(_cleanCopy));
+                PluginCheck.Show(plugin.Name);
+                PluginCheck.Start(this, plugin.Name);
+                _cleanStage = 1;
+                break;
+            }
+            case 1 when !PluginCheck.IsBusy && PluginCheck.Result is { } result:
+            {
+                Log.Info($"autotest-clean: {result.Issues.Count(i => i.Error)} error(s), {result.Issues.Count(i => !i.Error)} warning(s), {result.Clean.Itm.Count} ITM, {result.Clean.DeletedReferences.Count} UDR");
+                var removable = result.Clean.Itm.Where(i => i.Signature is not ("CELL" or "WRLD" or "DIAL")).ToList();
+                _cleanItm = removable.Select(i => i.Key).ToList();
+                Panels.PluginCheckWindow.RemoveItm(this, removable);
+                var pending = Document.PendingCount;
+                Document.Undo();
+                var undone = Document.PendingCount;
+                Document.Redo();
+                Log.Info($"autotest-clean: removing {removable.Count} ITM: pending {pending}, after Ctrl+Z {undone}, after Ctrl+Y {Document.PendingCount}");
+                if (result.Clean.DeletedReferences.Count > 0) Panels.PluginCheckWindow.FixDeleted(this, session, result.Clean.DeletedReferences);
+                Save();
+                _cleanStage = 2;
+                break;
+            }
+            case 2 when !Saver.IsBusy && Document.PendingCount == 0 && Loader is null:
+            {
+                using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(_cleanCopy, session.Game.Release);
+                var present = check.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
+                var original = session.Workspace.Active.First(p => p.Name.Equals(cli[arg + 2], StringComparison.OrdinalIgnoreCase));
+                using var before = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(original.Location.Path, session.Game.Release);
+                var beforeCount = before.EnumerateMajorRecords().Count();
+                Log.Info($"autotest-clean: file had {beforeCount} records, now {present.Count}; ITM still present {_cleanItm.Count(present.Contains)} of {_cleanItm.Count}");
+                _cleanStage = 9;
+                break;
+            }
+        }
+    }
 
     private int _finalizeStage;
 
@@ -1945,6 +2008,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Active File..."), (string?)null, false, Session is not null)) ShowActiveFileDialog();
             if (ImGui.MenuItem(T("Masters..."), (string?)null, false, Session is not null)) _mastersWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The active file's masters: add one, remove unused ones (as xEdit)"));
+            if (ImGui.MenuItem(T("Check and clean..."), (string?)null, false, Session is not null)) PluginCheck.Show();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));
             var saveLabel = ActivePlugin is { } ap ? TF($"Save into {ap.Name}") : T("Save...");
             if (ImGui.MenuItem(saveLabel, T("Ctrl+S"), false, Session is not null && !Saver.IsBusy)) Save();
             ImGui.Separator();

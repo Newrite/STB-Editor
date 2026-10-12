@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.14.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.15.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -39,6 +39,8 @@ in `Cell`, written under a header-only topic; `InfoFragments` for TIF__ scripts)
 v0.13.0: cell / worldspace header edits (`RecordPlace.Header`, `HeaderCopies`, `Panels/PlacePropertiesWindows.cs`).
 v0.14.0: navmesh Finalize (`Core/NavmeshFinalize.cs`: door triangles + XNDP, edge links by overlap one-to-one, NAVI
 entries only for the plugin's navmeshes; `Panels/RenderWindow.NavmeshFinalize.cs`; verified against CK data by `finalizetest`).
+v0.15.0: Check and clean (`Core/PluginChecks.cs`: ITM vs the nearest master version, GenderedItem-safe compare; errors;
+UDR via the writer's SafeDisable; `Panels/PluginCheckWindow.cs`); writer removes references (RemovalDraft for REFR/ACHR…).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

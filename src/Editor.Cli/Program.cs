@@ -307,6 +307,92 @@ switch (command)
         }
         break;
     }
+    case "udrtest":
+    {
+        // udrtest <game> <out folder>: a plugin that deletes a vanilla reference (as old CK plugins do) is found by the
+        // clean check, and the fix (undelete and disable) writes it back undeleted, disabled, sunk, enable parent player.
+        var outDir = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(outDir);
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var baseCatalog = RecordCatalog.Build(ws, cacheDir);
+        var baseLookup = new StbEditor.Data.RecordLookup(ws, baseCatalog);
+        var cellRec = baseCatalog.BySignature["CELL"].First(c => c.EditorId == "RiverwoodSleepingGiantInn");
+        var cellVersion = baseLookup.CellVersionsByPlugin(cellRec.FormKey).First(v => v.Plugin.Name == "Skyrim.esm");
+        var victim = cellVersion.Cell.Temporary.OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().First();
+        var path = Path.Combine(outDir, "STBEditorUdrTest.esp");
+        var mod = new Mutagen.Bethesda.Skyrim.SkyrimMod(Mutagen.Bethesda.Plugins.ModKey.FromFileName("STBEditorUdrTest.esp"), game.Release);
+        var cell = Mutagen.Bethesda.Skyrim.CellMixIn.DeepCopy(cellVersion.Cell, new Mutagen.Bethesda.Skyrim.Cell.TranslationMask(true) { Persistent = false, Temporary = false, Landscape = false, NavigationMeshes = false });
+        var deleted = Mutagen.Bethesda.Skyrim.PlacedObjectMixIn.DeepCopy(victim);
+        deleted.IsDeleted = true;
+        cell.Temporary.Add(deleted);
+        Mutagen.Bethesda.Skyrim.CellGroupExt.AddInteriorCell(mod.Cells, cell);
+        ((Mutagen.Bethesda.Plugins.Records.IModGetter)mod).WriteToBinary(path, new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryWriteParameters { MastersListOrdering = new Mutagen.Bethesda.Plugins.Binary.Parameters.MastersListOrderingByLoadOrder(ws.Active.Select(p => p.ModKey)) });
+        Console.WriteLine($"made {path}: deleted override of {victim.FormKey} at {victim.Placement?.Position}");
+
+        using var test = Workspace.Open(game, null, default, path);
+        var catalog = RecordCatalog.Build(test, Path.Combine(outDir, "catalog"));
+        var plugin = test.Active.First(p => p.Name == "STBEditorUdrTest.esp");
+        var report = StbEditor.Core.PluginChecks.Clean(test, catalog, plugin);
+        Console.WriteLine($"found: {report.DeletedReferences.Count} deleted reference(s): {string.Join(", ", report.DeletedReferences.Select(d => $"{d.Key} override {d.Override}"))}");
+
+        var doc = new EditDocument();
+        var active = ActivePlugin.ForExisting(plugin, game);
+        var d = report.DeletedReferences[0];
+        var context = new RefContext(d.Cell, null, d.Persistent, true, victim, victim.Base.FormKey, "STAT");
+        doc.RegisterContext(d.Key, context);
+        var state = new RefState(new System.Numerics.Vector3(victim.Placement!.Position.X, victim.Placement.Position.Y, victim.Placement.Position.Z),
+            new System.Numerics.Vector3(victim.Placement.Rotation.X, victim.Placement.Rotation.Y, victim.Placement.Rotation.Z), victim.Scale ?? 1f, false);
+        doc.Execute("udr", [(d.Key, state, state, state with { Deleted = true })], [new OverrideDraft((Mutagen.Bethesda.Plugins.Records.IMajorRecord)Mutagen.Bethesda.Skyrim.PlacedObjectMixIn.DeepCopy(victim), RecordPlace.Reference, context)]);
+        var writer = new PluginWriter(test, catalog);
+        var result = writer.Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; disabled {result.Disabled}");
+        if (!result.Success) break;
+        using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(new Mutagen.Bethesda.Plugins.ModPath(active.ModKey, result.TempPath!), game.Release);
+        var fixedRef = check.Cells.Records.SelectMany(b => b.SubBlocks).SelectMany(s => s.Cells).SelectMany(c => c.Temporary.Concat(c.Persistent)).OfType<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().First(r => r.FormKey == victim.FormKey);
+        Console.WriteLine($"written: deleted {fixedRef.IsDeleted}, flags 0x{fixedRef.MajorRecordFlagsRaw:X}, z {fixedRef.Placement?.Position.Z}, base {fixedRef.Base.FormKey}, enable parent {fixedRef.EnableParent?.Reference.FormKey} {fixedRef.EnableParent?.Flags}");
+        break;
+    }
+    case "checktest":
+    {
+        // checktest <game> <plugin>: Check for Errors over one plugin, issues grouped by message kind.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var assets = AssetFileSystem.Build(ws);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var facegen = assets.Enumerate($@"meshes\actors\character\facegendata\facegeom\{plugin.Name}\", ".nif").ToList();
+        Console.WriteLine($"facegen meshes of {plugin.Name}: {facegen.Count}, e.g. {facegen.FirstOrDefault()}");
+        var issues = StbEditor.Core.PluginChecks.Errors(ws, catalog, plugin, assets.Exists);
+        Console.WriteLine($"{plugin.Name}: {issues.Count(i => i.Error)} error(s), {issues.Count(i => !i.Error)} warning(s) in {clock.Elapsed.TotalSeconds:0.0} s");
+        foreach (var group in issues.GroupBy(i => System.Text.RegularExpressions.Regex.Replace(i.Message, @"[0-9A-F]{6}:\S+|\S+ \[\w{4}\]", "X")).OrderByDescending(g => g.Count()).Take(10))
+            Console.WriteLine($"  {group.Count(),5} x {group.Key}   e.g. {group.First().Signature} {group.First().EditorId ?? group.First().Key.ToString()}: {group.First().Message}");
+        break;
+    }
+    case "itmtest":
+    {
+        // itmtest <game> <plugin>: overrides identical to the version they override from the plugin's masters (ITM), and
+        // deleted references (UDR) — xEdit's Quick Auto Clean targets — counted and timed.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+        // The comparison must call a record identical to itself (and to a copy read from another plugin's view).
+        var selfLookup = new StbEditor.Data.RecordLookup(ws, catalog);
+        var selfTypes = catalog.BySignature.Where(kv => kv.Key is not ("CELL" or "WRLD" or "NAVI")).SelectMany(kv => kv.Value.Take(3)).Take(300).ToList();
+        var selfSame = selfTypes.Count(r => selfLookup.Resolve(r.FormKey) is { } x && StbEditor.Core.PluginChecks.Identical(x, x));
+        Console.WriteLine($"self-check: {selfSame}/{selfTypes.Count} records identical to themselves");
+        foreach (var r in selfTypes.Where(r => selfLookup.Resolve(r.FormKey) is { } x && !StbEditor.Core.PluginChecks.Identical(x, x)).Take(12))
+        {
+            var x = selfLookup.Resolve(r.FormKey)!;
+            var diff = StbEditor.Core.RecordFields.Leaves(x).Where(l => l.Value is float f && float.IsNaN(f) || l.Value is double d && double.IsNaN(d)).Select(l => l.PathText).Take(3);
+            Console.WriteLine($"  not self-identical: {r.Signature} {r.EditorId}: {string.Join(", ", diff)}");
+        }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var report = StbEditor.Core.PluginChecks.Clean(ws, catalog, plugin, new Progress<string>(m => Console.Error.WriteLine(m)));
+        Console.WriteLine($"{plugin.Name}: {report.Itm.Count} ITM, {report.DeletedReferences.Count} UDR, {report.Compared} overrides compared in {clock.Elapsed.TotalSeconds:0.0} s");
+        foreach (var itm in report.Itm.Take(12)) Console.WriteLine($"  ITM {itm.Signature} {itm.EditorId} {itm.Key} (same as {itm.Master})");
+        foreach (var udr in report.DeletedReferences.Take(5)) Console.WriteLine($"  UDR {udr.Signature} {udr.Key} in {udr.Cell}");
+        break;
+    }
     case "finalizetest":
     {
         // finalizetest <game> <interior EditorID> <world EditorID> <x> <y>: Finalize run on copies of vanilla navmeshes must

@@ -70,13 +70,16 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
     /// are looked up by block/sub-block from their grid position; interiors by scanning the
     /// plugin's interior blocks (a few thousand overlay entries at most).
     /// </summary>
-    public List<ICellGetter> CellVersions(FormKey cellKey)
+    public List<ICellGetter> CellVersions(FormKey cellKey) => [.. CellVersionsByPlugin(cellKey).Select(v => v.Cell)];
+
+    /// <summary><see cref="CellVersions"/> with the plugin of each copy.</summary>
+    public List<(PluginInfo Plugin, ICellGetter Cell)> CellVersionsByPlugin(FormKey cellKey)
     {
         var record = catalog.Get(cellKey);
-        var result = new List<ICellGetter>();
+        var result = new List<(PluginInfo, ICellGetter)>();
         if (record?.Winner.Cell is not { } placement) return result;
         // A worldspace's persistent cell is not in its blocks: it is the world's TopCell.
-        if (placement is { IsPersistentCell: true, Worldspace: { } world }) return PersistentCellVersions(world);
+        if (placement is { IsPersistentCell: true, Worldspace: { } world }) return PersistentCellVersionsByPlugin(world);
 
         foreach (var plugin in record.Plugins)
         {
@@ -86,7 +89,7 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
                 var cell = placement.IsInterior
                     ? FindInterior(mod, cellKey)
                     : FindExterior(mod, cellKey, placement);
-                if (cell is not null) result.Add(cell);
+                if (cell is not null) result.Add((plugin, cell));
             }
             catch
             {
@@ -98,10 +101,12 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
     }
 
     /// <summary>Every plugin's copy of a worldspace's persistent cell.</summary>
-    public List<ICellGetter> PersistentCellVersions(FormKey worldKey)
+    public List<ICellGetter> PersistentCellVersions(FormKey worldKey) => [.. PersistentCellVersionsByPlugin(worldKey).Select(v => v.Cell)];
+
+    public List<(PluginInfo Plugin, ICellGetter Cell)> PersistentCellVersionsByPlugin(FormKey worldKey)
     {
         var record = catalog.Get(worldKey);
-        var result = new List<ICellGetter>();
+        var result = new List<(PluginInfo, ICellGetter)>();
         if (record is null) return result;
 
         foreach (var plugin in record.Plugins)
@@ -109,7 +114,7 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
             if (plugin.Mod is not { } mod) continue;
             try
             {
-                if (ModCells.Of(mod).World(worldKey)?.TopCell is { } top) result.Add(top);
+                if (ModCells.Of(mod).World(worldKey)?.TopCell is { } top) result.Add((plugin, top));
             }
             catch
             {

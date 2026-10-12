@@ -154,6 +154,14 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
             // Records taken out of the plugin: its own (deleted from the file) or its overrides (the previous version wins again).
             foreach (var removal in document.Drafts.Values.OfType<RemovalDraft>())
             {
+                // References (ITM or deleted ones the plugin should not carry): out of their cell.
+                if (removal.Signature is "REFR" or "ACHR" or "PGRE" or "PHZD" or "PMIS" or "PARW" or "PBAR" or "PBEA" or "PCON" or "PFLA")
+                {
+                    if (RemoveReference(mod, removal.Key)) removed++;
+                    else warnings.Add($"{removal.EditorId}: not in {active.Name}, nothing to remove");
+                    touched.Add(removal.Key);
+                    continue;
+                }
                 var getter = RecordLookup.GetterType(removal.Signature);
                 var cls = getter is null ? null : NewRecords.RecordClasses(getter).FirstOrDefault();
                 if (cls is null || GroupFor(mod, cls) is not { } group)
@@ -675,6 +683,7 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
     private static void SafeDisable(IPlaced record, RefState state)
     {
         record.MajorRecordFlagsRaw |= (int)InitiallyDisabledFlag;
+        record.MajorRecordFlagsRaw &= ~0x20; // a deleted override in the plugin (xEdit: UDR) comes back undeleted
         var sunk = state with { Position = new Vector3(state.Position.X, state.Position.Y, -30000f), Deleted = false };
         ApplyPlacement(record, sunk);
 

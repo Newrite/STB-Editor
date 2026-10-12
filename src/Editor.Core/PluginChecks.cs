@@ -1,0 +1,307 @@
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Skyrim;
+using StbEditor.Data;
+using StbEditor.Data.Catalog;
+
+namespace StbEditor.Core;
+
+/// <summary>An override identical to the version it overrides from the plugin's masters (xEdit: ITM).</summary>
+public readonly record struct ItmRecord(FormKey Key, string Signature, string? EditorId, string Master, FormKey? Cell);
+
+/// <summary>A reference the plugin deletes (xEdit: UDR — the game crashes when something still points at it).</summary>
+public readonly record struct DeletedReference(FormKey Key, string Signature, FormKey Cell, bool Override, bool Persistent);
+
+/// <summary>A problem Check for Errors found: what, where, how bad.</summary>
+public readonly record struct CheckIssue(bool Error, FormKey Key, string Signature, string? EditorId, string Message);
+
+public sealed class CleanReport
+{
+    public List<ItmRecord> Itm { get; } = [];
+    public List<DeletedReference> DeletedReferences { get; } = [];
+    public int Compared { get; set; }
+}
+
+/// <summary>
+/// xEdit's Quick Auto Clean, read-only: overrides identical to their master's version (top-level
+/// records, cell headers, references) and deleted references. The fixes (remove the ITM override,
+/// undelete and disable the reference) are edits in the editor.
+/// </summary>
+public static class PluginChecks
+{
+    private static readonly HashSet<string> Containers = ["CELL", "WRLD", "DIAL"];
+    private static readonly HashSet<string> NotCompared = ["NAVI", "NAVM", "LAND", "TES4"];
+
+    private static readonly Cell.TranslationMask CellHeader = new(defaultOn: true) { Persistent = false, Temporary = false, Landscape = false, NavigationMeshes = false };
+    private static readonly Worldspace.TranslationMask WorldHeader = new(defaultOn: true) { TopCell = false, SubCells = false };
+    private static readonly DialogTopic.TranslationMask TopicHeader = new(defaultOn: true) { Responses = false };
+
+    /// <summary>A copy for comparing: containers without their contents, bookkeeping fields levelled.</summary>
+    private static IMajorRecord Comparable(IMajorRecordGetter record)
+    {
+        IMajorRecord copy = record switch
+        {
+            ICellGetter cell => cell.DeepCopy(CellHeader),
+            IWorldspaceGetter world => world.DeepCopy(WorldHeader),
+            IDialogTopicGetter topic => topic.DeepCopy(TopicHeader),
+            _ => (IMajorRecord)record.DeepCopy(),
+        };
+        if (copy is ISkyrimMajorRecord skyrim)
+        {
+            skyrim.VersionControl = 0;
+            skyrim.FormVersion = 0;
+            skyrim.Version2 = 0;
+        }
+        copy.IsCompressed = false;
+        return copy;
+    }
+
+    /// <summary>
+    /// Whether two versions of a record hold the same data (bookkeeping and compression aside). Mutagen's
+    /// equality compares male/female pairs (armor models, race data) by reference, so records that have
+    /// them are compared field by field when it says no.
+    /// </summary>
+    public static bool Identical(IMajorRecordGetter a, IMajorRecordGetter b)
+    {
+        var x = Comparable(a);
+        var y = Comparable(b);
+        if (x.Equals(y)) return true;
+        if (!HasGendered(x.GetType())) return false;
+        var left = RecordFields.Leaves(x, maxDepth: 16, maxListItems: int.MaxValue).Select(l => (l.PathText, RecordFields.Repr(l.Value)));
+        var right = RecordFields.Leaves(y, maxDepth: 16, maxListItems: int.MaxValue).Select(l => (l.PathText, RecordFields.Repr(l.Value)));
+        return left.SequenceEqual(right);
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> Gendered = new();
+
+    private static bool HasGendered(Type type) => Gendered.GetOrAdd(type, static t => Walk(t, 0, []));
+
+    private static bool Walk(Type type, int depth, HashSet<Type> seen)
+    {
+        if (depth > 6 || !seen.Add(type)) return false;
+        foreach (var property in type.GetProperties())
+        {
+            var p = property.PropertyType;
+            if (p.IsGenericType && p.GetGenericTypeDefinition().Name.Contains("GenderedItem", StringComparison.Ordinal)) return true;
+            if (p.IsGenericType && p.GetGenericArguments() is [var element] && element.Namespace?.StartsWith("Mutagen", StringComparison.Ordinal) == true && Walk(element, depth + 1, seen)) return true;
+            if (p.Namespace?.StartsWith("Mutagen.Bethesda.Skyrim", StringComparison.Ordinal) == true && p.IsClass && Walk(p, depth + 1, seen)) return true;
+        }
+        return false;
+    }
+
+    private static readonly HashSet<string> LeveledLists = ["LVLI", "LVLN", "LVSP"];
+
+    /// <summary>
+    /// xEdit's Check for Errors over one plugin's records: links to records that are not in the load order,
+    /// deleted base records, leveled lists that contain themselves, the plugin's new NPCs without
+    /// a FaceGen head (dark face in game), records that cannot be read.
+    /// </summary>
+    public static List<CheckIssue> Errors(Workspace workspace, RecordCatalog catalog, PluginInfo plugin, Func<string, bool> assetExists,
+        IProgress<string>? progress = null, CancellationToken cancel = default)
+    {
+        var issues = new List<CheckIssue>();
+        if (plugin.Mod is not { } mod) return issues;
+        var lookup = new RecordLookup(workspace, catalog);
+        var count = 0;
+        foreach (var record in mod.EnumerateMajorRecords())
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (++count % 2000 == 0) progress?.Report($"checking: {count:N0} records");
+            string signature;
+            string? editorId;
+            try
+            {
+                signature = catalog.Get(record.FormKey)?.Signature ?? record.Registration.ClassType.Name.ToUpperInvariant() switch
+                {
+                    "PLACEDOBJECT" => "REFR",
+                    "PLACEDNPC" => "ACHR",
+                    "DIALOGRESPONSES" => "INFO",
+                    "NAVIGATIONMESH" => "NAVM",
+                    var other => other.Length > 4 ? other[..4] : other,
+                };
+                editorId = record.EditorID;
+            }
+            catch (Exception ex)
+            {
+                issues.Add(new CheckIssue(true, record.FormKey, "?", null, $"cannot be read: {ex.Message}"));
+                continue;
+            }
+
+            if (record.IsDeleted)
+            {
+                if (signature is not ("REFR" or "ACHR" or "PGRE" or "PHZD" or "PMIS" or "PARW" or "PBAR" or "PBEA" or "PCON" or "PFLA" or "NAVM" or "INFO"))
+                    issues.Add(new CheckIssue(false, record.FormKey, signature, editorId, "deleted record: the game crashes if anything still uses it (remove it from the plugin instead)"));
+                continue;
+            }
+
+            try
+            {
+                foreach (var link in record.EnumerateFormLinks())
+                {
+                    if (link.FormKey.IsNull) continue;
+                    var target = catalog.Get(link.FormKey);
+                    // Forms the engine itself defines (Skyrim.esm's first IDs; xEdit keeps them in Hardcoded.dat).
+                    if (link.FormKey.ID < 0x800 && link.FormKey.ModKey.FileName.String.Equals("Skyrim.esm", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (target is null)
+                    {
+                        // References, navmeshes, dialogue lines and land are not catalogued: only links that must be catalogued count.
+                        if (IsCatalogued(link.Type)) issues.Add(new CheckIssue(true, record.FormKey, signature, editorId, $"points at {link.FormKey}, which is not in the load order"));
+                        continue;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                issues.Add(new CheckIssue(true, record.FormKey, signature, editorId, $"cannot be read: {ex.InnerException?.Message ?? ex.Message}"));
+            }
+
+            // New NPCs need their FaceGen head, unless they take their traits from a template.
+            if (record is INpcGetter npc && npc.FormKey.ModKey == plugin.ModKey
+                && !(npc.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Traits) && !npc.Template.IsNull)
+                && lookup.Resolve<IRaceGetter>(npc.Race.FormKey) is { } race && race.Flags.HasFlag(Race.Flag.FaceGenHead)
+                && !assetExists($@"meshes\actors\character\facegendata\facegeom\{npc.FormKey.ModKey.FileName}\{npc.FormKey.ID:X8}.nif"))
+                issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, "no FaceGen head (meshes\\actors\\character\\facegendata): dark face in game"));
+        }
+
+        // Leveled lists that contain themselves (through other lists): the game hangs resolving them.
+        foreach (var list in catalog.BySignature.Where(kv => LeveledLists.Contains(kv.Key)).SelectMany(kv => kv.Value).Where(r => r.Plugins.Contains(plugin)))
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (LeveledCycle(lookup, list.FormKey) is { } cycle)
+                issues.Add(new CheckIssue(true, list.FormKey, list.Signature, list.EditorId, $"contains itself: {string.Join(" > ", cycle.Select(k => catalog.Get(k)?.EditorId ?? k.ToString()))}"));
+        }
+        return issues;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> CataloguedTypes = new();
+
+    /// <summary>Whether every record a link can point at is in the catalog (not a reference, navmesh, line, land or anything).</summary>
+    private static bool IsCatalogued(Type linkType) => CataloguedTypes.GetOrAdd(linkType, static t =>
+        t != typeof(IMajorRecordGetter) && t != typeof(ISkyrimMajorRecordGetter)
+        && !t.IsAssignableFrom(typeof(IPlacedObjectGetter)) && !t.IsAssignableFrom(typeof(IPlacedNpcGetter)) && !typeof(IPlacedGetter).IsAssignableFrom(t)
+        && !t.IsAssignableFrom(typeof(INavigationMeshGetter)) && !t.IsAssignableFrom(typeof(IDialogResponsesGetter)) && !t.IsAssignableFrom(typeof(ILandscapeGetter))
+        && !t.IsAssignableFrom(typeof(IAPlacedTrapGetter)) && !t.IsAssignableFrom(typeof(IPlacedHazardGetter)));
+
+    /// <summary>A path from a leveled list back to itself through its entries (winning versions), or null.</summary>
+    private static List<FormKey>? LeveledCycle(RecordLookup lookup, FormKey start)
+    {
+        var path = new List<FormKey>();
+        var onPath = new HashSet<FormKey>();
+        var done = new HashSet<FormKey>();
+        IEnumerable<FormKey> Entries(FormKey key) => lookup.Resolve(key) switch
+        {
+            ILeveledItemGetter li => li.Entries?.Select(e => e.Data?.Reference.FormKey ?? FormKey.Null) ?? [],
+            ILeveledNpcGetter ln => ln.Entries?.Select(e => e.Data?.Reference.FormKey ?? FormKey.Null) ?? [],
+            ILeveledSpellGetter ls => ls.Entries?.Select(e => e.Data?.Reference.FormKey ?? FormKey.Null) ?? [],
+            _ => [],
+        };
+        bool Visit(FormKey key, int depth)
+        {
+            if (depth > 64) return false;
+            if (onPath.Contains(key)) { path.Add(key); return key == start; }
+            if (!done.Add(key)) return false;
+            onPath.Add(key);
+            path.Add(key);
+            foreach (var next in Entries(key).Where(k => !k.IsNull))
+                if (Visit(next, depth + 1)) return true;
+            path.RemoveAt(path.Count - 1);
+            onPath.Remove(key);
+            return false;
+        }
+        return Visit(start, 0) ? path : null;
+    }
+
+    public static CleanReport Clean(Workspace workspace, RecordCatalog catalog, PluginInfo plugin, IProgress<string>? progress = null, CancellationToken cancel = default)
+    {
+        var report = new CleanReport();
+        var masters = (plugin.Header?.Masters ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool IsMaster(PluginInfo p) => masters.Contains(p.Name);
+        var lookup = new RecordLookup(workspace, catalog);
+
+        // Top-level records and cell / worldspace / topic headers the plugin overrides.
+        var overrides = catalog.ByKey.Values.Where(r => r.FormKey.ModKey != plugin.ModKey && r.Plugins.Contains(plugin)).ToList();
+        var done = 0;
+        foreach (var record in overrides)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (++done % 500 == 0) progress?.Report($"ITM: {done}/{overrides.Count}");
+            if (NotCompared.Contains(record.Signature) || RecordLookup.GetterType(record.Signature) is not { } type) continue;
+            IMajorRecordGetter? mine = null, previous = null;
+            string? from = null;
+            if (record.Signature == "CELL")
+            {
+                var versions = lookup.CellVersionsByPlugin(record.FormKey);
+                mine = versions.FirstOrDefault(v => v.Plugin == plugin).Cell;
+                var before = versions.TakeWhile(v => v.Plugin != plugin).LastOrDefault(v => IsMaster(v.Plugin));
+                previous = before.Cell;
+                from = before.Plugin?.Name;
+            }
+            else
+            {
+                try
+                {
+                    var versions = workspace.LinkCache.ResolveAllSimpleContexts(record.FormKey, type).Reverse().ToList();
+                    var at = versions.FindIndex(v => v.ModKey == plugin.ModKey);
+                    if (at < 0) continue;
+                    mine = versions[at].Record;
+                    var before = versions.Take(at).LastOrDefault(v => masters.Contains(v.ModKey.FileName.String));
+                    previous = before?.Record;
+                    from = before?.ModKey.FileName.String;
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+            if (mine is null || previous is null) continue;
+            report.Compared++;
+            try
+            {
+                if (Identical(mine, previous)) report.Itm.Add(new ItmRecord(record.FormKey, record.Signature, record.EditorId, from!, null));
+            }
+            catch
+            {
+                // A record Mutagen cannot copy is not called identical.
+            }
+        }
+
+        // References in the plugin's cells: identical overrides and deleted ones.
+        var cells = catalog.BySignature.GetValueOrDefault("CELL")?.Where(c => c.Plugins.Contains(plugin)).ToList() ?? [];
+        done = 0;
+        foreach (var cellRecord in cells)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (++done % 200 == 0) progress?.Report($"references: {done}/{cells.Count} cells");
+            var versions = lookup.CellVersionsByPlugin(cellRecord.FormKey);
+            var mineAt = versions.FindIndex(v => v.Plugin == plugin);
+            if (mineAt < 0) continue;
+            var mine = versions[mineAt].Cell;
+            var masterVersions = versions.Take(mineAt).Where(v => IsMaster(v.Plugin)).Reverse().ToList();
+            var persistent = mine.Persistent.Select(p => p.FormKey).ToHashSet();
+            foreach (var placed in mine.Persistent.Concat(mine.Temporary))
+            {
+                var signature = placed switch { IPlacedNpcGetter => "ACHR", IPlacedObjectGetter => "REFR", _ => placed.GetType().Name.Replace("BinaryOverlay", "") };
+                var isOverride = placed.FormKey.ModKey != plugin.ModKey;
+                if (placed.IsDeleted)
+                {
+                    report.DeletedReferences.Add(new DeletedReference(placed.FormKey, signature, cellRecord.FormKey, isOverride, persistent.Contains(placed.FormKey)));
+                    continue;
+                }
+                if (!isOverride) continue;
+                var previous = masterVersions.Select(v => v.Cell.Persistent.Concat(v.Cell.Temporary).FirstOrDefault(r => r.FormKey == placed.FormKey) is { } r ? (v.Plugin, r) : default)
+                    .FirstOrDefault(x => x.r is not null);
+                if (previous.r is null) continue;
+                report.Compared++;
+                try
+                {
+                    if (Identical(placed, previous.r)) report.Itm.Add(new ItmRecord(placed.FormKey, signature, placed.EditorID, previous.Plugin!.Name, cellRecord.FormKey));
+                }
+                catch
+                {
+                }
+            }
+        }
+        return report;
+    }
+}

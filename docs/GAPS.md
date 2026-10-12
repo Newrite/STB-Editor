@@ -78,8 +78,8 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
-| **Check for Errors** (несуществующие ссылки, неверные данные), циклические leveled list | xEdit; CK: Validate Loaded Data | ★★ | M |
-| **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
+| ✅ 0.15.0 **Check for Errors** (несуществующие ссылки, неверные данные), циклические leveled list | xEdit; CK: Validate Loaded Data | ★★ | M |
+| ✅ 0.15.0 (удалённые навмеши — нет) **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
 | ✅ 0.7.0 Мастера: Add / Clean Masters (Sort — нет) | xEdit | ★★ | S |
 | Change FormID, Renumber, **Compact FormIDs for ESL**, Convert to Light Master | CK + xEdit | ★★ | M |
 | Упаковка в **BSA** (Create Archive), список ассетов плагина, проверка отсутствующих мешей и текстур | CK: Create Archive, Test Models; xEdit: Assets manager | ★★ | M |

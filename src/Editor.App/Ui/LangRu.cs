@@ -1260,6 +1260,23 @@ internal static class LangRu
         ["Paint vertex colour"] = "Покраска цвета вершин",
         ["Tints the land's vertex colours towards the colour below (white = no tint)."] = "Подкрашивает цвет вершин земли к цвету ниже (белый — без оттенка).",
 
+        // ---- Object palette
+        ["Object palette..."] = "Палитра объектов...",
+        ["Object palette"] = "Палитра объектов",
+        ["Placing with the palette: click in the Render Window"] = "Расстановка палитрой: кликай в окне рендера",
+        ["Place with the palette"] = "Ставить палитрой",
+        ["Each click places one of these objects at random, turned and sized at random; each is one Ctrl+Z."] = "Каждый клик ставит случайный объект из списка со случайным поворотом и размером; каждый — один Ctrl+Z.",
+        ["Objects ({0})"] = "Объекты ({0})",
+        ["{0} [{1}] cannot be placed in the world"] = "{0} [{1}] нельзя поставить в мир",
+        ["+ {0} (selected)"] = "+ {0} (выбранный)",
+        ["Type a name above, or select a base object in the Object Window and add it."] = "Введи название выше или выбери базовый объект в окне объектов и добавь его.",
+        ["Randomness"] = "Случайность",
+        ["Random turn"] = "Случайный поворот",
+        ["Random tilt"] = "Случайный наклон",
+        ["%.0f°"] = "%.0f°",
+        ["Sink into the ground"] = "Утопить в землю",
+        ["The object palette is empty: add objects to it first (World → Object palette)"] = "Палитра объектов пуста: сначала добавь в неё объекты (Мир → Палитра объектов)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

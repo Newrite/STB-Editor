@@ -60,7 +60,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.9.0 Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |
 | ✅ 0.20.0 (Show/Hide по типам, Current Cell Only; радиус света был; коллизия и изометрия — нет) Show/Hide по типам, Current Cell Only, световые и звуковые маркеры, радиус света, коллизия (F4), изометрия | CK: View | ★ | S |
 | Регионы (REGN): области на карте, генерация объектов, травы, погоды и звуков | CK: Region Editor | ★ | L |
-| Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
+| ✅ 0.34.0 Object Palette — «кисть» объектов со случайным поворотом и масштабом | CK: Object Palette | ★ | M |
 | Слои (Layers): группы рефов, скрыть/заморозить слой | CK: Layers | ★ | M |
 | ✅ 0.32.0 / 0.33.0 (карта высот загруженных ячеек: экспорт / импорт .r16; кисть цвета вершин) Ландшафт: vertex color, импорт/экспорт карты высот | CK: Heightmap Editor | ★ | M |
 | Предпросмотр погоды и времени суток в Render Window | CK: Bright Light / Sky | ★ | M |

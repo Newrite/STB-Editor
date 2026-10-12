@@ -11,7 +11,7 @@ using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
-internal enum EditTool { Select, Move, Rotate, Scale, Land, Navmesh }
+internal enum EditTool { Select, Move, Rotate, Scale, Land, Navmesh, Palette }
 
 /// <summary>
 /// Editing in the render window.
@@ -248,6 +248,7 @@ internal sealed partial class RenderWindow
         if (_tool == EditTool.Land) HandleLandscape(app, mouse, size, hovered, delta);
         if (_tool == EditTool.Navmesh) HandleNavmesh(app, mouse, size, hovered);
         else if (_renderer is not null) _renderer.NavSelection = null;
+        if (_tool == EditTool.Palette) HandlePalette(app, mouse, size, hovered);
 
         // ---- pick mode: the click goes to the waiting form field.
         if (_pickRequest is { } pickId && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt)
@@ -262,7 +263,7 @@ internal sealed partial class RenderWindow
         if (_pickRequest is not null && ImGui.IsKeyPressed(ImGuiKey.Escape, false)) _pickRequest = null;
 
         // ---- left button: select, and drag the selection.
-        if (_tool is not (EditTool.Land or EditTool.Navmesh) && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt && !gizmoBusy && _scene is not null)
+        if (_tool is not (EditTool.Land or EditTool.Navmesh or EditTool.Palette) && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt && !gizmoBusy && _scene is not null)
         {
             _pressed = true;
             _dragMouseStart = io.MousePos;

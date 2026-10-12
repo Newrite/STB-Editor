@@ -311,6 +311,7 @@ internal sealed class EditorApp : IDisposable
         RunBodyTintAutotest();
         RunHeightmapAutotest();
         RunVertexColorAutotest();
+        RunPaletteAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -362,6 +363,7 @@ internal sealed class EditorApp : IDisposable
         Texts.Draw(this);
         CompareFile.Draw(this);
         LeveledMergeWindow.Draw(this);
+        PaletteWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -532,6 +534,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.TextsWindow Texts { get; } = new();
     public Panels.CompareFileWindow CompareFile { get; } = new();
     public Panels.LeveledMergeWindow LeveledMergeWindow { get; } = new();
+    public Panels.PaletteWindow PaletteWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -571,6 +574,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-bodytint") || _tintStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-heightmap") || _heightStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1667,6 +1671,46 @@ internal sealed class EditorApp : IDisposable
         }
     }
 
+    private int _paletteStage, _paletteFrames;
+
+    /// <summary>
+    /// --autotest-palette &lt;dir&gt; (with --cell): a scratch active file in &lt;dir&gt;; three rocks in the palette, five objects
+    /// placed around the view's focus (random choice, turn, size); each one undo step; the window stays open. Nothing saved.
+    /// </summary>
+    private void RunPaletteAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-palette");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _paletteStage == 9) return;
+        var scene = RenderWindow.Scene;
+        switch (_paletteStage)
+        {
+            case 0 when scene is not null && ++_paletteFrames > 30:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorPaletteAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var rocks = session.Catalog.BySignature["STAT"].Where(r => r.EditorId?.StartsWith("RockPile", StringComparison.OrdinalIgnoreCase) == true).Take(3).Select(r => r.FormKey).ToList();
+                RenderWindow.Palette.Objects.AddRange(rocks);
+                RenderWindow.Palette.MaxTilt = 10;
+                PaletteWindow.Show();
+                RenderWindow.SetPaletteMode(true);
+                var before = Document.PendingCount;
+                var placed = new List<string>();
+                for (var i = 0; i < 5; i++)
+                {
+                    var point = scene.Focus + new System.Numerics.Vector3(i * 150 - 300, 200, 0);
+                    if (RenderWindow.PlacePaletteObject(this, point) is { } obj) placed.Add($"{obj.BaseEditorId} rot {obj.Rotation.Z * 180 / MathF.PI:0} scale {obj.Scale:0.00}");
+                }
+                Log.Info($"autotest-palette: palette [{string.Join(", ", rocks.Select(k => session.Catalog.Get(k)?.EditorId))}]; placed {placed.Count}: {string.Join("; ", placed)}; pending {before} -> {Document.PendingCount}, undo '{Document.History.UndoName}'");
+                _paletteStage = 1;
+                _paletteFrames = 0;
+                break;
+            }
+            case 1 when ++_paletteFrames > 20:
+                _paletteStage = 9;
+                break;
+        }
+    }
+
     private int _condStage, _condFrames;
     private FormKey _condPerk, _condOther;
 
@@ -2743,6 +2787,8 @@ internal sealed class EditorApp : IDisposable
             var ready = Session is not null;
             if (ImGui.MenuItem(T("New Interior Cell..."), (string?)null, false, ready)) _newRecordDialog.ShowInteriorCell();
             if (ImGui.MenuItem(T("New Worldspace..."), (string?)null, false, ready)) _newRecordDialog.ShowWorldspace();
+            ImGui.Separator();
+            if (ImGui.MenuItem(T("Object palette..."), (string?)null, false, ready)) PaletteWindow.Show();
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

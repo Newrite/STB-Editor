@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.33.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.34.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -62,6 +62,7 @@ v0.30.0: leveled list merge (`Core/LeveledMerge.cs`: per item, the last plugin t
 v0.31.0: NPC body tint check + fix (`Core/BodyTint.cs`: floor(127.5 + (skin - 127.5) x interpolation), matches all vanilla NPCs; CheckIssue.Fix "BodyTint").
 v0.32.0: heightmap export / import of the loaded cells (`Core/Heightmap.cs` .r16 + .json; `RenderWindow.ExportHeightmap` / `ImportHeightmap` as a LandStrokeCommand).
 v0.33.0: vertex colour brush (`LandBrushMode.Color`, `LandscapeBrush.Color`; LandscapeData.Colors → VCLR).
+v0.34.0: object palette (`Panels/RenderWindow.Palette.cs` EditTool.Palette, `Panels/PaletteWindow.cs`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

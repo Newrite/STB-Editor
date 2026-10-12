@@ -98,6 +98,7 @@ src\Editor.App\bin\Release\net10.0-windows\win-x64\STBEditor.exe
 | Маркеры / границы ячеек / каркас | M / B / Shift+W |
 | Поставить объект | перетащить из Object Window (список или плитки) или из Preview в Render Window |
 | Дублировать | Ctrl+D (копия на том же месте, сразу выделена — тащи) |
+| Палитра объектов | Мир → «Палитра объектов...»: клик ставит случайный объект набора со случайным поворотом и размером |
 | Копировать / вырезать / вставить | Ctrl+C / Ctrl+X / Ctrl+V — под курсор; Ctrl+Shift+V — на то же место (можно в другую ячейку). Копии сохраняют свойства рефа, кроме телепорта |
 
 Панель Render Window: режим (Lit / Unlit / Normals / Untextured), Wire, Markers, Disabled, Water, Land,

@@ -353,6 +353,7 @@ internal static partial class QuestEditor
             var alias = aliases[row];
             ImGui.TextColored(Theme.TextDim, TF($"Alias ID {alias.ID} · {(alias.Type == QuestAlias.TypeEnum.Location ? T("location alias") : T("reference alias"))}"));
             FormView.DrawObject(app, alias, ["Name"], ["Aliases", row], target);
+            DrawUseReport(app, quest, alias);
 
             // Fill type: the member present decides; a picked one whose field is still empty is remembered.
             var fill = FillOf(alias);

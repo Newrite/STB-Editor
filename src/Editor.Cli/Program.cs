@@ -1831,6 +1831,42 @@ switch (command)
         Console.WriteLine(failures == 0 ? "OK" : $"FAILED {failures}");
         break;
     }
+    case "aliastest":
+    {
+        // aliastest <game> [quest EditorID] [alias ID]: the alias Use Report over the quest, its scenes, packages and
+        // dialogue lines (default: the Fellglow guard of dunFellglow_ReleaseDogs, used by that scene).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var questKey = args.Length > 2 ? catalog.BySignature["QUST"].First(r => string.Equals(r.EditorId, args[2], StringComparison.OrdinalIgnoreCase)).FormKey
+            : lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(Mutagen.Bethesda.Plugins.FormKey.Factory("08A372:Skyrim.esm"))!.Quest.FormKey;
+        var quest = lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(questKey)!;
+        if (args.Length > 3 && args[3] == "all")
+        {
+            // Every alias of the quest: how often each kind of use shows up.
+            foreach (var a in quest.Aliases)
+            {
+                var found = StbEditor.Core.AliasUses.InQuest(quest, (int)a.ID).Select(u => u.Where).ToList();
+                Console.WriteLine($"  {a.ID} {a.Name}: {found.Count}  {string.Join(" | ", found.Take(4))}");
+            }
+            break;
+        }
+        var alias = args.Length > 3 ? int.Parse(args[3]) : 19;
+        Console.WriteLine($"{quest.EditorID}: alias {alias} {quest.Aliases.FirstOrDefault(a => a.ID == alias)?.Name}");
+        var clock = Stopwatch.StartNew();
+        var uses = StbEditor.Core.AliasUses.InQuest(quest, alias);
+        foreach (var r in catalog.BySignature["SCEN"])
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.ISceneGetter>(r.FormKey) is { } s && s.Quest.FormKeyNullable == quest.FormKey) uses.AddRange(StbEditor.Core.AliasUses.InScene(s, alias));
+        foreach (var r in catalog.BySignature["PACK"])
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IPackageGetter>(r.FormKey) is { } p && p.OwnerQuest.FormKeyNullable == quest.FormKey) uses.AddRange(StbEditor.Core.AliasUses.InPackage(p, alias));
+        var index = StbEditor.Data.DialogueIndex.Build(ws, catalog);
+        foreach (var topic in index.TopicsOf(quest.FormKey))
+            foreach (var (line, _) in StbEditor.Data.DialogueIndex.Lines(ws, topic))
+                uses.AddRange(StbEditor.Core.AliasUses.InLine(line, alias));
+        foreach (var use in uses) Console.WriteLine($"  {catalog.Get(use.Record)?.EditorId ?? ws.FormIdText(use.Record)} [{catalog.Get(use.Record)?.Signature ?? "INFO"}]: {use.Where}");
+        Console.WriteLine($"{uses.Count} uses in {clock.Elapsed.TotalSeconds:0.0} s");
+        break;
+    }
     case "members":
     {
         // members <game> <Mutagen getter type name, e.g. IPlacedObjectGetter>: the data members the field walk sees.

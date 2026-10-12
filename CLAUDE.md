@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.24.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.25.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -53,6 +53,7 @@ v0.23.0: scenes (`Core/Scenes.cs`: actors / phases / actions with vanilla defaul
 `Panels/SceneEditor.cs` timeline; dialogue actions reuse `DialogueEditor.DrawTopic`).
 v0.24.0: package / scene fragments (`Core/RecordFragments.cs`: slots Begin / End / Change / Phase{i}Start|End;
 `Panels/FragmentsPanel.cs` generic compile flow, `Update` each frame).
+v0.25.0: alias Use Report (`Core/AliasUses.cs`, `Panels/QuestEditor.AliasUses.cs`, background task per quest + alias).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -303,6 +303,7 @@ internal sealed class EditorApp : IDisposable
         RunQuestAutotest();
         RunPackageAutotest();
         RunSceneAutotest();
+        RunAliasUseAutotest();
         RunFragmentsAutotest();
         RunDialogueAutotest();
         RunCellPropsAutotest();
@@ -549,6 +550,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-quest") || _questStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-package") || _packStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-scene") || _sceneStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-aliasuse") || _aliasUseStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-dialogue") || _dialStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-cellprops") || _cellPropsStage == 9)
@@ -1326,6 +1328,49 @@ internal sealed class EditorApp : IDisposable
             }
             case 2 when ++_sceneFrames > 15:
                 _sceneStage = 9;
+                break;
+        }
+    }
+
+    private int _aliasUseStage, _aliasUseFrames;
+    private FormKey _aliasUseQuest;
+    private Task<List<StbEditor.Core.AliasUse>>? _aliasUseTask;
+
+    /// <summary>
+    /// --autotest-aliasuse [quest EditorID] [alias ID] (with --inspector-tab "Quest Aliases"): the quest's form with that alias
+    /// selected and its Use Report built (default MS13, alias 1 Arvel); the uses are logged; nothing changes.
+    /// </summary>
+    private void RunAliasUseAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-aliasuse");
+        if (arg < 0 || Session is not { } session || Loader is not null || _aliasUseStage == 9) return;
+        string? Arg(int i) => arg + i < cli.Length && !cli[arg + i].StartsWith("--", StringComparison.Ordinal) ? cli[arg + i] : null;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        switch (_aliasUseStage)
+        {
+            case 0:
+            {
+                var name = Arg(1) ?? "MS13";
+                _aliasUseQuest = session.Catalog.BySignature["QUST"].First(r => string.Equals(r.EditorId, name, StringComparison.OrdinalIgnoreCase)).FormKey;
+                var quest = lookup.Resolve<Mutagen.Bethesda.Skyrim.IQuestGetter>(_aliasUseQuest)!;
+                var alias = uint.Parse(Arg(2) ?? "1");
+                FormWindows.Open(_aliasUseQuest);
+                StbEditor.App.Panels.QuestEditor.SelectForTest(_aliasUseQuest, "Aliases", quest.Aliases.Select((a, i) => (a, i)).First(x => x.a.ID == alias).i);
+                _aliasUseTask = StbEditor.App.Panels.QuestEditor.UseReportForTest(this, quest, alias);
+                _aliasUseStage = 1;
+                break;
+            }
+            case 1 when _aliasUseTask is { IsCompleted: true } task:
+            {
+                if (task.IsCompletedSuccessfully)
+                    foreach (var use in task.Result) Log.Info($"autotest-aliasuse: {session.Catalog.Get(use.Record)?.EditorId ?? use.Record.ToString()}: {use.Where}");
+                Log.Info(task.IsCompletedSuccessfully ? $"autotest-aliasuse: {task.Result.Count} uses" : $"autotest-aliasuse: FAILED {task.Exception?.GetBaseException().Message}");
+                _aliasUseStage = 2;
+                break;
+            }
+            case 2 when ++_aliasUseFrames > 15:
+                _aliasUseStage = 9;
                 break;
         }
     }

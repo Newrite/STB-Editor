@@ -1749,6 +1749,7 @@ internal sealed class EditorApp : IDisposable
                 if (RenderWindow.ScreenPointForTest(_placed!) is not { } point) { Log.Error("autotest-place: object not on screen"); _placeStage = 3; break; }
                 _placeMouse = point;
                 _placeStart = (_placed!.Position, _placed.Rotation.Z);
+                RenderWindow.ToolForTest = EditTool.Move; // as in the report: Move tool, right button
                 Log.Info($"autotest-place: right button on the object at {point}; a click there picks {RenderWindow.PickOnScreenForTest(_placed)?.BaseEditorId ?? "nothing"}");
                 StbEditor.App.Ui.ImGuiLayer.TestMouseButton = 1;
                 StbEditor.App.Ui.ImGuiLayer.TestMouse = (point, true);
@@ -1757,12 +1758,14 @@ internal sealed class EditorApp : IDisposable
                 break;
             }
             case 11:
-                if (++_placeFrames <= 240)
+                if (++_placeFrames <= 300)
                 {
-                    // 720 px: once round (0.5° a pixel).
-                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(_placeFrames * 3, 0), true);
+                    // 720 px: once round (0.5° a pixel), held still at 180° for 60 frames on the way (a turn held past
+                    // 60° used to grow its own rounding error every frame until the object flew away).
+                    var pixels = _placeFrames <= 120 ? _placeFrames * 3 : _placeFrames <= 180 ? 360 : (_placeFrames - 60) * 3;
+                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(pixels, 0), true);
                     if (_placeFrames % 30 == 0)
-                        Log.Info($"autotest-place: right-drag +{_placeFrames * 3} px ({RenderWindow.DragStateForTest}): position {_placed!.Position}, rotation {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg");
+                        Log.Info($"autotest-place: right-drag +{pixels} px ({RenderWindow.DragStateForTest}): moved {System.Numerics.Vector3.Distance(_placeStart.Position, _placed!.Position):0.###}, rotation {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg");
                     break;
                 }
                 StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(720, 0), false);
@@ -1775,6 +1778,7 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-place: right-drag with 15° snap: position {_placeStart.Position} -> {_placed!.Position}, rotation {_placeStart.Z * 180 / MathF.PI:0.#} -> {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg, undo '{Document.History.UndoName}'");
                 RenderWindow.SetAngleSnapForTest(false, 15f);
                 RenderWindow.LookFromSideForTest(_placed, 300, 12);
+                RenderWindow.ToolForTest = EditTool.Rotate; // left drags: first with Rotate, then with Move
                 _placeStage = 13;
                 _placeFrames = 0;
                 break;

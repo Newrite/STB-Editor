@@ -520,14 +520,18 @@ internal sealed partial class RenderWindow
     /// <summary>Rotates the selection (from its drag-start state) about a world axis through its centre.</summary>
     private void RotateSelection(Vector3 axis, float radians)
     {
-        var pivot = _dragBefore.Count == 1 ? _dragBefore.Keys.First().Position : Center(_dragBefore.Values.Select(s => s.Position));
+        // The pivot comes from the drag-start states. It was the object's live position: each frame turned the start
+        // state about where the last frame had left it, so a rounding error came back rotated and past 60° grew every
+        // frame (doubling at 180°) — the object flew away while the mouse was held.
+        var pivot = Center(_dragBefore.Values.Select(s => s.Position));
         // Clockwise seen from the positive axis, like a heading turning to the right.
-        var rotation = Matrix4x4.CreateTranslation(-pivot) * Matrix4x4.CreateFromAxisAngle(axis, -radians) * Matrix4x4.CreateTranslation(pivot);
+        var turn = Matrix4x4.CreateFromAxisAngle(axis, -radians);
 
         foreach (var (obj, before) in _dragBefore)
         {
-            var world = SceneBuilder.ReferenceTransform(before.Position, before.Rotation, before.Scale).ToMatrix() * rotation;
-            var (position, euler, _) = TransformMath.Decompose(world);
+            // Orientation and offset from the pivot turned separately: no big world coordinates cancelling out.
+            var (_, euler, _) = TransformMath.Decompose(SceneBuilder.ReferenceTransform(Vector3.Zero, before.Rotation, before.Scale).ToMatrix() * turn);
+            var position = pivot + Vector3.Transform(before.Position - pivot, turn);
             obj.Apply(before with { Position = position, Rotation = euler });
         }
     }

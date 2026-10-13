@@ -29,6 +29,43 @@ if (command == "mathtest")
     }
     Console.WriteLine($"decompose round trip: worst error {worst:E2}");
 
+    // A right-button turn held past 60°, from a reported case (Embershard Mine, snap 15°): the pivot must be the
+    // drag-start position. Turning about the live position fed each frame's rounding error back, and it grew.
+    foreach (var live in new[] { true, false })
+    {
+        var start = new System.Numerics.Vector3(-3056.295f, 3423.1162f, 8663.646f);
+        var current = start;
+        var currentRot = System.Numerics.Vector3.Zero;
+        var drift = 0f;
+        var away = -1;
+        for (var frame = 0; frame < 420; frame++)
+        {
+            var mouse = Math.Min(frame, 360) * 1f; // 0.5° a pixel: up to 180°, then held
+            var degrees = MathF.Round(mouse * 0.5f / 15f) * 15f;
+            var radians = degrees * MathF.PI / 180f;
+            var turn = System.Numerics.Matrix4x4.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, -radians);
+            if (live)
+            {
+                var livePivot = current;
+                var rotation = System.Numerics.Matrix4x4.CreateTranslation(-livePivot) * turn * System.Numerics.Matrix4x4.CreateTranslation(livePivot);
+                var world = SceneBuilder.ReferenceTransform(start, System.Numerics.Vector3.Zero, 1f).ToMatrix() * rotation;
+                (current, currentRot, _) = TransformMath.Decompose(world);
+            }
+            else
+            {
+                var (_, euler, _) = TransformMath.Decompose(SceneBuilder.ReferenceTransform(System.Numerics.Vector3.Zero, System.Numerics.Vector3.Zero, 1f).ToMatrix() * turn);
+                current = start + System.Numerics.Vector3.Transform(start - start, turn);
+                currentRot = euler;
+            }
+            var d = System.Numerics.Vector3.Distance(current, start);
+            if (!float.IsFinite(d)) d = float.PositiveInfinity;
+            if (d > 100 && away < 0) away = frame;
+            drift = Math.Max(drift, d);
+        }
+        Console.WriteLine($"turn held at 180° for 60 frames, pivot {(live ? "live position (old)" : "drag start")}: worst drift {(float.IsInfinity(drift) ? "infinite" : drift.ToString("0.###"))} units" +
+            (away >= 0 ? $", over 100 units at frame {away} ({MathF.Round(Math.Min(away, 360) * 0.5f / 15f) * 15f}°)" : "") + (live ? "" : $", rotation {currentRot.Z * 180 / MathF.PI:0.#}°"));
+    }
+
     // Orbit about a pivot beside the camera (not in front of it): it must turn, not jump.
     var cam = new Camera { Position = new System.Numerics.Vector3(0, 0, 0), Yaw = 0, Pitch = 0 };
     var pivot = new System.Numerics.Vector3(500, 0, 0);

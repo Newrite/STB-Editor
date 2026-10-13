@@ -58,7 +58,8 @@ internal sealed class ConflictScan
             var conflict = false;
             try
             {
-                var versions = CompareWindows.Versions(app, key);
+                // ModGroups: a group's own versions but its last are left out.
+                var versions = StbEditor.Core.ModGroups.Collapse(CompareWindows.Versions(app, key), v => v.Plugin, app.ActiveModGroups);
                 if (versions.Count >= 3)
                 {
                     var records = versions.Select(v => (object?)v.Record).Reverse().ToList();

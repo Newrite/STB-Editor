@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -322,6 +322,7 @@ internal sealed class EditorApp : IDisposable
         RunSkyAutotest();
         RunRegionAutotest();
         RunScriptAutotest();
+        RunExportAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -383,6 +384,8 @@ internal sealed class EditorApp : IDisposable
         VoiceFilesWindow.Draw(this);
         RegionsWindow.Draw(this);
         ScriptsWindow.Draw(this);
+        ModGroupsWindow.Draw(this);
+        ExportDataWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -560,6 +563,14 @@ internal sealed class EditorApp : IDisposable
     public Panels.VoiceFilesWindow VoiceFilesWindow { get; } = new();
     public Panels.RegionsWindow RegionsWindow { get; } = new();
     public Panels.ScriptsWindow ScriptsWindow { get; } = new();
+    public Panels.ModGroupsWindow ModGroupsWindow { get; } = new();
+    public Panels.ExportDataWindow ExportDataWindow { get; } = new();
+
+    /// <summary>xEdit's ModGroups (Documents\STB Editor\modgroups.json), edited in File → ModGroups.</summary>
+    public List<StbEditor.Core.ModGroup> ModGroupList { get; } = StbEditor.Core.ModGroups.Load(Panels.ModGroupsWindow.FilePath);
+
+    /// <summary>The groups whose plugins are all loaded.</summary>
+    public IReadOnlyList<StbEditor.Core.ModGroup> ActiveModGroups => Session is { } s ? StbEditor.Core.ModGroups.Active(ModGroupList, s.Workspace.Active.Select(p => p.Name)) : [];
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -610,6 +621,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-sky") || _skyStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-region") || _regionStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-script") || _scriptStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-export") || _exportStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1812,6 +1824,40 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
                 break;
+        }
+    }
+
+    private int _exportStage;
+
+    /// <summary>
+    /// --autotest-export &lt;dir&gt; [plugin] (default Dawnguard.esm): File → Export data with every kind into &lt;dir&gt;; the files
+    /// and their rows logged; then the ModGroups collapse checked on made-up versions.
+    /// </summary>
+    private void RunExportAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-export");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is null || Loader is not null || _exportStage == 9) return;
+        switch (_exportStage)
+        {
+            case 0:
+            {
+                var plugin = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "Dawnguard.esm";
+                ExportDataWindow.Show(this);
+                ExportDataWindow.Start(this, plugin, StbEditor.Core.DataExport.Kinds.ToHashSet(), cli[arg + 1]);
+                _exportStage = 1;
+                break;
+            }
+            case 1 when !ExportDataWindow.IsBusy:
+            {
+                var files = Directory.GetFiles(cli[arg + 1]).Select(f => $"{Path.GetFileName(f)} {File.ReadLines(f).Count() - 1}");
+                Log.Info($"autotest-export: {ExportDataWindow.Result}; {string.Join(", ", files)}");
+                var group = new StbEditor.Core.ModGroup("test", ["B.esp", "C.esp"]);
+                var collapsed = StbEditor.Core.ModGroups.Collapse(["C.esp", "B.esp", "A.esm"], v => v, [group]);
+                Log.Info($"autotest-export: ModGroups C, B, A with group [B, C] -> {string.Join(", ", collapsed)}");
+                _exportStage = 9;
+                break;
+            }
         }
     }
 
@@ -3501,6 +3547,8 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
             if (ImGui.MenuItem(T("Texts for translation..."), (string?)null, false, Session is not null)) Texts.Show(this);
             if (ImGui.MenuItem(T("Scripts..."), (string?)null, false, Session is not null)) ScriptsWindow.Show();
+            if (ImGui.MenuItem(T("Export data..."), (string?)null, false, Session is not null)) ExportDataWindow.Show(this);
+            if (ImGui.MenuItem(T("ModGroups..."), (string?)null, false, Session is not null)) ModGroupsWindow.Show();
             if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
             if (ImGui.MenuItem(T("Merge leveled lists..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));

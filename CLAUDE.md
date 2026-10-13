@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.46.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.47.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -104,6 +104,8 @@ P2Float in world units, one CommitEdit per change; `Panels/RegionsWindow.cs`).
 v0.46.0: user scripts (`Services/ScriptHost.cs`: Roslyn CSharpScript with `ScriptGlobals` — must stay public — Records<T> via
 `RecordLookup.SignatureOf`, edits collected as copies and committed on the UI thread after RecordRoundTrip; `Panels/ScriptsWindow.cs`,
 scripts in Documents\STB Editor\Scripts).
+v0.47.0: export data (`Core/DataExport.cs`, kinds from `TextSearch.DisplayTexts` + the plugin's GMSTs) and ModGroups (`ModGroups.Collapse`
+on the winner-first versions in `Ui/ConflictScan`; groups count only when all their plugins are loaded).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

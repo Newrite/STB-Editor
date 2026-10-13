@@ -26,6 +26,9 @@ internal sealed class ObjectWindow : Panel
     private string? _plugin;
     private string _pluginFilter = string.Empty;
     private readonly ConflictScan _scan = new();
+
+    /// <summary>ModGroups changed: conflicts are found again.</summary>
+    public void ResetConflicts() => _scan.Reset();
     private int _scanVersion = -1;
 
     /// <summary>The conflict filter is still checking records (keeps frames coming).</summary>

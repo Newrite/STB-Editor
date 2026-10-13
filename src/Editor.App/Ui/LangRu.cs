@@ -1543,6 +1543,28 @@ internal static class LangRu
         ["A new region goes into the active file — choose it first."] = "Новый регион записывается в активный файл — сначала выберите его.",
         ["New region {0}"] = "Новый регион {0}",
 
+        // ---- scripts
+        ["Scripts..."] = "Скрипты…",
+        ["running {0}…"] = "выполняется {0}…",
+        ["Error: {0}"] = "Ошибка: {0}",
+        ["Script {0}"] = "Скрипт {0}",
+        ["Done in {0:0.0} s: {1} record(s) changed"] = "Готово за {0:0.0} с: изменено записей: {1}",
+        [" (one Ctrl+Z: \"Script {0}\")"] = " (один Ctrl+Z: «Скрипт {0}»)",
+        ["; {0} edit(s) refused: the record would not save correctly (see the log)"] = "; отклонено правок: {0} — запись не сохранилась бы правильно (см. лог)",
+        ["Scripts"] = "Скрипты",
+        ["new script name"] = "имя нового скрипта",
+        ["New"] = "Новый",
+        ["// Records<INpcGetter>(), Get(key), Find(\"EditorID\"), Selected, Edit<Npc>(record, n => ...), Print(...)"] = "// Records<INpcGetter>(), Get(key), Find(\"EditorID\"), Selected, Edit<Npc>(record, n => ...), Print(...)",
+        ["Open folder"] = "Открыть папку",
+        ["(no script)"] = "(нет скрипта)",
+        ["Compiles."] = "Компилируется.",
+        ["Run"] = "Запустить",
+        ["Stop"] = "Остановить",
+        ["Selected: {0}"] = "Выбрано: {0}",
+        ["; edits go to {0}"] = "; правки идут в {0}",
+        ["; no active file: choose one before saving"] = "; активного файла нет — выберите перед сохранением",
+        ["C# script: Records<IWeaponGetter>(), Get(key), Get<T>(key), Find(\"EditorID or FormID\"), Selected, Plugins, Edit<Weapon>(record, w => ...), Print(x), Name(record), Cancel. The last expression is printed."] = "Скрипт C#: Records<IWeaponGetter>(), Get(key), Get<T>(key), Find(\"EditorID или FormID\"), Selected, Plugins, Edit<Weapon>(record, w => ...), Print(x), Name(record), Cancel. Последнее выражение выводится.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

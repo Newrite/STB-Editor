@@ -21,6 +21,10 @@ public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
     /// <summary>Signature → Mutagen getter interface (e.g. "STAT" → IStaticGetter).</summary>
     public static Type? GetterType(string signature) => GetterTypes.Value.GetValueOrDefault(signature);
 
+    /// <summary>Getter interface (or record class) → signature (e.g. IWeaponGetter or Weapon → "WEAP"); null for non-record types.</summary>
+    public static string? SignatureOf(Type type) =>
+        GetterTypes.Value.FirstOrDefault(p => p.Value == type).Key ?? GetterTypes.Value.FirstOrDefault(p => p.Value.IsAssignableFrom(type)).Key;
+
     private static Dictionary<string, Type> BuildGetterTypes()
     {
         var map = new Dictionary<string, Type>();

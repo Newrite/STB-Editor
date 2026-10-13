@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -321,6 +321,7 @@ internal sealed class EditorApp : IDisposable
         RunVoiceAutotest();
         RunSkyAutotest();
         RunRegionAutotest();
+        RunScriptAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -381,6 +382,7 @@ internal sealed class EditorApp : IDisposable
         IdleTreeWindow.Draw(this);
         VoiceFilesWindow.Draw(this);
         RegionsWindow.Draw(this);
+        ScriptsWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -557,6 +559,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.IdleTreeWindow IdleTreeWindow { get; } = new();
     public Panels.VoiceFilesWindow VoiceFilesWindow { get; } = new();
     public Panels.RegionsWindow RegionsWindow { get; } = new();
+    public Panels.ScriptsWindow ScriptsWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -606,6 +609,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-voice") || _voiceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-sky") || _skyStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-region") || _regionStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-script") || _scriptStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1807,6 +1811,39 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _scriptStage;
+
+    /// <summary>
+    /// --autotest-script: File → Scripts; a script that lists NPCs without a voice and raises IronSword's damage by 1 run as the
+    /// Run button does; its output, the sword's damage before and after, then Ctrl+Z. Nothing is saved.
+    /// </summary>
+    private void RunScriptAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-script") || Session is null || Loader is not null || _scriptStage == 9) return;
+        int? Damage() => (StbEditor.Core.OverrideEditing.Override(Document, Mutagen.Bethesda.Plugins.FormKey.Factory("012EB7:Skyrim.esm"))?.Record as Mutagen.Bethesda.Skyrim.IWeaponGetter)?.BasicStats?.Damage;
+        switch (_scriptStage)
+        {
+            case 0:
+                // Not Show(): that writes the example scripts into Documents.
+                ScriptsWindow.RunForTest(this, """
+                    var silent = Records<INpcGetter>().Count(n => n.Voice.IsNull && n.Template.IsNull);
+                    Print($"NPCs without a voice: {silent}");
+                    var sword = (IWeaponGetter)Find("IronSword")!;
+                    Print($"IronSword damage {sword.BasicStats!.Damage}");
+                    Edit<Weapon>(sword, w => w.BasicStats!.Damage += 1);
+                    Get<IWeaponGetter>(sword.FormKey)!.BasicStats!.Damage
+                    """, "autotest");
+                _scriptStage = 1;
+                break;
+            case 1 when !ScriptsWindow.IsBusy:
+                Log.Info($"autotest-script: output [{ScriptsWindow.Output.Replace('\n', '|')}]; IronSword override damage {Damage()}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                Document.Undo();
+                Log.Info($"autotest-script: after Ctrl+Z override {Damage()?.ToString() ?? "none"}, pending {Document.PendingCount}");
+                _scriptStage = 9;
                 break;
         }
     }
@@ -3463,6 +3500,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Pack into BSA..."), (string?)null, false, Session is not null)) Archive.Show();
             if (ImGui.MenuItem(T("Compact FormIDs..."), (string?)null, false, Session is not null)) Compact.Show();
             if (ImGui.MenuItem(T("Texts for translation..."), (string?)null, false, Session is not null)) Texts.Show(this);
+            if (ImGui.MenuItem(T("Scripts..."), (string?)null, false, Session is not null)) ScriptsWindow.Show();
             if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
             if (ImGui.MenuItem(T("Merge leveled lists..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));

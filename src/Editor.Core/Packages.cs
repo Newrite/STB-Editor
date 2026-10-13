@@ -1,4 +1,5 @@
 using Mutagen.Bethesda.Skyrim;
+using Noggog;
 
 namespace StbEditor.Core;
 
@@ -100,5 +101,79 @@ public static class Packages
         }
         while (next < branches.Count) Walk(0);
         return nodes;
+    }
+
+    /// <summary>Where a branch's sub-tree ends in the flat list (the index after its last descendant).</summary>
+    public static int SubtreeEnd(IReadOnlyList<IPackageBranchGetter> branches, int index)
+    {
+        var next = index;
+        void Walk()
+        {
+            var branch = branches[next++];
+            var children = branch.Root?.BranchCount ?? 0;
+            for (var i = 0; i < children && next < branches.Count; i++) Walk();
+        }
+        Walk();
+        return next;
+    }
+
+    /// <summary>The branch whose sub-trees include <paramref name="index"/> directly, or null for a top-level branch.</summary>
+    public static int? ParentOf(IReadOnlyList<IPackageBranchGetter> branches, int index)
+    {
+        var nodes = Tree(branches);
+        var at = nodes.FindIndex(n => n.Index == index);
+        if (at < 0 || nodes[at].Depth == 0) return null;
+        for (var i = at - 1; i >= 0; i--)
+            if (nodes[i].Depth == nodes[at].Depth - 1) return nodes[i].Index;
+        return null;
+    }
+
+    /// <summary>A new branch: a procedure (leaf) or, with <paramref name="composite"/>, a node with sub-branches (Sequence, Stacked…).</summary>
+    public static PackageBranch NewBranch(string type, bool composite) => composite
+        ? new PackageBranch { BranchType = type, Root = new PackageRoot { BranchCount = 0, Flags = 0 } }
+        : new PackageBranch { BranchType = "Procedure", ProcedureType = type };
+
+    /// <summary>
+    /// Adds <paramref name="branch"/> as the last sub-branch of <paramref name="parent"/> (which must have a root), or — with
+    /// <paramref name="asChild"/> false — right after <paramref name="parent"/>'s sub-tree as its sibling. Returns the new index.
+    /// </summary>
+    public static int Insert(ExtendedList<PackageBranch> tree, int at, PackageBranch branch, bool asChild)
+    {
+        if (tree.Count == 0) { tree.Add(branch); return 0; }
+        var end = SubtreeEnd(tree, at);
+        if (asChild)
+        {
+            if (tree[at].Root is not { } root) throw new InvalidOperationException("a procedure has no sub-branches");
+            root.BranchCount++;
+        }
+        else if (ParentOf(tree, at) is { } parent) tree[parent].Root!.BranchCount++;
+        tree.Insert(end, branch);
+        return end;
+    }
+
+    /// <summary>Removes a branch with its sub-tree.</summary>
+    public static void Remove(ExtendedList<PackageBranch> tree, int at)
+    {
+        var parent = ParentOf(tree, at);
+        var end = SubtreeEnd(tree, at);
+        tree.RemoveRange(at, end - at);
+        if (parent is { } p && tree[p].Root is { } root) root.BranchCount = Math.Max(0, root.BranchCount - 1);
+    }
+
+    /// <summary>Swaps a branch's sub-tree with the next (down) or previous (up) sibling's; returns its new index, or null.</summary>
+    public static int? Move(ExtendedList<PackageBranch> tree, int at, bool down)
+    {
+        var parent = ParentOf(tree, at);
+        var siblings = Tree(tree).Where(n => ParentOf(tree, n.Index) == parent && (parent is null ? n.Depth == 0 : true)).Select(n => n.Index).ToList();
+        var i = siblings.IndexOf(at);
+        var j = down ? i + 1 : i - 1;
+        if (i < 0 || j < 0 || j >= siblings.Count) return null;
+        var (first, second) = down ? (at, siblings[j]) : (siblings[j], at);
+        var firstBlock = tree.Skip(first).Take(SubtreeEnd(tree, first) - first).ToList();
+        var secondEnd = SubtreeEnd(tree, second);
+        var secondBlock = tree.Skip(second).Take(secondEnd - second).ToList();
+        tree.RemoveRange(first, secondEnd - first);
+        tree.InsertRange(first, [.. secondBlock, .. firstBlock]);
+        return down ? first + secondBlock.Count : first;
     }
 }

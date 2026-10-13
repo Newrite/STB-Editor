@@ -1672,6 +1672,25 @@ internal static class LangRu
         ["Outfits"] = "Наряды",
         ["Form lists"] = "Списки форм",
 
+        // ---- package tree
+        ["Branch data input"] = "Входные данные ветки",
+        ["Remove branch data input"] = "Удаление входных данных ветки",
+        ["Add branch data input"] = "Новые входные данные ветки",
+        ["+ data input"] = "+ входные данные",
+        ["  (with sub-branches)"] = "  (с подветками)",
+        ["Add branch"] = "Новая ветка",
+        ["+ first branch"] = "+ первая ветка",
+        ["+ inside"] = "+ внутрь",
+        ["+ after"] = "+ следом",
+        ["As the last sub-branch of the selected one"] = "Последней подветкой выбранной",
+        ["A procedure has no sub-branches: select a Sequence, Stacked… branch"] = "У процедуры нет подветок: выберите ветку Sequence, Stacked…",
+        ["Next to the selected branch, after its sub-branches"] = "Рядом с выбранной веткой, после её подветок",
+        ["Up"] = "Выше",
+        ["Move branch"] = "Перемещение ветки",
+        ["Down"] = "Ниже",
+        ["Delete branch"] = "Удаление ветки",
+        ["The selected branch with its sub-branches"] = "Выбранная ветка вместе с подветками",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

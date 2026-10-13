@@ -1296,6 +1296,11 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-package: {steps} undo steps: {Summary(Pack()!)}");
                 for (var i = 0; i < steps; i++) Document.Redo();
                 Log.Info($"autotest-package: redone: {Summary(Pack()!)}");
+                // The procedure tree edited as its buttons do: a root, a branch inside, one after, moved, deleted.
+                var tree = StbEditor.App.Panels.PackageEditor.EditTreeForTest(this, Pack()!, target);
+                Log.Info($"autotest-package: tree {string.Join("  ->  ", tree)}");
+                var treeBack = StbEditor.Core.RecordRoundTrip.Read(Pack()!, session.Game.Release, System.Text.Encoding.UTF8) as Mutagen.Bethesda.Skyrim.IPackageGetter;
+                Log.Info(treeBack is null ? $"autotest-package: tree round trip FAILED: {StbEditor.Core.RecordRoundTrip.LastError}" : $"autotest-package: tree round trip: {treeBack.ProcedureTree.Count} branch(es)");
                 if (arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal)
                     && session.Catalog.BySignature["PACK"].FirstOrDefault(r => string.Equals(r.EditorId, cli[arg + 2], StringComparison.OrdinalIgnoreCase)) is { } shown)
                 {

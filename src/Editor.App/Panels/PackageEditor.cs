@@ -386,13 +386,14 @@ internal static class PackageEditor
             ImGui.TextColored(Theme.TextDim, TF($"The procedure tree of the template {template.EditorID} (edit it in the template)."));
         }
         var nodes = Packages.Tree(owner.ProcedureTree);
+        var row = Math.Clamp(SelectedBranch.GetValueOrDefault(package.FormKey), 0, Math.Max(0, nodes.Count - 1));
+        if (target is not null) DrawTreeTools(app, package, target, nodes, nodes.Count > 0 ? nodes[row] : null);
         if (nodes.Count == 0)
         {
             ImGui.TextColored(Theme.TextDim, T("No procedure tree."));
             return;
         }
         var names = Packages.InputNames(owner, owner == package ? template : null);
-        var row = Math.Clamp(SelectedBranch.GetValueOrDefault(package.FormKey), 0, nodes.Count - 1);
         QuestEditor.Split("##tree", () =>
         {
             for (var i = 0; i < nodes.Count; i++)
@@ -415,14 +416,133 @@ internal static class PackageEditor
                 ImGui.TextColored(Theme.TextDim, TF($"Sub-branches: {root.BranchCount}"));
                 QuestEditor.FlagBoxes(target, T("Root flags"), [.. path, "Root", "Flags"], root.Flags, typeof(PackageRoot.Flag), 2);
             }
-            if (branch.DataInputIndices.Count > 0)
+            if (branch.DataInputIndices.Count > 0 || (target is not null && branch.Root is null))
             {
                 ImGui.SeparatorText(T("Data inputs used"));
-                foreach (var index in branch.DataInputIndices)
-                    ImGui.BulletText(index == 255 ? T("(none)") : names.TryGetValue(index, out var name) ? $"{name} ({index})" : $"#{index}");
+                for (var k = 0; k < branch.DataInputIndices.Count; k++)
+                {
+                    var index = branch.DataInputIndices[k];
+                    var text = index == 255 ? T("(none)") : names.TryGetValue(index, out var name) ? $"{name} ({index})" : $"#{index}";
+                    if (target is null) { ImGui.BulletText(text); continue; }
+                    ImGui.PushID(k);
+                    ImGui.SetNextItemWidth(ImGui.GetFontSize() * 14);
+                    if (ImGui.BeginCombo("##input", text))
+                    {
+                        foreach (var (key, label) in names.OrderBy(n => n.Key))
+                            if (ImGui.Selectable($"{label} ({key})", key == index))
+                            {
+                                var slot = k;
+                                var value = (byte)key;
+                                target.Apply(T("Branch data input"), r => ((Package)r).ProcedureTree[node.Index].DataInputIndices[slot] = value);
+                            }
+                        ImGui.EndCombo();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton("x"))
+                    {
+                        var slot = k;
+                        target.Apply(T("Remove branch data input"), r => ((Package)r).ProcedureTree[node.Index].DataInputIndices.RemoveAt(slot));
+                    }
+                    ImGui.PopID();
+                }
+                if (target is not null && branch.Root is null && names.Count > 0 && ImGui.SmallButton(T("+ data input")))
+                {
+                    var first = (byte)names.Keys.Min();
+                    target.Apply(T("Add branch data input"), r => ((Package)r).ProcedureTree[node.Index].DataInputIndices.Add(first));
+                }
             }
             FormView.DrawObject(app, branch, ["Conditions"], path, target);
         });
+    }
+
+    private static int _newType;
+    private static string[]? _procedureTypes, _compositeTypes;
+
+    /// <summary>Procedure and composite branch types the packages of the load order use (gathered once), for new branches.</summary>
+    private static (string[] Procedures, string[] Composites) BranchTypes(EditorApp app)
+    {
+        if (_procedureTypes is not null) return (_procedureTypes, _compositeTypes!);
+        var lookup = new StbEditor.Data.RecordLookup(app.Session!.Workspace, app.Session.Catalog);
+        var procedures = new HashSet<string>(StringComparer.Ordinal);
+        var composites = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var record in app.Session.Catalog.BySignature.GetValueOrDefault("PACK") ?? [])
+            if (lookup.Resolve<IPackageGetter>(record.FormKey) is { } p)
+                foreach (var b in p.ProcedureTree)
+                {
+                    if (b.Root is not null && !string.IsNullOrEmpty(b.BranchType)) composites.Add(b.BranchType);
+                    else if (!string.IsNullOrEmpty(b.ProcedureType)) procedures.Add(b.ProcedureType);
+                }
+        _procedureTypes = [.. procedures.Order(StringComparer.OrdinalIgnoreCase)];
+        _compositeTypes = [.. composites.Order(StringComparer.OrdinalIgnoreCase)];
+        return (_procedureTypes, _compositeTypes);
+    }
+
+    /// <summary>Adding, removing and moving branches of the procedure tree (one undo step each).</summary>
+    private static void DrawTreeTools(EditorApp app, IPackageGetter package, EditTarget target, List<Packages.Node> nodes, Packages.Node? selected)
+    {
+        var (procedures, composites) = BranchTypes(app);
+        var all = composites.Select(c => (Name: c, Composite: true)).Concat(procedures.Select(p => (Name: p, Composite: false))).ToList();
+        if (all.Count == 0) return;
+        _newType = Math.Clamp(_newType, 0, all.Count - 1);
+        ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
+        if (ImGui.BeginCombo("##newbranch", all[_newType].Name + (all[_newType].Composite ? " +" : ""), ImGuiComboFlags.HeightLarge))
+        {
+            for (var i = 0; i < all.Count; i++)
+            {
+                if (i == composites.Length && i > 0) ImGui.Separator();
+                if (ImGui.Selectable(all[i].Name + (all[i].Composite ? T("  (with sub-branches)") : ""), i == _newType)) _newType = i;
+            }
+            ImGui.EndCombo();
+        }
+        var (type, composite) = all[_newType];
+        void Do(string name, Func<Noggog.ExtendedList<PackageBranch>, int?> change)
+        {
+            int? select = null;
+            target.Apply(name, r => select = change(((Package)r).ProcedureTree));
+            var now = app.Document.Override(package.FormKey)?.Record as IPackageGetter ?? package;
+            if (select is { } at) SelectedBranch[package.FormKey] = Math.Max(0, Packages.Tree(now.ProcedureTree).FindIndex(n => n.Index == at));
+        }
+        ImGui.SameLine();
+        if (nodes.Count == 0)
+        {
+            if (ImGui.SmallButton(T("+ first branch"))) Do(T("Add branch"), tree => Packages.Insert(tree, 0, Packages.NewBranch(type, composite), false));
+            return;
+        }
+        var index = selected!.Index;
+        var canChild = selected.Branch.Root is not null;
+        ImGui.BeginDisabled(!canChild);
+        if (ImGui.SmallButton(T("+ inside"))) Do(T("Add branch"), tree => Packages.Insert(tree, index, Packages.NewBranch(type, composite), true));
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(canChild ? T("As the last sub-branch of the selected one") : T("A procedure has no sub-branches: select a Sequence, Stacked… branch"));
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("+ after"))) Do(T("Add branch"), tree => Packages.Insert(tree, index, Packages.NewBranch(type, composite), false));
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Next to the selected branch, after its sub-branches"));
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("Up"))) Do(T("Move branch"), tree => Packages.Move(tree, index, false));
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("Down"))) Do(T("Move branch"), tree => Packages.Move(tree, index, true));
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("Delete"))) Do(T("Delete branch"), tree => { Packages.Remove(tree, index); return Math.Max(0, index - 1); });
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The selected branch with its sub-branches"));
+    }
+
+    /// <summary>Autotests: tree edits as the buttons make them; returns the tree as text after each step.</summary>
+    public static List<string> EditTreeForTest(EditorApp app, IPackageGetter package, EditTarget target)
+    {
+        string Text() => string.Join(" | ", Packages.Tree((app.Document.Override(package.FormKey)?.Record as IPackageGetter ?? package).ProcedureTree)
+            .Select(n => new string('.', n.Depth) + BranchText(n.Branch) + (n.Branch.Root is { } r ? $"[{r.BranchCount}]" : "")));
+        var steps = new List<string> { Text() };
+        target.Apply("test root", r => { if (((Package)r).ProcedureTree.Count == 0) Packages.Insert(((Package)r).ProcedureTree, 0, Packages.NewBranch("Sequence", true), false); });
+        steps.Add(Text());
+        target.Apply("test add", r => Packages.Insert(((Package)r).ProcedureTree, 0, Packages.NewBranch("Wander", false), true));
+        steps.Add(Text());
+        target.Apply("test add after", r => Packages.Insert(((Package)r).ProcedureTree, 1, Packages.NewBranch("Sit", false), false));
+        steps.Add(Text());
+        target.Apply("test move", r => Packages.Move(((Package)r).ProcedureTree, 1, true));
+        steps.Add(Text());
+        target.Apply("test delete", r => Packages.Remove(((Package)r).ProcedureTree, 1));
+        steps.Add(Text());
+        return steps;
     }
 
     private static string BranchText(IPackageBranchGetter branch) =>

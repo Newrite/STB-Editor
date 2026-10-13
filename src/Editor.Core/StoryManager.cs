@@ -1,4 +1,5 @@
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using StbEditor.Data;
 using StbEditor.Data.Catalog;
@@ -8,6 +9,9 @@ namespace StbEditor.Core;
 /// <summary>A Story Manager node in its tree: an event, a branch or a quest node with its quests.</summary>
 public sealed record StoryNode(FormKey Key, string Signature, string? EditorId, string Detail, int Conditions, IReadOnlyList<FormKey> Quests)
 {
+    /// <summary>The node it hangs under (null for event nodes and nodes whose parent is missing).</summary>
+    public FormKey? Parent { get; set; }
+
     public List<StoryNode> Children { get; } = [];
 }
 
@@ -18,21 +22,25 @@ public sealed record StoryNode(FormKey Key, string Signature, string? EditorId, 
 /// </summary>
 public static class StoryManager
 {
-    public static List<StoryNode> Build(RecordLookup lookup, RecordCatalog catalog)
+    public static List<StoryNode> Build(RecordLookup lookup, RecordCatalog catalog) => Build(lookup, catalog, null);
+
+    /// <param name="resolve">The node as it is now (an edit of it), else null for the winning version.</param>
+    public static List<StoryNode> Build(RecordLookup lookup, RecordCatalog catalog, Func<FormKey, IMajorRecordGetter?>? resolve)
     {
+        T? Get<T>(FormKey key) where T : class, IMajorRecordGetter => resolve?.Invoke(key) as T ?? lookup.Resolve<T>(key);
         var nodes = new Dictionary<FormKey, (StoryNode Node, FormKey? Parent, FormKey? Previous)>();
         foreach (var signature in new[] { "SMEN", "SMBN", "SMQN" })
             foreach (var record in catalog.BySignature.GetValueOrDefault(signature) ?? [])
             {
                 switch (signature)
                 {
-                    case "SMEN" when lookup.Resolve<IStoryManagerEventNodeGetter>(record.FormKey) is { } e:
+                    case "SMEN" when Get<IStoryManagerEventNodeGetter>(record.FormKey) is { } e:
                         nodes[e.FormKey] = (new StoryNode(e.FormKey, signature, e.EditorID, e.Type?.ToString() ?? "", e.Conditions.Count, []), e.Parent.FormKeyNullable, e.PreviousSibling.FormKeyNullable);
                         break;
-                    case "SMBN" when lookup.Resolve<IStoryManagerBranchNodeGetter>(record.FormKey) is { } b:
+                    case "SMBN" when Get<IStoryManagerBranchNodeGetter>(record.FormKey) is { } b:
                         nodes[b.FormKey] = (new StoryNode(b.FormKey, signature, b.EditorID, b.Flags?.ToString() ?? "", b.Conditions.Count, []), b.Parent.FormKeyNullable, b.PreviousSibling.FormKeyNullable);
                         break;
-                    case "SMQN" when lookup.Resolve<IStoryManagerQuestNodeGetter>(record.FormKey) is { } q:
+                    case "SMQN" when Get<IStoryManagerQuestNodeGetter>(record.FormKey) is { } q:
                         nodes[q.FormKey] = (new StoryNode(q.FormKey, signature, q.EditorID, q.Flags.ToString(), q.Conditions.Count,
                             q.Quests.Select(x => x.Quest.FormKeyNullable).OfType<FormKey>().ToList()), q.Parent.FormKeyNullable, q.PreviousSibling.FormKeyNullable);
                         break;
@@ -43,7 +51,11 @@ public static class StoryManager
         foreach (var group in nodes.Values.GroupBy(n => n.Parent is { IsNull: false } p && nodes.ContainsKey(p) ? p : (FormKey?)null))
         {
             var ordered = Ordered(group.ToList());
-            if (group.Key is { } parent) nodes[parent].Node.Children.AddRange(ordered);
+            if (group.Key is { } parent)
+            {
+                foreach (var child in ordered) child.Parent = parent;
+                nodes[parent].Node.Children.AddRange(ordered);
+            }
             else roots.AddRange(ordered);
         }
         return roots.OrderBy(r => r.Signature == "SMEN" ? 0 : 1).ThenBy(r => r.Detail, StringComparer.Ordinal).ThenBy(r => r.EditorId, StringComparer.OrdinalIgnoreCase).ToList();

@@ -1604,6 +1604,12 @@ internal static class LangRu
         ["DeformedModel"] = "Деформируемая модель",
         ["BodyTexture"] = "Текстура тела",
 
+        // ---- story manager move
+        ["Nodes under an event in the order the game tries them; a click opens the form. Drag a branch or quest node onto another: after it (Ctrl onto an event or branch: its last child); right click: up, down."] = "Узлы под событием — в том порядке, в каком их перебирает игра; клик открывает форму. Перетащите узел ветки или квеста на другой — встанет после него (с Ctrl на событие или ветку — последним ребёнком); ПКМ — выше, ниже.",
+        ["Story Manager: branch and quest nodes go under an event or a branch node"] = "Story Manager: узлы веток и квестов ставятся под событие или ветку",
+        ["Story Manager: a node cannot go under itself"] = "Story Manager: узел нельзя поместить под самого себя",
+        ["Move Story Manager node {0}"] = "Перемещение узла Story Manager {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

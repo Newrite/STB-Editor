@@ -2531,8 +2531,16 @@ internal sealed class EditorApp : IDisposable
                 break;
             }
             case 1 when ++_smFrames > 15:
+            {
+                // A node moved down one as the context menu does, then Ctrl+Z.
+                var moved = StoryManagerWindow.MoveDownForTest(this);
+                Log.Info($"autotest-storymanager: move down {moved?.Before} -> {moved?.After}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                Document.Undo();
+                StoryManagerWindow.Refresh(this);
+                Log.Info($"autotest-storymanager: after Ctrl+Z pending {Document.PendingCount}");
                 _smStage = 9;
                 break;
+            }
         }
     }
 

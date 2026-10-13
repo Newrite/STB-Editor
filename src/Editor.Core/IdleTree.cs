@@ -79,31 +79,11 @@ public static class IdleTree
         return ordered;
     }
 
-    /// <summary>
-    /// The edits that move <paramref name="moved"/> to be a child of <paramref name="parent"/> (null: a root) right after
-    /// <paramref name="after"/> (null: first): the moved idle's new parent and previous, the idle that followed it before
-    /// (now after its old previous), and the idle that follows it at the new place. Key → (parent, previous).
-    /// </summary>
+    /// <summary>The (parent, previous) edits that put <paramref name="moved"/> under <paramref name="parent"/> after <paramref name="after"/>.</summary>
     public static Dictionary<FormKey, (FormKey? Parent, FormKey? Previous)> Move(IReadOnlyList<IdleNode> oldSiblings, IdleNode moved, FormKey? parent,
         IReadOnlyList<IdleNode> newSiblings, FormKey? after)
     {
-        var edits = new Dictionary<FormKey, (FormKey? Parent, FormKey? Previous)>();
-        // Close the gap where it was.
-        var at = oldSiblings.ToList().FindIndex(n => n.Key == moved.Key);
-        if (at >= 0 && at + 1 < oldSiblings.Count)
-        {
-            var next = oldSiblings[at + 1];
-            edits[next.Key] = (next.Parent, at > 0 ? oldSiblings[at - 1].Key : null);
-        }
-        // Open one where it goes (the list without it).
-        var target = newSiblings.Where(n => n.Key != moved.Key).ToList();
-        var index = after is { } a ? target.FindIndex(n => n.Key == a) + 1 : 0;
-        if (index < target.Count)
-        {
-            var follower = target[index];
-            edits[follower.Key] = (edits.TryGetValue(follower.Key, out var e) ? e.Parent : follower.Parent, moved.Key);
-        }
-        edits[moved.Key] = (parent, index > 0 ? target[index - 1].Key : null);
-        return edits;
+        var parents = oldSiblings.Concat(newSiblings).Append(moved).GroupBy(n => n.Key).ToDictionary(g => g.Key, g => g.First().Parent);
+        return SiblingChains.Move(oldSiblings.Select(n => n.Key).ToList(), moved.Key, parent, newSiblings.Select(n => n.Key).ToList(), after, k => parents.GetValueOrDefault(k));
     }
 }

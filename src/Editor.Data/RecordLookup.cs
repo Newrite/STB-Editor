@@ -14,6 +14,8 @@ namespace StbEditor.Data;
 /// </summary>
 public sealed class RecordLookup(Workspace workspace, RecordCatalog catalog)
 {
+    public RecordCatalog Catalog => catalog;
+
     private static readonly Lazy<Dictionary<string, Type>> GetterTypes = new(BuildGetterTypes);
 
     /// <summary>Signature → Mutagen getter interface (e.g. "STAT" → IStaticGetter).</summary>

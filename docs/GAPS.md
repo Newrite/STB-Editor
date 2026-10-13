@@ -35,7 +35,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.23.0 / 0.24.0 (таймлайн, актёры, фазы, действия, тема реплики с репликами, фрагменты) Сцены (SCEN): фазы, актёры, действия (Dialogue / Package / Timer) на таймлайне | CK: Scene Data, Phase, Dialogue Scene Action | ★★ | L |
 | ✅ 0.22.0 (шаблон и его входы, расписание, цели, дерево процедур — просмотр и поля веток, 0.24.0 фрагменты; добавлять ветки в дерево — нет) AI-пакеты: шаблон, дерево процедур, расписание, цели | CK: Package, Package Target, Choose Procedure | ★★ | M |
 | ✅ 0.36.0 (дерево и переход к формам; перетаскивание узлов — нет, порядок правится полями формы) Story Manager: дерево веток и событий (SMBN / SMQN / SMEN) | CK: Story Manager | ★ | M |
-| Голос и LIP: список нужных звуковых файлов по актёрам, генерация .lip, Export Dialogue | CK: Quest Voice Assets, Export Dialogue | ★ | M |
+| ✅ 0.43.0 (список по голосам, экспорт, .lip через LipGenerator из CK, .fuz) Голос и LIP: список нужных звуковых файлов по актёрам, генерация .lip, Export Dialogue | CK: Quest Voice Assets, Export Dialogue | ★ | M |
 
 ## 3. Персонажи
 

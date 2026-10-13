@@ -2291,6 +2291,98 @@ switch (command)
             Console.WriteLine($"{p.Name}: {p.PropertyType.Name}");
         break;
     }
+    case "voicecheck":
+    {
+        // voicecheck <game> [plugin] [quest filter]: voice file names and voice types the editor works out for a plugin's lines,
+        // against the files the build has (name matches; voice types found / missed / extra).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var vfs = AssetFileSystem.Build(ws);
+        var plugin = args.Length > 2 ? args[2] : "Skyrim.esm";
+        var filter = args.Length > 3 ? args[3] : null;
+        var prefix = $@"sound\voice\{plugin.ToLowerInvariant()}\";
+        // FormID → (voice type folder, file base name)
+        var files = new Dictionary<string, List<(string Voice, string Name)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ext in new[] { ".fuz", ".xwm", ".wav" })
+            foreach (var file in vfs.Enumerate(prefix, ext))
+            {
+                var rest = file[prefix.Length..];
+                var slash = rest.IndexOf('\\');
+                if (slash < 0) continue;
+                var name = Path.GetFileNameWithoutExtension(rest);
+                var parts = name.Split('_');
+                if (parts.Length < 3) continue;
+                (files.TryGetValue(parts[^2], out var l) ? l : files[parts[^2]] = []).Add((rest[..slash], name));
+            }
+        var index = DialogueIndex.Build(ws, catalog);
+        var quests = catalog.BySignature["QUST"].Where(q => q.FormKey.ModKey.FileName.String.Equals(plugin, StringComparison.OrdinalIgnoreCase)
+            && (filter is null || (q.EditorId?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))).Select(q => q.FormKey).ToList();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var lines = StbEditor.Core.VoiceFiles.Lines(ws, lookup, index, quests);
+        Console.WriteLine($"{quests.Count} quests, {lines.Count:N0} line x voice rows in {clock.ElapsedMilliseconds} ms; {files.Count:N0} voiced FormIDs in {prefix}");
+        int named = 0, misnamed = 0, found = 0, missed = 0, extra = 0, unresolved = 0, unresolvedVoiced = 0;
+        var examples = new List<string>();
+        foreach (var group in lines.GroupBy(l => (l.Info, l.Response)))
+        {
+            var id = group.Key.Info.ID.ToString("X8");
+            var have = (files.GetValueOrDefault(id) ?? []).Where(f => f.Name.EndsWith("_" + group.Key.Response, StringComparison.Ordinal)).ToList();
+            var first = group.First();
+            var expected = StbEditor.Core.VoiceFiles.BaseName(first.QuestEditorId, first.TopicEditorId, first.Info, first.Response);
+            if (have.Count > 0)
+            {
+                if (have.Any(h => h.Name.Equals(expected, StringComparison.OrdinalIgnoreCase))) named++;
+                else { misnamed++; if (examples.Count < 12) examples.Add($"name: {expected} vs {have[0].Name}"); }
+            }
+            var predicted = group.Where(l => l.VoiceTypeEditorId is not null).Select(l => l.VoiceTypeEditorId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var actual = have.Select(h => h.Voice).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (predicted.Count == 0)
+            {
+                unresolved++;
+                if (actual.Count > 0) { unresolvedVoiced++; if (unresolvedVoiced <= 12) examples.Add($"no speaker {first.QuestEditorId}/{first.TopicEditorId} {id}: have [{string.Join(",", actual)}]"); }
+                continue;
+            }
+            found += actual.Count(predicted.Contains);
+            missed += actual.Count(a => !predicted.Contains(a));
+            extra += predicted.Count(p => !actual.Contains(p));
+            if (actual.Any(a => !predicted.Contains(a)) && examples.Count < 24) examples.Add($"voices {first.QuestEditorId}/{first.TopicEditorId} {id}: have [{string.Join(",", actual)}] predicted [{string.Join(",", predicted)}]");
+        }
+        Console.WriteLine($"names: {named} match, {misnamed} differ; voice types: {found} found, {missed} missed, {extra} extra; {unresolved} responses with no speaker ({unresolvedVoiced} of them voiced)");
+        foreach (var e in examples) Console.WriteLine("  " + e);
+        break;
+    }
+    case "voicenames":
+    {
+        // voicenames <game> <quest EditorID…>: voice files the build has for the quest's lines, to learn the naming.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var vfs = AssetFileSystem.Build(ws);
+        var byId = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in vfs.Enumerate(@"sound\voice\", ".fuz").Concat(vfs.Enumerate(@"sound\voice\", ".xwm")).Concat(vfs.Enumerate(@"sound\voice\", ".wav")))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            var parts = name.Split('_');
+            if (parts.Length >= 3) (byId.TryGetValue(parts[^2], out var l) ? l : byId[parts[^2]] = []).Add(file);
+        }
+        Console.WriteLine($"{byId.Count} voiced line ids");
+        var index = DialogueIndex.Build(ws, catalog);
+        foreach (var questId in args.Skip(2))
+        {
+            var quest = catalog.BySignature["QUST"].First(q => string.Equals(q.EditorId, questId, StringComparison.OrdinalIgnoreCase));
+            foreach (var topicKey in index.TopicsOf(quest.FormKey).Take(40))
+            {
+                var topic = lookup.Resolve<Mutagen.Bethesda.Skyrim.IDialogTopicGetter>(topicKey);
+                foreach (var (line, _) in DialogueIndex.Lines(ws, topicKey).Take(3))
+                {
+                    var id = (line.FormKey.ID & 0xFFFFFF).ToString("X8");
+                    var files = byId.GetValueOrDefault(id) ?? [];
+                    Console.WriteLine($"{quest.EditorId} ({quest.EditorId?.Length}) | {topic?.EditorID} ({topic?.EditorID?.Length}) | {id} -> {(files.Count == 0 ? "-" : Path.GetFileName(files[0]) + $" x{files.Count} in {Path.GetDirectoryName(files[0])}")}");
+                }
+            }
+        }
+        break;
+    }
     case "idletree":
     {
         // idletree <game> [depth] [filter]: the idle animation tree (as the CK's Animations window), counts and the top levels.

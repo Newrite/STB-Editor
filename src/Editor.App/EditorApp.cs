@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -318,6 +318,7 @@ internal sealed class EditorApp : IDisposable
         RunNavGenAutotest();
         RunPerkTreeAutotest();
         RunIdleTreeAutotest();
+        RunVoiceAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -376,6 +377,7 @@ internal sealed class EditorApp : IDisposable
         LayersWindow.Draw(this);
         StoryManagerWindow.Draw(this);
         IdleTreeWindow.Draw(this);
+        VoiceFilesWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -550,6 +552,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.LayersWindow LayersWindow { get; } = new();
     public Panels.StoryManagerWindow StoryManagerWindow { get; } = new();
     public Panels.IdleTreeWindow IdleTreeWindow { get; } = new();
+    public Panels.VoiceFilesWindow VoiceFilesWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -596,6 +599,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navgen") || _navGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-perktree") || _perkStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-idletree") || _idleStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-voice") || _voiceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1798,6 +1802,61 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
                 break;
+        }
+    }
+
+    private int _voiceStage, _voiceFrames;
+    private string? _voiceDir;
+
+    /// <summary>
+    /// --autotest-voice &lt;dir&gt;: World → Voice files for Skyrim.esm's MQ101 lines (states counted); then a WAV of one line written
+    /// to &lt;dir&gt; (from the build's .fuz, mixed to stereo so LipGenerator gets the conversion), shown to the asset view as that
+    /// line's loose file, «Make .lip and pack .fuz» — the .lip and .fuz must appear in &lt;dir&gt; and the row turn «fuz».
+    /// Writes only into &lt;dir&gt;; nothing is saved.
+    /// </summary>
+    private void RunVoiceAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-voice");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _voiceStage == 9) return;
+        switch (_voiceStage)
+        {
+            case 0:
+                _voiceDir = cli[arg + 1];
+                Directory.CreateDirectory(_voiceDir);
+                VoiceFilesWindow.Show(this);
+                VoiceFilesWindow.ListForTest(this, "Skyrim.esm", "MQ101");
+                _voiceStage = 1;
+                break;
+            case 1 when !VoiceFilesWindow.IsBusy && ++_voiceFrames > 5:
+            {
+                var rows = VoiceFilesWindow.Rows;
+                Log.Info($"autotest-voice: {rows.Count} rows: {string.Join(", ", rows.GroupBy(r => r.State).Select(g => $"{g.Key} {g.Count()}"))}; first {rows.FirstOrDefault(r => r.Line.PathStem is not null)?.Line.PathStem}");
+                // One voiced line made into a loose stereo WAV in the test folder, as if recorded.
+                var row = rows.FirstOrDefault(r => r.State == Panels.VoiceFilesWindow.State.Fuz);
+                if (row is null || session.Assets.ReadAllBytes(row.Audio!) is not { } fuz || StbEditor.Core.VoiceTools.Unfuz(fuz) is not { } parts) { Log.Error("autotest-voice: no fuz to start from"); _voiceStage = 9; break; }
+                var tools = new StbEditor.Core.VoiceTools(session.Game.GameFolder);
+                var xwm = Path.Combine(_voiceDir!, "source.xwm");
+                File.WriteAllBytes(xwm, parts.Audio);
+                var wav = Path.Combine(_voiceDir!, Path.GetFileName(row.Line.PathStem!) + ".wav");
+                var decode = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tools.XwmaEncode, $"\"{xwm}\" \"{wav}\"") { UseShellExecute = false, CreateNoWindow = true });
+                decode?.WaitForExit(60000);
+                session.Assets.AddLoose(row.Line.PathStem + ".wav", wav, "autotest");
+                // The build's .fuz would win over the WAV: test this line as though it had none.
+                VoiceFilesWindow.ReplaceForTest(row with { State = Panels.VoiceFilesWindow.State.WavNoLip, Audio = row.Line.PathStem + ".wav", Lip = null });
+                Log.Info($"autotest-voice: {wav} {(File.Exists(wav) ? new FileInfo(wav).Length : 0)} bytes; tools lip {tools.CanMakeLip}, encode {tools.CanEncode}");
+                VoiceFilesWindow.Process(this, true, true);
+                _voiceStage = 2;
+                _voiceFrames = 0;
+                break;
+            }
+            case 2 when !VoiceFilesWindow.IsBusy && ++_voiceFrames > 5:
+            {
+                var files = Directory.GetFiles(_voiceDir!).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length}");
+                Log.Info($"autotest-voice: {VoiceFilesWindow.Result}; files: {string.Join(", ", files)}");
+                _voiceStage = 9;
+                break;
+            }
         }
     }
 
@@ -3346,6 +3405,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Layers..."), (string?)null, false, ready)) LayersWindow.Show();
             if (ImGui.MenuItem(T("Story Manager..."), (string?)null, false, ready)) StoryManagerWindow.Show(this);
             if (ImGui.MenuItem(T("Idle animations..."), (string?)null, false, ready)) IdleTreeWindow.Show();
+            if (ImGui.MenuItem(T("Voice files..."), (string?)null, false, ready)) VoiceFilesWindow.Show(this);
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

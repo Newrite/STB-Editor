@@ -115,6 +115,16 @@ internal sealed class PluginCheckWindow
                 ImGui.EndDisabled();
                 if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(T("Body tint from the skin tone, as the CK's Update NPC Body Tint Colors (one undo step)"));
             }
+            var faces = warnings.Where(w => w.Fix == "FaceGen").ToList();
+            if (faces.Count > 0)
+            {
+                if (tints.Count > 0) ImGui.SameLine();
+                ImGui.BeginDisabled(!isActive);
+                if (ImGui.Button(TF($"Export FaceGen for {faces.Count} NPC(s)"))) ObjectWindow.ExportFaceGen(app, faces.Select(f => f.Key).Distinct().ToList());
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    ImGui.SetTooltip(T("Head mesh and tint texture of each NPC, written next to the active file (CK: Ctrl+F4); check again after"));
+            }
             DrawIssues(app, session, warnings);
             ImGui.EndTabItem();
         }

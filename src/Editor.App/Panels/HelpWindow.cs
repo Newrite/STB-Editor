@@ -82,6 +82,7 @@ internal sealed class HelpWindow
             ("Ctrl+click / Shift+click", "select several records (Object Window); right-click → Compare selected"),
             ("Object Window: + New", "A new record of the shown type in the active file; right-click → New also works"),
             ("Object Window: Del", "Delete the record from the active file, or remove its override (Ctrl+Z brings it back)"),
+            ("Object Window: Ctrl+F4", "Export FaceGen of the selected NPCs: head mesh and tint texture next to the active file (CK: Ctrl+F4)"),
             ("Object Window: All records / Overridden / Conflicts", "Which records to list; next to it — only one plugin's records"),
             ("File → Masters", "Add a master to the active file, remove unused ones"),
             ("Right-click a record → Compare versions", "every plugin's version side by side, coloured as in xEdit"),

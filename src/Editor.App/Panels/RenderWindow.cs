@@ -87,6 +87,16 @@ internal sealed partial class RenderWindow : Panel
     public MeshCache? Meshes => _renderer?.Meshes;
     public TextureCache? Textures => _renderer?.Textures;
 
+    /// <summary>Files rewritten on disk (FaceGen export): their meshes and textures load again; returns how many were dropped.</summary>
+    public int ReloadAssets(Func<string, bool> match)
+    {
+        var dropped = (_renderer?.Meshes.Forget(match) ?? 0) + (_renderer?.Textures.Forget(match) ?? 0);
+        if (_scene is not null)
+            foreach (var obj in _scene.Objects)
+                if (obj.ModelPath is { } path && match(path)) { obj.Model = null; obj.ModelFailed = false; }
+        return dropped;
+    }
+
     public string? PendingCameraPose { get; set; }
 
     public void HideGroups(IEnumerable<string> groups, bool currentCellOnly = false)

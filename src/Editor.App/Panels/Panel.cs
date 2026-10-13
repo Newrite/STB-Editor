@@ -46,6 +46,17 @@ internal abstract class Panel
 
 internal static class StatusBar
 {
+    private static string? _notice;
+    private static double _noticeUntil;
+
+    /// <summary>A result shown at the right of the status bar for a few seconds (and logged).</summary>
+    public static void Notice(string text)
+    {
+        _notice = text;
+        _noticeUntil = ImGui.GetTime() + 8;
+        Log.Info(text);
+    }
+
     public static void Draw(EditorApp app)
     {
         var height = ImGui.GetFrameHeight();
@@ -79,7 +90,13 @@ internal static class StatusBar
                 }
 
                 var last = Log.Lines.LastOrDefault(l => l.Level != LogLevel.Info);
-                if (last is not null)
+                if (_notice is not null && ImGui.GetTime() < _noticeUntil)
+                {
+                    var text = _notice.Length > 120 ? _notice[..120] + "…" : _notice;
+                    ImGui.SameLine(ImGui.GetWindowWidth() - ImGui.CalcTextSize(text).X - 24);
+                    ImGui.TextColored(Theme.Good, text);
+                }
+                else if (last is not null)
                 {
                     var text = last.Text.Length > 120 ? last.Text[..120] + "…" : last.Text;
                     ImGui.SameLine(ImGui.GetWindowWidth() - ImGui.CalcTextSize(text).X - 24);

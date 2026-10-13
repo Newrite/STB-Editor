@@ -173,6 +173,14 @@ internal sealed class ObjectWindow : Panel
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(TF($"A new {T(RecordTypes.Get(_type).Name)} in the active file (as the CK's New)"));
         }
 
+        // Ctrl+F4 (as in the CK): FaceGen for the selected NPCs.
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows) && !ImGui.GetIO().WantTextInput && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.F4, false))
+        {
+            var npcs = (_picked.Count > 1 ? Picked : app.Selected is { } one ? [one] : [])
+                .Where(k => app.Session!.Catalog.Get(k)?.Signature == "NPC_").ToList();
+            if (npcs.Count > 0) ExportFaceGen(app, npcs);
+        }
+
         // Delete in the record list: take the selected records out of the active file (Ctrl+Z brings them back).
         if (ImGui.IsWindowFocused(ImGuiFocusedFlags.ChildWindows) && !ImGui.GetIO().WantTextInput && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
         {
@@ -214,6 +222,14 @@ internal sealed class ObjectWindow : Panel
             }
         }
         ImGui.EndCombo();
+    }
+
+    /// <summary>FaceGen for these NPCs; the outcome goes to the log and the status line.</summary>
+    public static void ExportFaceGen(EditorApp app, IReadOnlyCollection<Mutagen.Bethesda.Plugins.FormKey> npcs)
+    {
+        var outcome = Services.FaceGenExports.Export(app, npcs);
+        foreach (var problem in outcome.Problems) Services.Log.Warn("FaceGen: " + problem);
+        if (outcome.Exported > 0) StatusBar.Notice(TF($"FaceGen exported for {outcome.Exported} NPC(s)") + (outcome.Problems.Count > 0 ? TF($", {outcome.Problems.Count} note(s) in the log") : ""));
     }
 
     private void DrawTypeTree(RecordCatalog catalog)
@@ -499,6 +515,13 @@ internal sealed class ObjectWindow : Panel
                         ImGui.SetTooltip(T("The winning version goes into the active file unchanged (xEdit: Copy as override). Already there, cells, quests and dialogue are skipped."));
                     if (ImGui.MenuItem(TF($"Compare versions ({record.Plugins.Count})"), (string?)null, false, record.Plugins.Count > 1))
                         app.Compare.OpenVersions(record.FormKey);
+                    if (record.Signature == "NPC_")
+                    {
+                        var npcs = copyKeys.Where(k => app.Session!.Catalog.Get(k)?.Signature == "NPC_").ToList();
+                        if (ImGui.MenuItem(TF($"Export FaceGen ({npcs.Count})"), "Ctrl+F4")) ExportFaceGen(app, npcs);
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip(T("The NPC's head (mesh with its face morphs, hair, eyes…) and tint texture, written next to the active file (CK: Ctrl+F4). Without it the face is dark in game."));
+                    }
                     ImGui.Separator();
                     if (ImGui.MenuItem(T("Copy Form ID"))) ImGui.SetClipboardText(ws.FormIdText(record.FormKey));
                     if (ImGui.MenuItem(T("Copy Editor ID"), (string?)null, false, record.EditorId is not null)) ImGui.SetClipboardText(record.EditorId!);

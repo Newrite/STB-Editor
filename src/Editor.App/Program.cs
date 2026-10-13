@@ -90,6 +90,14 @@ internal static class Program
             editor.RenderScene();
             imgui.Render();
 
+            // An autotest's extra frame (before / after pictures), taken without stopping.
+            if (editor.ShotRequest is { } extra)
+            {
+                Screenshot.SaveBmp(extra, graphics.Width, graphics.Height, graphics.ReadBackBuffer());
+                Log.Info($"screenshot saved to {extra}");
+                editor.ShotRequest = null;
+            }
+
             if (options.Screenshot is { } shot && editor.ReadyForScreenshot(++frames))
             {
                 Screenshot.SaveBmp(shot, graphics.Width, graphics.Height, graphics.ReadBackBuffer());

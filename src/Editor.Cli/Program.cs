@@ -893,6 +893,137 @@ switch (command)
         Console.WriteLine($"navtest: {meshes} navmeshes: grid identical {gridSame}, same size {gridSizeSame}, ours contains the game's {gridSuperset}; neighbour links reproduced {linksSame}");
         break;
     }
+    case "facegenprobe":
+    {
+        // facegenprobe <game> <NPC FormID> [plugin]: an NPC's head parts with their TRI morphs, and the CK FaceGen head.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var vfs = AssetFileSystem.Build(ws);
+        var key = ws.ParseFormReference(args[2])!.Value;
+        var contexts = ws.LinkCache.ResolveAllSimpleContexts<Mutagen.Bethesda.Skyrim.INpcGetter>(key).ToList();
+        var chosen = args.Length > 3 ? contexts.First(c => c.ModKey.FileName.String.Equals(args[3], StringComparison.OrdinalIgnoreCase)) : contexts[0];
+        var npc = chosen.Record;
+        var race = lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(npc.Race.FormKey)!;
+        var female = npc.Configuration.Flags.HasFlag(Mutagen.Bethesda.Skyrim.NpcConfiguration.Flag.Female);
+        Console.WriteLine($"{npc.EditorID} from {chosen.ModKey}: race {race.EditorID}, female {female}, weight {npc.Weight}, clamps main {race.FacegenMainClamp} face {race.FacegenFaceClamp}");
+        if (npc.FaceMorph is { } fm) Console.WriteLine($"  morph: {string.Join(", ", fm.GetType().GetProperties().Where(p => p.PropertyType == typeof(float)).Select(p => $"{p.Name}={p.GetValue(fm)}"))}");
+        if (npc.FaceParts is { } fp) Console.WriteLine($"  parts: nose {fp.Nose} eyes {fp.Eyes} mouth {fp.Mouth} unknown {fp.Unknown}");
+        var head = female ? race.HeadData?.Female : race.HeadData?.Male;
+        Console.WriteLine($"  race head parts: {string.Join(", ", (head?.HeadParts ?? []).Select(h => $"{h.Number}:{lookup.Resolve<Mutagen.Bethesda.Skyrim.IHeadPartGetter>(h.Head.FormKey)?.EditorID}"))}");
+        var parts = new List<Mutagen.Bethesda.Skyrim.IHeadPartGetter>();
+        var queue = new Queue<Mutagen.Bethesda.Plugins.FormKey>(npc.HeadParts.Select(h => h.FormKey));
+        foreach (var h in head?.HeadParts ?? []) if (!h.Head.IsNull) queue.Enqueue(h.Head.FormKey);
+        var seenParts = new HashSet<Mutagen.Bethesda.Plugins.FormKey>();
+        while (queue.Count > 0)
+        {
+            var k = queue.Dequeue();
+            if (!seenParts.Add(k) || lookup.Resolve<Mutagen.Bethesda.Skyrim.IHeadPartGetter>(k) is not { } part) continue;
+            parts.Add(part);
+            foreach (var extra in part.ExtraParts) queue.Enqueue(extra.FormKey);
+        }
+        foreach (var part in parts)
+        {
+            Console.WriteLine($"  part {part.EditorID} [{part.Type}] flags {part.Flags} model {part.Model?.File.GivenPath}");
+            if (part.Model?.File.GivenPath is { } file && vfs.ReadAllBytes(AssetFileSystem.MeshPath(file)) is { } nif)
+                foreach (var sh in NifFile.Load(nif, file, raw: true).Shapes) Console.WriteLine($"     shape {sh.Name}: {sh.Positions.Length} v, first {sh.Positions[0]}");
+            foreach (var p in part.Parts)
+            {
+                var tri = p.FileName?.GivenPath;
+                var bytes = tri is null ? null : vfs.ReadAllBytes(AssetFileSystem.MeshPath(tri));
+                if (bytes is null) { Console.WriteLine($"     {p.PartType} {tri}: MISSING"); continue; }
+                var t = TriFile.Load(bytes);
+                Console.WriteLine($"     {p.PartType} {tri}: {t.Vertices.Length} v, {t.Morphs.Count} morphs, {t.StatMorphs.Count} stat; {string.Join(" ", t.Morphs.Take(args.Contains("--all") ? 400 : 30).Select(m => $"{m.Name}({m.Scale:G3})"))}");
+            }
+        }
+        var facegen = StbEditor.Render.ActorAppearance.FaceGenPath(key);
+        if (vfs.ReadAllBytes(facegen) is { } fg)
+            foreach (var sh in NifFile.Load(fg, facegen, raw: true).Shapes) Console.WriteLine($"  facegen shape {sh.Name}: {sh.Positions.Length} v, first {sh.Positions[0]}, tex {string.Join(" | ", sh.Material.Textures.Where(t => t.Length > 0))}");
+        else Console.WriteLine($"  no facegen at {facegen}");
+        break;
+    }
+    case "facegencheck":
+    {
+        // facegencheck <game> <NPC FormID|#count> [--plugin X] [--winner] [--bad] [--faces]: the FaceGen head computed from the head parts' TRI morphs against
+        // the CK's file, shape by shape (rms and worst vertex error). A count checks that many vanilla NPCs.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var vfs = AssetFileSystem.Build(ws);
+        var parts = catalog.BySignature["HDPT"].ToDictionary(r => r.EditorId ?? "", r => r.FormKey, StringComparer.OrdinalIgnoreCase);
+        var keys = !args[2].StartsWith('#') && ws.ParseFormReference(args[2]) is { } one ? [one]
+            : catalog.BySignature["NPC_"].Where(r => r.FormKey.ModKey.FileName.String.Equals(args.SkipWhile(x => x != "--plugin").Skip(1).FirstOrDefault() ?? "Skyrim.esm", StringComparison.OrdinalIgnoreCase))
+                .Select(r => r.FormKey).Take(int.Parse(args[2].TrimStart('#'))).ToList();
+        var verbose = keys.Count == 1;
+        var stats = new Dictionary<string, (int Shapes, int Good, double Worst)>();
+        foreach (var key in keys)
+        {
+            var facegen = StbEditor.Render.ActorAppearance.FaceGenPath(key);
+            if (vfs.ReadAllBytes(facegen) is not { } fgBytes) continue;
+            // The version the CK file was made from: the defining plugin's (vanilla), or the winner (--winner).
+            var npcVersions = ws.LinkCache.ResolveAllSimpleContexts<Mutagen.Bethesda.Skyrim.INpcGetter>(key).ToList();
+            var npc = (args.Contains("--winner") ? npcVersions.First() : npcVersions.Last()).Record;
+            var race = lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(npc.Race.FormKey);
+            if (race is null) continue;
+            NifModel fg;
+            try { fg = NifFile.Load(fgBytes, facegen, raw: true); } catch { continue; }
+            foreach (var shape in fg.Shapes)
+            {
+                if (!parts.TryGetValue(shape.Name, out var partKey) || lookup.Resolve<Mutagen.Bethesda.Skyrim.IHeadPartGetter>(partKey) is not { } part) continue;
+                var file = part.Model?.File.GivenPath;
+                var source = file is null || vfs.ReadAllBytes(AssetFileSystem.MeshPath(file)) is not { } nifBytes ? null : NifFile.Load(nifBytes, file, raw: true).Shapes.FirstOrDefault();
+                if (source is null || source.Positions.Length != shape.Positions.Length) continue;
+                var predicted = StbEditor.Render.FaceGenMorphs.Apply(source.Positions, npc, (race.MorphRace.IsNull ? race : lookup.Resolve<Mutagen.Bethesda.Skyrim.IRaceGetter>(race.MorphRace.FormKey) ?? race).EditorID,
+                    (race.Keywords ?? []).Any(k => lookup.Resolve<Mutagen.Bethesda.Skyrim.IKeywordGetter>(k.FormKey)?.EditorID == "Vampire"), part, p => (args.Contains("--archived-tri") ? vfs.ReadArchived(p) : null) ?? vfs.ReadAllBytes(p), out var used);
+                double sum = 0, worst = 0;
+                var worstAt = 0;
+                for (var i = 0; i < predicted.Length; i++)
+                {
+                    var e = (predicted[i] - shape.Positions[i]).Length();
+                    sum += e * e;
+                    if (e > worst) { worst = e; worstAt = i; }
+                }
+                var rms = Math.Sqrt(sum / predicted.Length);
+                var type = part.Type?.ToString() ?? "?";
+                var st = stats.GetValueOrDefault(type);
+                stats[type] = (st.Shapes + 1, st.Good + (worst < 0.01 ? 1 : 0), Math.Max(st.Worst, worst));
+                if (args.Contains("--faces") && type == "Face")
+                {
+                    // A FaceGen made from other head parts than the record names is stale (the record changed after it).
+                    var named = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var pending = new Queue<Mutagen.Bethesda.Plugins.FormKey>(npc.HeadParts.Select(h => h.FormKey));
+                    while (pending.Count > 0 && named.Count < 40)
+                        if (lookup.Resolve<Mutagen.Bethesda.Skyrim.IHeadPartGetter>(pending.Dequeue()) is { } hp && named.Add(hp.EditorID ?? ""))
+                            foreach (var extra in hp.ExtraParts) pending.Enqueue(extra.FormKey);
+                    var stale = npc.HeadParts.Count > 0 && fg.Shapes.Any(x => x.Name.Contains("Hair", StringComparison.OrdinalIgnoreCase) || x.Name.Contains("Eyes", StringComparison.OrdinalIgnoreCase)) && fg.Shapes.Count(x => named.Contains(x.Name)) < Math.Min(named.Count, fg.Shapes.Count) - 1;
+                    Console.WriteLine($"{(worst < 0.06 ? "OK " : "BAD")} {(stale ? "stale" : "     ")} {npc.EditorID,-28} {race.EditorID,-22} w {npc.Weight,3:0} worst {worst:0.000} parts {npc.FaceParts?.Nose}/{npc.FaceParts?.Eyes}/{npc.FaceParts?.Mouth}/{npc.FaceParts?.Unknown} {used}");
+                }
+                if (verbose || worst > 0.05 && args.Contains("--bad"))
+                    Console.WriteLine($"{npc.EditorID} {shape.Name} [{type}]: rms {rms:0.00000}, worst {worst:0.00000} at {worstAt} ({shape.Positions[worstAt]} vs {predicted[worstAt]}); {used}");
+            }
+        }
+        foreach (var (type, st) in stats.OrderBy(x => x.Key)) Console.WriteLine($"{type}: {st.Good}/{st.Shapes} shapes within 0.01, worst {st.Worst:0.0000}");
+        break;
+    }
+    case "nifblocks":
+    {
+        // nifblocks <game> <mesh>: block list (type, size, name) and header strings.
+        var vfs = AssetFileSystem.Build(ws);
+        var bytes = File.Exists(args[2]) ? File.ReadAllBytes(args[2]) : vfs.ReadAllBytes(args[2])!;
+        var (blocks, strings) = NifFile.Blocks(bytes);
+        for (var i = 0; i < blocks.Count; i++) Console.WriteLine($"  {i,3} {blocks[i].Type,-32} {blocks[i].Size,7} {blocks[i].Name}");
+        Console.WriteLine($"  strings: {string.Join(" | ", strings)}");
+        break;
+    }
+    case "facegentint":
+        FaceGenTests.Tint(ws, args);
+        break;
+    case "facegenbuild":
+        FaceGenTests.Build(ws, args);
+        break;
+    case "facegensliders":
+        FaceGenTests.Sliders(ws, args);
+        break;
     case "reflect":
     {
         // reflect <game> <Mutagen getter interface, e.g. INpcGetter>: properties, to write code against.

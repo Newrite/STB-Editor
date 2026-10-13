@@ -27,8 +27,10 @@ public static partial class NifFile
         public string TypeOf(int block) => BlockTypes[BlockTypeIndex[block] & 0x7FFF];
     }
 
-    private sealed class Context(byte[] data, Header header, NifModel model)
+    private sealed class Context(byte[] data, Header header, NifModel model, bool raw)
     {
+        /// <summary>Vertices as stored in the shape (no skin bind pose, no node transforms): FaceGen work.</summary>
+        public readonly bool Raw = raw;
         public readonly byte[] Data = data;
         public readonly Header Header = header;
         public readonly NifModel Model = model;
@@ -48,7 +50,8 @@ public static partial class NifFile
             index >= 0 && index < Header.Strings.Length ? Header.Strings[index] : null;
     }
 
-    public static NifModel Load(byte[] data, string path)
+    /// <param name="raw">Vertices as the shape stores them (skin space, no node transforms), for morph work.</param>
+    public static NifModel Load(byte[] data, string path, bool raw = false)
     {
         var header = ReadHeader(data, out var blocksStart);
         var model = new NifModel { Path = path, Version = header.Version, BsVersion = header.BsVersion };
@@ -70,7 +73,7 @@ public static partial class NifFile
             return model;
         }
 
-        var context = new Context(data, header, model);
+        var context = new Context(data, header, model, raw);
         var roots = ReadRoots(data, offset, header.BlockSizes.Length);
 
         foreach (var root in roots)
@@ -105,6 +108,27 @@ public static partial class NifFile
         }
 
         return model;
+    }
+
+    /// <summary>The file's blocks: type, size and (for named objects) name; header strings; diagnostics.</summary>
+    public static (IReadOnlyList<(string Type, int Size, string? Name)> Blocks, string[] Strings) Blocks(byte[] data)
+    {
+        var header = ReadHeader(data, out var offset);
+        var blocks = new List<(string, int, string?)>();
+        for (var i = 0; i < header.BlockSizes.Length; i++)
+        {
+            var type = header.TypeOf(i);
+            var size = (int)header.BlockSizes[i];
+            string? name = null;
+            if (size >= 4 && (type.StartsWith("Ni", StringComparison.Ordinal) || type.StartsWith("BS", StringComparison.Ordinal)) && !type.Contains("SkinData") && !type.Contains("SkinPartition") && type != "BSShaderTextureSet")
+            {
+                var index = BitConverter.ToInt32(data, offset);
+                if (index >= 0 && index < header.Strings.Length) name = header.Strings[index];
+            }
+            blocks.Add((type, size, name));
+            offset += size;
+        }
+        return (blocks, header.Strings);
     }
 
     private static Header ReadHeader(byte[] data, out int end)
@@ -514,7 +538,8 @@ public static partial class NifFile
         if (geometry is null || geometry.Positions.Length == 0 || geometry.Indices.Length == 0) return;
 
         // Skinned vertices are in skin space; put them where the bones hold them in the bind pose.
-        if (skinned && billboard is null && ApplySkin(ctx, skinRefForBind, geometry)) world = NifTransform.Identity;
+        if (ctx.Raw) world = NifTransform.Identity;
+        else if (skinned && billboard is null && ApplySkin(ctx, skinRefForBind, geometry)) world = NifTransform.Identity;
 
         var material = new NifMaterial();
         if (ctx.IsBlock(shaderRef)) ReadShader(ctx, shaderRef, material);

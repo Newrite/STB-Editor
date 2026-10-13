@@ -313,6 +313,7 @@ internal sealed class EditorApp : IDisposable
         RunVertexColorAutotest();
         RunPaletteAutotest();
         RunPlaceAutotest();
+        RunFaceGenAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
         RunFragmentsAutotest();
@@ -583,6 +584,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-place") || _placeStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-facegen") || _faceGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
@@ -1677,6 +1679,72 @@ internal sealed class EditorApp : IDisposable
             }
             case 1 when ++_vcolorFrames > 20:
                 _vcolorStage = 9;
+                break;
+        }
+    }
+
+    /// <summary>A frame to save as BMP once this frame is drawn (autotests: pictures before and after a change).</summary>
+    public string? ShotRequest { get; set; }
+
+    private int _faceGenStage, _faceGenFrames;
+    private SceneObject? _faceGenActor;
+
+    /// <summary>
+    /// --autotest-facegen &lt;dir&gt; [NPC FormID] (with --cell): a draft active file in &lt;dir&gt;; FaceGen exported for the NPC
+    /// (default Orgnar, in RiverwoodSleepingGiantInn) as Ctrl+F4 does; the files under &lt;dir&gt;, the editor's asset view
+    /// pointing at them, the actor's head reloaded; the camera on its face for the screenshot. Restore settings.json after.
+    /// </summary>
+    private void RunFaceGenAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-facegen");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _faceGenStage == 9) return;
+        switch (_faceGenStage)
+        {
+            case 0 when RenderWindow.Scene is { } scene && RenderWindow.IsSettled && ++_faceGenFrames > 20:
+            {
+                // The CK's head first, for a picture to compare with.
+                var text0 = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "00013479";
+                _faceGenActor = scene.Objects.FirstOrDefault(o => o.Base == session.Workspace.ParseFormReference(text0));
+                if (_faceGenActor is not null) RenderWindow.LookAtHeadForTest(_faceGenActor);
+                if (RenderWindow.Options is { } options) options.HighlightActors = false; // true colours for the pictures
+                _faceGenStage = 2;
+                _faceGenFrames = 0;
+                break;
+            }
+            case 2 when RenderWindow.IsSettled && ++_faceGenFrames > 20:
+                ShotRequest = Path.Combine(cli[arg + 1], "facegen_before.bmp");
+                _faceGenStage = 3;
+                _faceGenFrames = 0;
+                break;
+            case 3 when RenderWindow.Scene is { } scene && ++_faceGenFrames > 2:
+            {
+                var dir = cli[arg + 1];
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(dir, "STBEditorFaceGenAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var text = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "00013479";
+                var npc = session.Workspace.ParseFormReference(text);
+                _faceGenActor = scene.Objects.FirstOrDefault(o => o.Base == npc);
+                if (npc is not { } key) { Log.Error("autotest-facegen: bad NPC"); _faceGenStage = 9; break; }
+                var outcome = StbEditor.App.Services.FaceGenExports.Export(this, [key]);
+                var nif = Path.Combine(dir, StbEditor.Render.FaceGenExport.NifPath(key));
+                var dds = Path.Combine(dir, StbEditor.Render.FaceGenExport.TintPath(key));
+                var source = session.Assets.Find(StbEditor.Render.FaceGenExport.NifPath(key));
+                Log.Info($"autotest-facegen: exported {outcome.Exported}, notes [{string.Join("; ", outcome.Problems)}]; nif {(File.Exists(nif) ? new FileInfo(nif).Length : -1)} bytes, dds {(File.Exists(dds) ? new FileInfo(dds).Length : -1)} bytes; asset view now reads it from {source?.LoosePath}");
+                try
+                {
+                    var model = StbEditor.Nif.NifFile.Load(File.ReadAllBytes(nif), nif);
+                    var tint = StbEditor.Render.TextureImage.Decode(File.ReadAllBytes(dds));
+                    Log.Info($"autotest-facegen: reads back: {model.Shapes.Count} shapes [{string.Join(", ", model.Shapes.Select(x => $"{x.Name} {x.Positions.Length}v"))}], warnings {model.Warnings.Count}; tint {tint.Width}x{tint.Height}");
+                }
+                catch (Exception ex) { Log.Error($"autotest-facegen: read back failed: {ex.Message}"); }
+                if (_faceGenActor is not null) RenderWindow.LookAtHeadForTest(_faceGenActor);
+                _faceGenStage = 1;
+                _faceGenFrames = 0;
+                break;
+            }
+            case 1 when RenderWindow.IsSettled && ++_faceGenFrames > 30:
+                Log.Info($"autotest-facegen: actor {_faceGenActor?.BaseEditorId} model {(_faceGenActor?.Model is { } m ? $"{m.Shapes.Count} shapes" : "none")}, failed {_faceGenActor?.ModelFailed}");
+                _faceGenStage = 9;
                 break;
         }
     }

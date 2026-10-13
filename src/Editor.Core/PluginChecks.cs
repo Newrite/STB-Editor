@@ -164,7 +164,7 @@ public static class PluginChecks
                 && !(npc.Configuration.TemplateFlags.HasFlag(NpcConfiguration.TemplateFlag.Traits) && !npc.Template.IsNull)
                 && lookup.Resolve<IRaceGetter>(npc.Race.FormKey) is { } race && race.Flags.HasFlag(Race.Flag.FaceGenHead)
                 && !assetExists($@"meshes\actors\character\facegendata\facegeom\{npc.FormKey.ModKey.FileName}\{npc.FormKey.ID:X8}.nif"))
-                issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, "no FaceGen head (meshes\\actors\\character\\facegendata): dark face in game"));
+                issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, "no FaceGen head (meshes\\actors\\character\\facegendata): dark face in game", "FaceGen"));
 
             // The body's tint must follow the skin tone, or the neck shows a seam.
             if (record is INpcGetter tinted && tinted.TintLayers.Count > 0
@@ -184,7 +184,7 @@ public static class PluginChecks
                 var own = origin is not null && (origin.StartsWith(pluginFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                     || Path.GetFileName(origin).StartsWith(pluginStem, StringComparison.OrdinalIgnoreCase));
                 if (!own)
-                    issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, $"changes the face, hair or skin set in {master}, but its FaceGen head comes from another plugin: the face may look dark or wrong (re-export FaceGen in the CK, Ctrl+F4)"));
+                    issues.Add(new CheckIssue(false, record.FormKey, "NPC_", editorId, $"changes the face, hair or skin set in {master}, but its FaceGen head comes from another plugin: the face may look dark or wrong (export FaceGen, Ctrl+F4)", "FaceGen"));
             }
         }
 

@@ -722,6 +722,15 @@ internal sealed partial class RenderWindow
         set => _tool = value;
     }
 
+    /// <summary>Camera in front of an actor's face (it faces its heading), a little above (autotests).</summary>
+    public void LookAtHeadForTest(SceneObject actor)
+    {
+        var head = actor.Position + new Vector3(0, 0, 120f * actor.Scale * actor.ModelScale);
+        var forward = new Vector3(MathF.Sin(actor.Rotation.Z), MathF.Cos(actor.Rotation.Z), 0);
+        _camera.Position = head + forward * 45f + new Vector3(0, 0, 4);
+        _camera.LookAt(head);
+    }
+
     /// <summary>The CK-style drag going on and whether the right button looks around (autotests).</summary>
     public string DragStateForTest => $"{_drag}{(_looking ? ", looking" : "")}";
 

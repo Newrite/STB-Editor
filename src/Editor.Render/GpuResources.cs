@@ -251,6 +251,24 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
         return dropped;
     }
 
+    /// <summary>
+    /// Drops the entries whose path matches (a file changed on disk): the next Get loads it again. UI thread only;
+    /// holders see their resource disposed and ask again. Returns how many.
+    /// </summary>
+    public int Forget(Func<string, bool> match)
+    {
+        var dropped = 0;
+        foreach (var (path, entry) in _entries.Where(e => match(e.Key) && e.Value.State != LoadState.Pending).ToList())
+        {
+            if (!_entries.TryRemove(path, out _)) continue;
+            Interlocked.Add(ref _bytes, -entry.Bytes);
+            entry.Value?.Dispose();
+            dropped++;
+        }
+        if (dropped > 0) Interlocked.Increment(ref _version);
+        return dropped;
+    }
+
     public virtual void Dispose()
     {
         foreach (var entry in _entries.Values) entry.Value?.Dispose();

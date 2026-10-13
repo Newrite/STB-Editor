@@ -244,6 +244,13 @@ public sealed class AssetFileSystem
         return null;
     }
 
+    /// <summary>The archived copy of an asset, ignoring loose files that replace it (null when no archive has it).</summary>
+    public byte[]? ReadArchived(string path)
+    {
+        if (!_archived.TryGetValue(Normalize(path), out var entry)) return null;
+        lock (entry.Gate) return entry.File.GetBytes();
+    }
+
     /// <summary>All asset paths under a folder prefix with an extension (e.g. "meshes\", ".nif").</summary>
     public IEnumerable<string> Enumerate(string prefix, string extension)
     {

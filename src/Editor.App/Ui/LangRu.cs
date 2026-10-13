@@ -1302,6 +1302,24 @@ internal static class LangRu
         ["quests"] = "квесты",
         ["  {0} condition(s)"] = "  условий: {0}",
 
+        // ---- FaceGen export
+        ["FaceGen exported for {0} NPC(s)"] = "FaceGen выгружен: NPC — {0}",
+        [", {0} note(s) in the log"] = ", замечаний в журнале: {0}",
+        ["Export FaceGen ({0})"] = "Экспорт FaceGen ({0})",
+        ["The NPC's head (mesh with its face morphs, hair, eyes…) and tint texture, written next to the active file (CK: Ctrl+F4). Without it the face is dark in game."] = "Голова NPC (меш с морфами лица, волосы, глаза…) и текстура тинта, записываются рядом с активным файлом (CK: Ctrl+F4). Без них лицо в игре тёмное.",
+        ["Export FaceGen for {0} NPC(s)"] = "Экспорт FaceGen для NPC: {0}",
+        ["Head mesh and tint texture of each NPC, written next to the active file (CK: Ctrl+F4); check again after"] = "Меш головы и текстура тинта каждого NPC, записываются рядом с активным файлом (CK: Ctrl+F4); потом проверьте ещё раз",
+        ["FaceGen files go next to the active file. Choose it first."] = "Файлы FaceGen записываются рядом с активным файлом. Сначала выберите его.",
+        ["not an NPC"] = "не NPC",
+        ["race not found"] = "раса не найдена",
+        ["race {0} has no FaceGen head"] = "у расы {0} нет головы FaceGen",
+        ["takes its face from a template (Use Traits): no FaceGen of its own"] = "лицо берётся из шаблона (Use Traits): своего FaceGen нет",
+        ["FaceGen export"] = "экспорт FaceGen",
+
+        // ---- FaceGen help
+        ["Object Window: Ctrl+F4"] = "Object Window: Ctrl+F4",
+        ["Export FaceGen of the selected NPCs: head mesh and tint texture next to the active file (CK: Ctrl+F4)"] = "Экспорт FaceGen выделенных NPC: меш головы и текстура тинта рядом с активным файлом (CK: Ctrl+F4)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

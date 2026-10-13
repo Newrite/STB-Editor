@@ -429,7 +429,30 @@ internal sealed partial class RenderWindow
         _dragMouseStart = mouseStart;
         _dragBefore.Clear();
         foreach (var obj in _selection) _dragBefore[obj] = obj.State;
+        _driftLogged = false;
+        Log.Info($"edit: {kind} drag ({(ImGui.IsMouseDown(ImGuiMouseButton.Right) ? "right" : "left")} button, tool {_tool}, angle snap {(_angleSnap ? _angleStep + "°" : "off")}) " +
+            $"on {DescribeSelection(_dragBefore)}; camera {_camera.Position} pitch {TransformMath.Degrees(_camera.Pitch):0}°, anchor {anchor}");
     }
+
+    /// <summary>Set when a rotation moved its object (logged once a drag).</summary>
+    private bool _driftLogged;
+
+    /// <summary>A turn must leave a lone object where it is: if it does not, the log says how (to find what moved it).</summary>
+    private void CheckRotationDrift(string how)
+    {
+        if (_driftLogged || _dragBefore.Count != 1) return;
+        var (obj, start) = _dragBefore.First();
+        if (Vector3.Distance(obj.Position, start.Position) < 1f) return;
+        _driftLogged = true;
+        Log.Warn($"edit: {how} moved {obj.BaseEditorId} by {Vector3.Distance(obj.Position, start.Position):0.#}: {State(start)} -> {State(obj.State)}; " +
+            $"mouse {ImGui.GetIO().MousePos - _dragMouseStart}, gizmo start {_gizmoStart}, gizmo now {_gizmoPivot}, local {_localSpace}");
+    }
+
+    private static string State(RefState s) =>
+        $"pos {s.Position} rot ({TransformMath.Degrees(s.Rotation.X):0.#}, {TransformMath.Degrees(s.Rotation.Y):0.#}, {TransformMath.Degrees(s.Rotation.Z):0.#}) scale {s.Scale:0.###}";
+
+    private static string DescribeSelection(Dictionary<SceneObject, RefState> states) =>
+        string.Join("; ", states.Take(3).Select(kv => $"{kv.Key.BaseEditorId} {State(kv.Value)}")) + (states.Count > 3 ? $" (+{states.Count - 3})" : "");
 
     private void UpdateDrag(ImGuiIOPtr io, Vector2 mouse, Vector2 size)
     {
@@ -480,6 +503,7 @@ internal sealed partial class RenderWindow
                 if (_angleSnap) degrees = MathF.Round(degrees / _angleStep) * _angleStep;
                 var axis = ImGui.IsKeyDown(ImGuiKey.X) ? Vector3.UnitX : ImGui.IsKeyDown(ImGuiKey.Y) ? Vector3.UnitY : Vector3.UnitZ;
                 RotateSelection(axis, TransformMath.Radians(degrees));
+                CheckRotationDrift($"mouse rotation by {degrees:0.#}° about {(axis == Vector3.UnitX ? "X" : axis == Vector3.UnitY ? "Y" : "Z")}");
                 break;
             }
 
@@ -528,6 +552,7 @@ internal sealed partial class RenderWindow
 
         var count = changes.Count;
         _document.Execute(count == 1 ? $"{name} {before.Keys.First().BaseEditorId}" : $"{name} {count} objects", changes);
+        Log.Info($"edit: {name} done: " + string.Join("; ", before.Take(3).Select(kv => $"{kv.Key.BaseEditorId} {State(kv.Value)} -> {State(kv.Key.State)}")) + (count > 3 ? $" (+{count - 3})" : ""));
     }
 
     private static Vector3 Snap(Vector3 p, float step, bool snapZ) => new(
@@ -603,6 +628,8 @@ internal sealed partial class RenderWindow
             _dragBefore.Clear();
             foreach (var obj in _selection) _dragBefore[obj] = obj.State;
             _gizmoStart = before;
+            _driftLogged = false;
+            Log.Info($"edit: gizmo {_tool} ({(_localSpace ? "local" : "world")}, angle snap {(_angleSnap ? _angleStep + "°" : "off")}) on {DescribeSelection(_dragBefore)}; camera {_camera.Position} pitch {TransformMath.Degrees(_camera.Pitch):0}°");
         }
 
         if (usingNow && changed)
@@ -629,6 +656,7 @@ internal sealed partial class RenderWindow
                 var (position, euler, _) = TransformMath.Decompose(world);
                 obj.Apply(start with { Position = position, Rotation = _tool == EditTool.Move ? start.Rotation : euler });
             }
+            if (_tool == EditTool.Rotate) CheckRotationDrift("gizmo rotation");
         }
 
         if (!usingNow && _gizmoWasUsing)

@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.36.2, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.36.3, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -70,6 +70,7 @@ forms re-read after a save (`_loadedIn` session); `--autotest-place` drops a bas
 v0.36.2: left drag on the selection follows the tool (Rotate turns, Scale sizes; `_dragByLeft`), move drags are capped at 4x the
 cursor's speed at the object (a level view threw objects far away); Preview «Spin» popped an unpushed colour (native abort) —
 push/pop by a local captured before the button, never by the field the button flips.
+v0.36.3: `edit:` log lines for every drag / gizmo use / placement commit, `CheckRotationDrift` warns when a turn moved a lone object.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

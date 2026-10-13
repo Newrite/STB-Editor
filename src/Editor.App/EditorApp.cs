@@ -2221,6 +2221,7 @@ internal sealed class EditorApp : IDisposable
                 break;
             case 1 when !RenderWindow.NavmeshGenerating && ++_navGenFrames > 5:
                 Log.Info($"autotest-navgen: {_navGenBefore} -> {Triangles()} triangles; {RenderWindow.NavmeshGenerationSummary}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                Log.Info($"autotest-navgen: Check NavMeshes: {string.Join(", ", Panels.NavmeshPanel.CheckAll(RenderWindow.Scene!).GroupBy(i => i.Issue.Problem.Split(' ')[0] + " " + i.Issue.Problem.Split(' ').Skip(1).FirstOrDefault()).Select(g => $"{g.Key} x{g.Count()}"))}");
                 RenderWindow.TopViewForTest();
                 ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_navgen_after.bmp");
                 _navGenStage = 2;

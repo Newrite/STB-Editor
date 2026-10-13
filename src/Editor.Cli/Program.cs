@@ -1391,6 +1391,36 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "navcheck":
+    {
+        // navcheck <game> <interior EditorID…>: Check NavMeshes on the cells' navmeshes (issue counts by kind).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var builder = new SceneBuilder(ws, catalog);
+        foreach (var id in args.Skip(2))
+        {
+            var cell = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, id, StringComparison.OrdinalIgnoreCase));
+            foreach (var view in builder.NavmeshesOf(cell.FormKey, null))
+            {
+                if (view.Record.Data is not { } data) continue;
+                var issues = StbEditor.Core.NavmeshCheck.Check(data);
+                Console.WriteLine($"{id} {view.Key}: {data.Triangles.Count} triangles, {data.Vertices.Count} vertices; {issues.Count} issue(s): "
+                    + string.Join(", ", issues.GroupBy(i => System.Text.RegularExpressions.Regex.Replace(i.Problem, @"\d+", "N")).Select(g => $"{g.Key} x{g.Count()}")));
+            }
+        }
+        break;
+    }
+    case "deletednav":
+    {
+        // deletednav <game>: plugins (but the base game's) with deleted navmeshes, and how many.
+        foreach (var plugin in ws.Active.Where(p => p.Mod is not null && !p.Name.EndsWith(".esm", StringComparison.OrdinalIgnoreCase) || p.Name.StartsWith("Unofficial", StringComparison.OrdinalIgnoreCase)))
+        {
+            var count = 0;
+            try { count = plugin.Mod!.EnumerateMajorRecords<Mutagen.Bethesda.Skyrim.INavigationMeshGetter>().Count(n => n.IsDeleted); } catch { }
+            if (count > 0) Console.WriteLine($"{plugin.Name}: {count} deleted navmesh(es)");
+        }
+        break;
+    }
     case "formidtest":
     {
         // formidtest <game> <out folder> <plugin>: a copy of the plugin where one own record that another record points at gets

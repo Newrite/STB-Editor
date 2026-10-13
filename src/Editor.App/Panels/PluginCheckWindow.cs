@@ -147,7 +147,44 @@ internal sealed class PluginCheckWindow
             DrawRows(app, session, result.Clean.DeletedReferences.Select(d => (d.Key, d.Signature, (string?)null, d.Override ? TF($"in {session.Catalog.Get(d.Cell)?.EditorId ?? d.Cell.ToString()}") : TF($"own reference in {session.Catalog.Get(d.Cell)?.EditorId ?? d.Cell.ToString()}"))).ToList());
             ImGui.EndTabItem();
         }
+        if (result.Clean.DeletedNavmeshes.Count > 0 && ImGui.BeginTabItem(TF($"Deleted navmeshes ({result.Clean.DeletedNavmeshes.Count})###dnav")))
+        {
+            ImGui.TextColored(Theme.TextDim, T("A deleted navmesh crashes the game when an actor paths where it was: bring it back from the master and move it far below the world (xEdit's Quick Auto Clean does the same)."));
+            var fixable = result.Clean.DeletedNavmeshes.Count(n => n.Override);
+            ImGui.BeginDisabled(!isActive || fixable == 0);
+            if (ImGui.Button(TF($"Undelete and sink {fixable}"))) FixDeletedNavmeshes(app, session, result.Clean.DeletedNavmeshes);
+            ImGui.EndDisabled();
+            DrawRows(app, session, result.Clean.DeletedNavmeshes.Select(n => (n.Key, "NAVM", (string?)null,
+                n.Override ? TF($"in {session.Catalog.Get(n.Cell)?.EditorId ?? n.Cell.ToString()}") : TF($"own navmesh in {session.Catalog.Get(n.Cell)?.EditorId ?? n.Cell.ToString()} (no master copy to bring back)"))).ToList());
+            ImGui.EndTabItem();
+        }
         ImGui.EndTabBar();
+    }
+
+    /// <summary>Deleted navmeshes of other plugins come back as the master's copy with every vertex at Z −30000 (one undo step); returns how many.</summary>
+    public static int FixDeletedNavmeshes(EditorApp app, EditorSession session, IReadOnlyList<DeletedNavmesh> deleted)
+    {
+        var lookup = new RecordLookup(session.Workspace, session.Catalog);
+        var masters = app.ActivePlugin is { } active
+            ? session.Workspace.Active.FirstOrDefault(p => p.Name == active.Name)?.Header?.Masters.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? []
+            : [];
+        var name = TF($"Undelete and sink {deleted.Count(d => d.Override)} navmesh(es)");
+        var steps = new List<IEditCommand>();
+        foreach (var d in deleted.Where(d => d.Override))
+        {
+            var master = lookup.CellVersionsByPlugin(d.Cell).Where(v => masters.Contains(v.Plugin.Name)).Reverse()
+                .Select(v => v.Cell.NavigationMeshes.FirstOrDefault(n => n.FormKey == d.Key && !n.IsDeleted)).FirstOrDefault(n => n is not null);
+            if (master?.Data is null) { Log.Warn(TF($"{d.Key}: no master version of the navmesh found, skipped")); continue; }
+            var copy = master.DeepCopy();
+            for (var i = 0; i < copy.Data!.Vertices.Count; i++) copy.Data.Vertices[i] = copy.Data.Vertices[i] with { Z = -30000f };
+            NavmeshTools.Rebuild(copy);
+            var before = app.Document.Override(d.Key);
+            steps.Add(new RecordEditCommand(name, before?.With((Mutagen.Bethesda.Plugins.Records.IMajorRecord)before.Record.DeepCopy()),
+                before?.With(copy) ?? new OverrideDraft(copy, RecordPlace.Navmesh, null, d.Cell, d.World)));
+        }
+        if (steps.Count > 0) app.Document.Record(new CompositeCommand(name, steps));
+        Log.Info($"{name}: {steps.Count} done");
+        return steps.Count;
     }
 
     /// <summary>The NPCs' body tint set from their skin tone (CK: Update NPC Body Tint Colors), one undo step; returns how many.</summary>

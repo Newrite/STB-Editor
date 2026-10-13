@@ -71,7 +71,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
 | ✅ 0.14.0 **Finalize** (NAVI, связи между ячейками, ребра у дверей) — без него NPC не проходят через двери и границы | CK: Finalize Cell / WorldSpace | ★★★ | M |
-| ✅ 0.40.0 (генерация Recast по ячейке, отсев кусков без связи с дверями, Finalize после; Check NavMeshes, cover edges, pathing tests — нет) Автогенерация (Recast / Havok), Check NavMeshes, cover edges, pathing tests | CK: NavMesh → Generation, Check, Find Cover Edges | ★★ | L |
+| ✅ 0.40.0 (генерация Recast по ячейке, отсев кусков без связи с дверями, Finalize после; 0.52.0 — Check NavMeshes; cover edges, pathing tests — нет) Автогенерация (Recast / Havok), Check NavMeshes, cover edges, pathing tests | CK: NavMesh → Generation, Check, Find Cover Edges | ★★ | L |
 | ✅ 0.28.0 (вынос в отдельный навмеш, выбор по номеру; флаги треугольников — с 0.4) Move Selection to Separate NavMesh, Select Triangle by Index, preferred/non-connector вершины | CK | ★ | S |
 
 ## 6. Файлы и проверки
@@ -79,7 +79,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
 | ✅ 0.15.0 **Check for Errors** (несуществующие ссылки, неверные данные), циклические leveled list | xEdit; CK: Validate Loaded Data | ★★ | M |
-| ✅ 0.15.0 (удалённые навмеши — нет) **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
+| ✅ 0.15.0 / 0.52.0 (удалённые навмеши — 0.52.0) **Очистка**: ITM (Identical to Master), UDR (удалённые рефы → отключить), удалённые навмеши — как Quick Auto Clean | xEdit | ★★ | M |
 | ✅ 0.7.0 / 0.51.0 Мастера: Add / Clean / Sort Masters | xEdit | ★★ | S |
 | ✅ 0.17.0 / 0.51.0 (Compact + light, смена одного FormID) Change FormID, Renumber, **Compact FormIDs for ESL**, Convert to Light Master | CK + xEdit | ★★ | M |
 | ✅ 0.16.0 / 0.48.0 (упаковка; список ассетов плагина и отсутствующие — 0.48.0) Упаковка в **BSA** (Create Archive), список ассетов плагина, проверка отсутствующих мешей и текстур | CK: Create Archive, Test Models; xEdit: Assets manager | ★★ | M |

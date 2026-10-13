@@ -15,6 +15,7 @@ internal sealed class NavmeshPanel : Panel
     private int _findMesh;
     private NavmeshGenerationSettings _generate = new() { KeepUnreachedArea = 0 };
     private bool _keepUnreached;
+    private List<(Mutagen.Bethesda.Plugins.FormKey Mesh, NavmeshIssue Issue)>? _issues;
 
     private static readonly (string Label, NavmeshTriangle.Flag Flag, string Tip)[] Flags =
     [
@@ -52,6 +53,7 @@ internal sealed class NavmeshPanel : Panel
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The same for every navmesh of the open cell (the centre cell outdoors)"));
         if (_summary is not null) ImGui.TextColored(Theme.TextDim, _summary);
         DrawGenerate(app, scene);
+        DrawCheck(app, scene);
         DrawFindByIndex(app, scene);
         ImGui.Separator();
 
@@ -104,6 +106,36 @@ internal sealed class NavmeshPanel : Panel
         ImGui.EndDisabled();
         DrawLegend();
     }
+
+    /// <summary>CK: Check NavMeshes on every loaded navmesh; a click on an issue selects it.</summary>
+    private void DrawCheck(EditorApp app, Render.Scene scene)
+    {
+        if (ImGui.Button(T("Check navmeshes"))) _issues = CheckAll(scene);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("CK: Check NavMeshes — bad corners, triangles without area or facing down, edges of three triangles, vertices at one place or unused, broken links"));
+        if (_issues is null) return;
+        ImGui.SameLine();
+        ImGui.TextColored(_issues.Count == 0 ? Theme.Good : Theme.Warning, _issues.Count == 0 ? T("no problems") : TF($"{_issues.Count} problem(s)"));
+        if (_issues.Count == 0) return;
+        ImGui.SameLine();
+        if (ImGui.SmallButton(T("hide"))) { _issues = null; return; }
+        if (ImGui.BeginChild("##navissues", new System.Numerics.Vector2(0, Math.Min(_issues.Count, 8) * ImGui.GetTextLineHeightWithSpacing() + 6), ImGuiChildFlags.Borders))
+        {
+            for (var i = 0; i < _issues.Count; i++)
+            {
+                var (mesh, issue) = _issues[i];
+                var at = issue.Triangle is { } t ? TF($"triangle {t}") : TF($"vertex {issue.Vertex}");
+                var label = $"{app.Session!.Workspace.FormIdText(mesh)} {at}: {T(issue.Problem)}{(issue.Detail.Length > 0 ? $" ({issue.Detail})" : "")}";
+                ImGui.PushStyleColor(ImGuiCol.Text, issue.Error ? Theme.Error : Theme.Warning);
+                if (ImGui.Selectable(label + "##iss" + i))
+                    app.RenderWindow.SelectNavmeshIndex(mesh, issue.Triangle ?? issue.Vertex ?? 0, issue.Triangle is not null);
+                ImGui.PopStyleColor();
+            }
+        }
+        ImGui.EndChild();
+    }
+
+    public static List<(Mutagen.Bethesda.Plugins.FormKey Mesh, NavmeshIssue Issue)> CheckAll(Render.Scene scene) =>
+        scene.Navmeshes.Where(n => n.Record.Data is not null).SelectMany(n => NavmeshCheck.Check(n.Record.Data!).Select(i => (n.Key, i))).ToList();
 
     /// <summary>CK: Generate NavMesh for the open cell, with the actor's size and how closely it follows the geometry.</summary>
     private void DrawGenerate(EditorApp app, Render.Scene scene)

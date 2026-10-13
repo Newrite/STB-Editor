@@ -13,6 +13,9 @@ public readonly record struct ItmRecord(FormKey Key, string Signature, string? E
 /// <summary>A reference the plugin deletes (xEdit: UDR — the game crashes when something still points at it).</summary>
 public readonly record struct DeletedReference(FormKey Key, string Signature, FormKey Cell, bool Override, bool Persistent);
 
+/// <summary>A navmesh the plugin deletes (crashes the game when an actor paths over it): its cell and whether it is another plugin's.</summary>
+public readonly record struct DeletedNavmesh(FormKey Key, FormKey Cell, FormKey? World, bool Override);
+
 /// <summary>A problem Check for Errors found: what, where, how bad.</summary>
 /// <param name="Fix">A fix the check window offers for this kind of issue ("BodyTint"), or null.</param>
 public readonly record struct CheckIssue(bool Error, FormKey Key, string Signature, string? EditorId, string Message, string? Fix = null);
@@ -21,6 +24,7 @@ public sealed class CleanReport
 {
     public List<ItmRecord> Itm { get; } = [];
     public List<DeletedReference> DeletedReferences { get; } = [];
+    public List<DeletedNavmesh> DeletedNavmeshes { get; } = [];
     public int Compared { get; set; }
 }
 
@@ -336,6 +340,8 @@ public static class PluginChecks
             var mine = versions[mineAt].Cell;
             var masterVersions = versions.Take(mineAt).Where(v => IsMaster(v.Plugin)).Reverse().ToList();
             var persistent = mine.Persistent.Select(p => p.FormKey).ToHashSet();
+            foreach (var navmesh in mine.NavigationMeshes.Where(n => n.IsDeleted))
+                report.DeletedNavmeshes.Add(new DeletedNavmesh(navmesh.FormKey, cellRecord.FormKey, cellRecord.Winner.Cell?.Worldspace, navmesh.FormKey.ModKey != plugin.ModKey));
             foreach (var placed in mine.Persistent.Concat(mine.Temporary))
             {
                 var signature = placed switch { IPlacedNpcGetter => "ACHR", IPlacedObjectGetter => "REFR", _ => placed.GetType().Name.Replace("BinaryOverlay", "") };

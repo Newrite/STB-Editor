@@ -1711,6 +1711,17 @@ internal static class LangRu
         ["Tint preset"] = "Пресет тинта",
         ["The race's colour presets for this tint (CK: tint presets)"] = "Цветовые пресеты расы для этого тинта (CK: tint presets)",
 
+        // ---- delta patch
+        ["{0} loads before {1}: move it after, or the patch would be overridden."] = "{0} грузится раньше {1}: поставьте его после, иначе патч перекроют.",
+        ["Delta patch from {0}"] = "Delta-патч из {0}",
+        ["{0} record(s) put into {1}"] = "Записей перенесено: {0} в {1}",
+        ["; {0} reference(s), cell(s) or navmesh(es) left out"] = "; пропущено рефов, ячеек или навмешей: {0}",
+        ["; {0} removed record(s) cannot be expressed by a patch"] = "; удалённые записи ({0}) патчем не выразить",
+        ["Delta patch into {0}"] = "Delta-патч в {0}",
+        ["Delta patch into the active file"] = "Delta-патч в активный файл",
+        ["The records {0} adds or changes against the other file go into the active file as its overrides (xEdit: delta patch); the active file must load after {1}"] = "Записи, которые {0} добавляет или меняет относительно другого файла, переносятся в активный файл как его переопределения (xEdit: delta patch); активный файл должен грузиться после {1}",
+        ["Choose another plugin than the compared one as the active file: the patch goes into it"] = "Выберите активным файлом другой плагин, не сравниваемый: патч пишется в него",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

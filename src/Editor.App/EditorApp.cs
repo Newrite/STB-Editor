@@ -1573,6 +1573,14 @@ internal sealed class EditorApp : IDisposable
                 break;
             case 1 when !CompareFile.IsBusy && ++_compareFileFrames > 2:
                 Log.Info($"autotest-comparefile: {CompareFile.Result?.Count} difference(s): {string.Join(", ", CompareFile.Result?.GroupBy(e => e.Kind).Select(g => $"{g.Key} {g.Count()}") ?? [])}");
+                // With a folder: a delta patch into a draft active file there, then Ctrl+Z (restore settings.json afterwards).
+                if (arg + 3 < cli.Length && !cli[arg + 3].StartsWith("--", StringComparison.Ordinal) && CompareFile.Result is { } diff)
+                {
+                    SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 3], "STBEditorDeltaAutotest.esp"), false, false, Session!.Game, Session.Workspace.DefaultEncoding));
+                    Log.Info($"autotest-comparefile: delta patch: {CompareFile.DeltaPatch(this, diff)}; pending {Document.PendingCount}, undo '{Document.History.UndoName}'");
+                    Document.Undo();
+                    Log.Info($"autotest-comparefile: after Ctrl+Z pending {Document.PendingCount}");
+                }
                 _compareFileStage = 2;
                 _compareFileFrames = 0;
                 break;

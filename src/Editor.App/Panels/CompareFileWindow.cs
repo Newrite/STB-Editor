@@ -1,4 +1,5 @@
 using Hexa.NET.ImGui;
+using Mutagen.Bethesda.Plugins.Records;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Core;
@@ -87,6 +88,54 @@ internal sealed class CompareFileWindow
         ImGui.End();
     }
 
+    /// <summary>
+    /// Delta patch: the compared plugin's own versions of the records it adds or changes against the other file, as overrides
+    /// in the active file (one undo step), dialogue lines under their topic. References, cells, worlds, navmeshes and land are
+    /// left out (they need their cell), and records the other file has but the plugin removed cannot be expressed. Returns a summary.
+    /// </summary>
+    public string DeltaPatch(EditorApp app, IReadOnlyList<PluginDiff.Entry> result)
+    {
+        if (app.Session is not { } session || app.ActivePlugin is not { } active) return T("No active file.");
+        var info = session.Workspace.Active.FirstOrDefault(p => p.Name.Equals(_plugin, StringComparison.OrdinalIgnoreCase));
+        if (info?.Mod is not { } mod) return TF($"{_plugin} is not in the load order");
+        var order = session.Workspace.Active.Select(p => p.Name).ToList();
+        var at = order.FindIndex(n => n.Equals(active.Name, StringComparison.OrdinalIgnoreCase));
+        if (at >= 0 && at < order.FindIndex(n => n.Equals(_plugin, StringComparison.OrdinalIgnoreCase)))
+            return TF($"{active.Name} loads before {_plugin}: move it after, or the patch would be overridden.");
+        var wanted = result.Where(e => e.Kind != PluginDiff.Kind.Removed).Select(e => e.Key).ToHashSet();
+        var skipped = 0;
+        var name = TF($"Delta patch from {_plugin}");
+        var steps = new List<IEditCommand>();
+        void Put(IMajorRecord copy, RecordPlace place, Mutagen.Bethesda.Plugins.FormKey? topic)
+        {
+            var before = app.Document.Override(copy.FormKey);
+            steps.Add(new RecordEditCommand(name, before?.With((IMajorRecord)before.Record.DeepCopy()), before?.With(copy) ?? new OverrideDraft(copy, place, null, topic)));
+        }
+        // Dialogue lines go under their topic.
+        foreach (var topic in mod.DialogTopics)
+            foreach (var line in topic.Responses.Where(r => wanted.Remove(r.FormKey)))
+                Put((IMajorRecord)line.DeepCopy(), RecordPlace.DialogInfo, topic.FormKey);
+        foreach (var record in mod.EnumerateMajorRecords())
+        {
+            if (!wanted.Contains(record.FormKey)) continue;
+            if (record is Mutagen.Bethesda.Skyrim.IPlacedGetter or Mutagen.Bethesda.Skyrim.ICellGetter or Mutagen.Bethesda.Skyrim.IWorldspaceGetter
+                or Mutagen.Bethesda.Skyrim.INavigationMeshGetter or Mutagen.Bethesda.Skyrim.ILandscapeGetter or Mutagen.Bethesda.Skyrim.IDialogResponsesGetter)
+            {
+                skipped++;
+                continue;
+            }
+            Put((IMajorRecord)record.DeepCopy(), RecordPlace.TopLevel, null);
+        }
+        if (steps.Count > 0) app.Document.Record(steps.Count == 1 ? steps[0] : new CompositeCommand(name, steps));
+        var edits = steps;
+        var removed = result.Count(e => e.Kind == PluginDiff.Kind.Removed);
+        var summary = TF($"{edits.Count} record(s) put into {active.Name}")
+            + (skipped > 0 ? TF($"; {skipped} reference(s), cell(s) or navmesh(es) left out") : "")
+            + (removed > 0 ? TF($"; {removed} removed record(s) cannot be expressed by a patch") : "");
+        Log.Info($"delta patch: {summary}");
+        return summary;
+    }
+
     private void DrawResult(EditorApp app, List<PluginDiff.Entry> result)
     {
         var counts = Enum.GetValues<PluginDiff.Kind>().ToDictionary(k => k, k => result.Count(e => e.Kind == k));
@@ -100,6 +149,15 @@ internal sealed class CompareFileWindow
         }
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 16);
         ImGui.InputTextWithHint("##filter", T("Filter: EditorID, type or field"), ref _filter, 128);
+        ImGui.SameLine();
+        var target = app.ActivePlugin;
+        var canDelta = target is not null && !target.Name.Equals(_plugin, StringComparison.OrdinalIgnoreCase);
+        ImGui.BeginDisabled(!canDelta || result.All(e => e.Kind == PluginDiff.Kind.Removed));
+        if (ImGui.Button(target is not null ? TF($"Delta patch into {target.Name}") : T("Delta patch into the active file"))) _error = DeltaPatch(app, result);
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(canDelta ? TF($"The records {_plugin} adds or changes against the other file go into the active file as its overrides (xEdit: delta patch); the active file must load after {_plugin}")
+                : T("Choose another plugin than the compared one as the active file: the patch goes into it"));
         var rows = result.Where(e => (_kind < 0 || (int)e.Kind == _kind)
             && (_filter.Length == 0 || (e.EditorId?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false) || e.Signature.Contains(_filter, StringComparison.OrdinalIgnoreCase)
                 || e.Fields.Any(f => f.Contains(_filter, StringComparison.OrdinalIgnoreCase)))).ToList();

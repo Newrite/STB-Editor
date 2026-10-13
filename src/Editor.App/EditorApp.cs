@@ -317,6 +317,7 @@ internal sealed class EditorApp : IDisposable
         RunHavokAutotest();
         RunNavGenAutotest();
         RunPerkTreeAutotest();
+        RunIdleTreeAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -374,6 +375,7 @@ internal sealed class EditorApp : IDisposable
         PaletteWindow.Draw(this);
         LayersWindow.Draw(this);
         StoryManagerWindow.Draw(this);
+        IdleTreeWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -547,6 +549,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.PaletteWindow PaletteWindow { get; } = new();
     public Panels.LayersWindow LayersWindow { get; } = new();
     public Panels.StoryManagerWindow StoryManagerWindow { get; } = new();
+    public Panels.IdleTreeWindow IdleTreeWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -592,6 +595,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || _havokStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navgen") || _navGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-perktree") || _perkStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-idletree") || _idleStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1793,6 +1797,43 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _idleStage, _idleFrames;
+    private Panels.IdleTreeWindow.TestCase? _idleCase;
+
+    /// <summary>
+    /// --autotest-idletree: World → Idle animations built; under the first idle with three or more children the first child
+    /// moved after the second (as the menu's «Move down» does), the order read back from the rebuilt tree, a shot
+    /// (%TEMP%\stbeditor_idletree.bmp), Ctrl+Z and the order read again. Nothing is saved.
+    /// </summary>
+    private void RunIdleTreeAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-idletree") || Session is null || Loader is not null || _idleStage == 9) return;
+        switch (_idleStage)
+        {
+            case 0:
+                IdleTreeWindow.Show();
+                IdleTreeWindow.Rebuild(this);
+                _idleCase = IdleTreeWindow.MoveDownForTest(this);
+                if (_idleCase is null) { Log.Error("autotest-idletree: no idle with three children"); _idleStage = 9; break; }
+                Log.Info($"autotest-idletree: {IdleTreeWindow.Nodes.Count} idles, {IdleTreeWindow.Roots.Count} roots; under {_idleCase.Parent}: before {_idleCase.Before}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                _idleStage = 1;
+                break;
+            case 1 when ++_idleFrames > 20:
+                IdleTreeWindow.Rebuild(this);
+                Log.Info($"autotest-idletree: after the move {IdleTreeWindow.OrderForTest(_idleCase!)}");
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_idletree.bmp");
+                _idleStage = 2;
+                _idleFrames = 0;
+                break;
+            case 2 when ++_idleFrames > 3:
+                Document.Undo();
+                IdleTreeWindow.Rebuild(this);
+                Log.Info($"autotest-idletree: after Ctrl+Z {IdleTreeWindow.OrderForTest(_idleCase!)}, pending {Document.PendingCount}");
+                _idleStage = 9;
                 break;
         }
     }
@@ -3304,6 +3345,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Object palette..."), (string?)null, false, ready)) PaletteWindow.Show();
             if (ImGui.MenuItem(T("Layers..."), (string?)null, false, ready)) LayersWindow.Show();
             if (ImGui.MenuItem(T("Story Manager..."), (string?)null, false, ready)) StoryManagerWindow.Show(this);
+            if (ImGui.MenuItem(T("Idle animations..."), (string?)null, false, ready)) IdleTreeWindow.Show();
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

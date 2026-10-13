@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.41.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.42.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -91,6 +91,8 @@ meshes with collision, no doors/activators/effects/alpha; `Panels/RenderWindow.N
 NAVM (neighbours' links into it dropped) + Finalize). Tuned against the game's navmeshes with `stbedit-cli navgen`.
 v0.41.0: perk tree (`Panels/PerkTreeEditor.cs`, AVIF «Perk tree» tab via `FormView.DrawTab`): place = grid column/row + offsets, links =
 ConnectionLineToIndices (node Index values, not list positions); the root's grid fields hold junk in vanilla — drawn under its children.
+v0.42.0: idle tree (`Core/IdleTree.cs`: parent = RelatedIdles[0] (an IDLE, or an AACT action for roots), previous sibling = [1];
+`IdleTree.Move` gives the (parent, previous) edits of a move; `Panels/IdleTreeWindow.cs`, World menu, one `CommitEdits` step per move).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

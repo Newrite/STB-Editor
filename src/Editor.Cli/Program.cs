@@ -2291,6 +2291,29 @@ switch (command)
             Console.WriteLine($"{p.Name}: {p.PropertyType.Name}");
         break;
     }
+    case "idletree":
+    {
+        // idletree <game> [depth] [filter]: the idle animation tree (as the CK's Animations window), counts and the top levels.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var idleWatch = System.Diagnostics.Stopwatch.StartNew();
+        var roots = StbEditor.Core.IdleTree.Build(lookup, catalog);
+        var depth = args.Length > 2 && int.TryParse(args[2], out var d) ? d : 2;
+        var filter = args.Length > 3 ? args[3] : null;
+        int Count(StbEditor.Core.IdleNode n) => 1 + n.Children.Sum(Count);
+        Console.WriteLine($"{roots.Sum(Count)} idles, {roots.Count} roots in {idleWatch.ElapsedMilliseconds} ms; parents: {string.Join(", ", roots.GroupBy(r => r.Parent is { } p ? catalog.Get(p)?.Signature ?? "missing" : "none").Select(g => $"{g.Key} {g.Count()}"))}");
+        foreach (var group in roots.GroupBy(r => r.Behavior).OrderBy(g => g.Key))
+            Console.WriteLine($"  graph '{group.Key}': {group.Count()} roots, {group.Sum(Count)} idles");
+        void Print(StbEditor.Core.IdleNode n, int level)
+        {
+            if (level > depth) return;
+            Console.WriteLine($"{new string(' ', 2 + level * 2)}{n.EditorId} event '{n.Event}' cond {n.Conditions} {n.Flags} [{Count(n) - 1}] {(n.Parent is { } p ? catalog.Get(p)?.Signature : "")}");
+            foreach (var c in n.Children) Print(c, level + 1);
+        }
+        foreach (var r in roots.Where(r => filter is null || (r.EditorId?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)).Take(60)) Print(r, 0);
+        break;
+    }
     case "perktree":
     {
         // perktree <game> <AVIF EditorID>: the nodes of a skill's perk tree (grid, offsets, perk, links).

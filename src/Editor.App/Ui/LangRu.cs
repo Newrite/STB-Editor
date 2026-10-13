@@ -1448,6 +1448,26 @@ internal static class LangRu
         ["Add perk node"] = "Новый узел перка",
         ["Delete perk node"] = "Удаление узла перка",
 
+        // ---- idle tree
+        ["Idle animations..."] = "Idle-анимации…",
+        ["All graphs"] = "Все графы",
+        ["(no graph)"] = "(без графа)",
+        ["Idle animations"] = "Idle-анимации",
+        ["Filter: idle or event"] = "Фильтр: idle или событие",
+        ["{0:N0} idles. Children in the order the game tries them: the first whose conditions pass plays."] = "Idle: {0:N0}. Дети — в том порядке, в каком их перебирает игра: играет первый, чьи условия выполнены.",
+        ["Click: open. Drag onto an idle: after it (Ctrl: as its last child), onto an action: first under it. Right click: move, new idle."] = "Клик — открыть. Перетащить на idle — встанет после него (с Ctrl — последним ребёнком), на действие — первым под ним. ПКМ — перемещение, новый idle.",
+        ["(no action)"] = "(без действия)",
+        ["action"] = "действие",
+        ["   {0} condition(s)"] = "   условий: {0}",
+        ["Into the idle above (last child)"] = "В idle выше (последним ребёнком)",
+        ["Out of its parent (after it)"] = "Из родителя (после него)",
+        ["New idle after this one"] = "Новый idle после этого",
+        ["New child idle (first)"] = "Новый дочерний idle (первым)",
+        ["An idle cannot go under itself"] = "Idle нельзя поместить под самого себя",
+        ["Move idle {0}"] = "Перемещение idle {0}",
+        ["A new idle goes into the active file — choose it first."] = "Новый idle записывается в активный файл — сначала выберите его.",
+        ["New idle {0}"] = "Новый idle {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

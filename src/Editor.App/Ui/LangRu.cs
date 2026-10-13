@@ -1588,6 +1588,22 @@ internal static class LangRu
         ["Other texts"] = "Прочие тексты",
         ["Game settings"] = "Игровые настройки (GMST)",
 
+        // ---- plugin assets
+        ["Plugin assets..."] = "Ассеты плагина…",
+        ["{0} file(s), {1} missing"] = "Файлов: {0}, отсутствует: {1}",
+        ["Plugin assets"] = "Ассеты плагина",
+        ["Missing only"] = "Только отсутствующие",
+        ["Filter paths"] = "Фильтр путей",
+        ["Paths the plugin's records name (models, textures, sounds, scripts…) and the textures inside its meshes. Voice files and FaceGen are not in this list (see Voice files and Check and clean)."] = "Пути, которые называют записи плагина (модели, текстуры, звуки…), и текстуры внутри его мешей. Голосовых файлов и FaceGen в этом списке нет (см. «Голосовые файлы» и «Проверка и очистка»).",
+        ["Path"] = "Путь",
+        ["From"] = "Откуда",
+        ["Used by"] = "Кем используется",
+        ["Texture"] = "Текстура",
+        ["Texture (in mesh)"] = "Текстура (в меше)",
+        ["Behavior"] = "Граф поведения",
+        ["DeformedModel"] = "Деформируемая модель",
+        ["BodyTexture"] = "Текстура тела",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

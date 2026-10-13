@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -323,6 +323,7 @@ internal sealed class EditorApp : IDisposable
         RunRegionAutotest();
         RunScriptAutotest();
         RunExportAutotest();
+        RunAssetsAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -386,6 +387,7 @@ internal sealed class EditorApp : IDisposable
         ScriptsWindow.Draw(this);
         ModGroupsWindow.Draw(this);
         ExportDataWindow.Draw(this);
+        PluginAssetsWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -565,6 +567,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.ScriptsWindow ScriptsWindow { get; } = new();
     public Panels.ModGroupsWindow ModGroupsWindow { get; } = new();
     public Panels.ExportDataWindow ExportDataWindow { get; } = new();
+    public Panels.PluginAssetsWindow PluginAssetsWindow { get; } = new();
 
     /// <summary>xEdit's ModGroups (Documents\STB Editor\modgroups.json), edited in File → ModGroups.</summary>
     public List<StbEditor.Core.ModGroup> ModGroupList { get; } = StbEditor.Core.ModGroups.Load(Panels.ModGroupsWindow.FilePath);
@@ -622,6 +625,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-region") || _regionStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-script") || _scriptStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-export") || _exportStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-assets") || _assetsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1824,6 +1828,31 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
                 break;
+        }
+    }
+
+    private int _assetsStage;
+
+    /// <summary>--autotest-assets [plugin] (default Dawnguard.esm): File → Plugin assets listed; counts by kind and source, a few missing ones logged.</summary>
+    private void RunAssetsAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-assets");
+        if (arg < 0 || Session is null || Loader is not null || _assetsStage == 9) return;
+        switch (_assetsStage)
+        {
+            case 0:
+                PluginAssetsWindow.Show(this);
+                PluginAssetsWindow.List(this, arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "Dawnguard.esm");
+                _assetsStage = 1;
+                break;
+            case 1 when !PluginAssetsWindow.IsBusy:
+            {
+                var assets = PluginAssetsWindow.Assets;
+                Log.Info($"autotest-assets: {assets.Count} files; kinds {string.Join(", ", assets.GroupBy(a => a.Kind).Select(g => $"{g.Key} {g.Count()}"))}; loose {assets.Count(a => a.Source is { InArchive: false })}, archived {assets.Count(a => a.Source is { InArchive: true })}, missing {assets.Count(a => a.Missing)}: {string.Join(", ", assets.Where(a => a.Missing).Take(6).Select(a => $"{a.Path} ({a.UsedBy.FirstOrDefault()})"))}");
+                _assetsStage = 9;
+                break;
+            }
         }
     }
 
@@ -3549,6 +3578,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Scripts..."), (string?)null, false, Session is not null)) ScriptsWindow.Show();
             if (ImGui.MenuItem(T("Export data..."), (string?)null, false, Session is not null)) ExportDataWindow.Show(this);
             if (ImGui.MenuItem(T("ModGroups..."), (string?)null, false, Session is not null)) ModGroupsWindow.Show();
+            if (ImGui.MenuItem(T("Plugin assets..."), (string?)null, false, Session is not null)) PluginAssetsWindow.Show(this);
             if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
             if (ImGui.MenuItem(T("Merge leveled lists..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));

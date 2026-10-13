@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.44.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.45.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -99,6 +99,8 @@ v0.43.0: voice files (`Core/VoiceFiles.cs`: name = quest EditorID ≤ 10 + topic
 .fuz = "FUZE", 1, lip size, lip, xwm; `Panels/VoiceFilesWindow.cs`).
 v0.44.0: weather preview (`Render/WeatherLighting.cs`: colour sets blended by the climate's sunrise / sunset, sun arc east → south → west
 from sunrise begin to sunset end; `Panels/RenderWindow.Sky.cs` sets `Scene.Lighting` and the clear colour, outdoors only).
+v0.45.0: regions (`Panels/RenderWindow.Regions.cs`: EditTool.Region, borders into `OverlayLines` following `TerrainHeight`, corners as
+P2Float in world units, one CommitEdit per change; `Panels/RegionsWindow.cs`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

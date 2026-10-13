@@ -11,7 +11,7 @@ using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
 
-internal enum EditTool { Select, Move, Rotate, Scale, Land, Navmesh, Palette }
+internal enum EditTool { Select, Move, Rotate, Scale, Land, Navmesh, Palette, Region }
 
 /// <summary>
 /// Editing in the render window.
@@ -231,7 +231,7 @@ internal sealed partial class RenderWindow
         var io = ImGui.GetIO();
         var mouse = io.MousePos - origin;
         var focused = ImGui.IsWindowFocused();
-        var gizmoBusy = ImGuizmo.IsUsing() || (ImGuizmo.IsOver() && _selection.Count > 0 && _tool is not (EditTool.Select or EditTool.Land or EditTool.Navmesh));
+        var gizmoBusy = ImGuizmo.IsUsing() || (ImGuizmo.IsOver() && _selection.Count > 0 && _tool is not (EditTool.Select or EditTool.Land or EditTool.Navmesh or EditTool.Region));
 
         if (hovered && (ImGui.IsMouseClicked(ImGuiMouseButton.Right) || ImGui.IsMouseClicked(ImGuiMouseButton.Middle) || ImGui.IsMouseClicked(ImGuiMouseButton.Left)))
             ImGui.SetWindowFocus();
@@ -306,6 +306,7 @@ internal sealed partial class RenderWindow
         if (_tool == EditTool.Navmesh) HandleNavmesh(app, mouse, size, hovered);
         else if (_renderer is not null) _renderer.NavSelection = null;
         if (_tool == EditTool.Palette) HandlePalette(app, mouse, size, hovered);
+        if (_tool == EditTool.Region) HandleRegions(app, mouse, size, hovered);
 
         // ---- pick mode: the click goes to the waiting form field.
         if (_pickRequest is { } pickId && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt)
@@ -320,7 +321,7 @@ internal sealed partial class RenderWindow
         if (_pickRequest is not null && ImGui.IsKeyPressed(ImGuiKey.Escape, false)) _pickRequest = null;
 
         // ---- left button: select, and drag the selection.
-        if (_tool is not (EditTool.Land or EditTool.Navmesh or EditTool.Palette) && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt && !gizmoBusy && _scene is not null)
+        if (_tool is not (EditTool.Land or EditTool.Navmesh or EditTool.Palette or EditTool.Region) && hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.KeyAlt && !gizmoBusy && _scene is not null)
         {
             _pressed = true;
             _dragMouseStart = io.MousePos;
@@ -407,7 +408,7 @@ internal sealed partial class RenderWindow
                 if (ImGui.IsKeyPressed(ImGuiKey.B, false)) _renderer!.Options.CellBorders ^= true;
             }
             if (ImGui.IsKeyPressed(ImGuiKey.W, false) && io.KeyShift) _renderer!.Options.Wireframe ^= true;
-            if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _tool != EditTool.Navmesh) DeleteSelection();
+            if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _tool is not (EditTool.Navmesh or EditTool.Region)) DeleteSelection();
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.D, false)) DuplicateSelection(app);
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.C, false)) CopySelection(app);
             if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.X, false)) CutSelection(app);
@@ -604,7 +605,7 @@ internal sealed partial class RenderWindow
     private unsafe void DrawGizmo(Vector2 origin, Vector2 size)
     {
         _gizmoOver = false;
-        if (_selection.Count == 0 || _tool is EditTool.Select or EditTool.Land or EditTool.Navmesh or EditTool.Palette || _drag != DragKind.None || _scene is null) return;
+        if (_selection.Count == 0 || _tool is EditTool.Select or EditTool.Land or EditTool.Navmesh or EditTool.Palette or EditTool.Region || _drag != DragKind.None || _scene is null) return;
 
         ImGuizmo.SetOrthographic(false);
         ImGuizmo.SetDrawlist(ImGui.GetWindowDrawList());

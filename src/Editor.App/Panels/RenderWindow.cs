@@ -466,6 +466,7 @@ internal sealed partial class RenderWindow : Panel
         }
 
         BrushOverlay();
+        RegionOverlay(app);
         ApplySky(app);
         var background = _scene?.IsInterior == true ? new Vector4(0.05f, 0.05f, 0.06f, 1) : _skyColour ?? new Vector4(0.50f, 0.60f, 0.72f, 1);
         try

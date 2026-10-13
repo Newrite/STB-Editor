@@ -320,6 +320,7 @@ internal sealed class EditorApp : IDisposable
         RunIdleTreeAutotest();
         RunVoiceAutotest();
         RunSkyAutotest();
+        RunRegionAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -379,6 +380,7 @@ internal sealed class EditorApp : IDisposable
         StoryManagerWindow.Draw(this);
         IdleTreeWindow.Draw(this);
         VoiceFilesWindow.Draw(this);
+        RegionsWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -554,6 +556,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.StoryManagerWindow StoryManagerWindow { get; } = new();
     public Panels.IdleTreeWindow IdleTreeWindow { get; } = new();
     public Panels.VoiceFilesWindow VoiceFilesWindow { get; } = new();
+    public Panels.RegionsWindow RegionsWindow { get; } = new();
 
     /// <summary>Edit → Find text.</summary>
     public Panels.FindTextWindow FindText { get; } = new();
@@ -602,6 +605,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-idletree") || _idleStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-voice") || _voiceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-sky") || _skyStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-region") || _regionStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1804,6 +1808,55 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
                 break;
+        }
+    }
+
+    private int _regionStage, _regionFrames;
+
+    /// <summary>
+    /// --autotest-region [dir] (with --cell of an exterior; dir: a draft active file there for the new region — restore settings.json): World → Regions, borders shown, the Region tool on; the region under the
+    /// view's centre selected, a shot from above (%TEMP%\stbeditor_region.bmp); its first corner moved 500 units east as a drag
+    /// does, the corner read back; a new region made around the view's centre is undone with it (two Ctrl+Z). Nothing is saved.
+    /// </summary>
+    private void RunRegionAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-region") || Session is null || Loader is not null || _regionStage == 9) return;
+        switch (_regionStage)
+        {
+            case 0 when RenderWindow.Scene is not null && RenderWindow.IsSettled && ++_regionFrames > 20:
+            {
+                RegionsWindow.Show(this);
+                RenderWindow.SetRegionMode(true);
+                var centre = RenderWindow.ViewCentreOnGround();
+                var regions = RenderWindow.Regions(this);
+                var under = regions.Where(r => r.Record.RegionAreas.Any(a => Panels.RenderWindow.Inside(a.RegionPointListData, centre))).ToList();
+                Log.Info($"autotest-region: {regions.Count} regions in the worldspace; under {centre}: {string.Join(", ", under.Select(r => r.Record.EditorID))}");
+                RenderWindow.SelectedRegion = under.FirstOrDefault().Key is var k && !k.IsNull ? k : regions.FirstOrDefault().Key;
+                RenderWindow.TopViewForRegionTest(centre);
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_region.bmp");
+                _regionStage = 1;
+                _regionFrames = 0;
+                break;
+            }
+            case 1 when ++_regionFrames > 5:
+            {
+                var key = RenderWindow.SelectedRegion!.Value;
+                var before = RenderWindow.Regions(this).First(r => r.Key == key).Record.RegionAreas[0].RegionPointListData[0];
+                RenderWindow.MoveRegionPointForTest(this, 0, 0, new System.Numerics.Vector2(500, 0));
+                var after = RenderWindow.Regions(this).First(r => r.Key == key).Record.RegionAreas[0].RegionPointListData[0];
+                // A draft active file in <dir> for the new region (restore settings.json afterwards).
+                var cli = Environment.GetCommandLineArgs();
+                var at = Array.IndexOf(cli, "--autotest-region");
+                if (at + 1 < cli.Length && !cli[at + 1].StartsWith("--", StringComparison.Ordinal))
+                    SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[at + 1], "STBEditorRegionAutotest.esp"), false, false, Session!.Game, Session.Workspace.DefaultEncoding));
+                var created = RenderWindow.AddRegionArea(this, RenderWindow.ViewCentreOnGround(), true);
+                Log.Info($"autotest-region: corner {before} -> {after}; new region {created}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                Document.Undo();
+                Document.Undo();
+                Log.Info($"autotest-region: after two Ctrl+Z corner {RenderWindow.Regions(this).First(r => r.Key == key).Record.RegionAreas[0].RegionPointListData[0]}, pending {Document.PendingCount}");
+                _regionStage = 9;
+                break;
+            }
         }
     }
 
@@ -3453,6 +3506,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Story Manager..."), (string?)null, false, ready)) StoryManagerWindow.Show(this);
             if (ImGui.MenuItem(T("Idle animations..."), (string?)null, false, ready)) IdleTreeWindow.Show();
             if (ImGui.MenuItem(T("Voice files..."), (string?)null, false, ready)) VoiceFilesWindow.Show(this);
+            if (ImGui.MenuItem(T("Regions..."), (string?)null, false, ready)) RegionsWindow.Show(this);
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));
             ImGui.EndMenu();

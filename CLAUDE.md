@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.39.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.40.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -85,6 +85,10 @@ turned clockwise for Bepu, contents of a moving piece and pieces starting inside
 v0.39.0: face editor (`Panels/FaceEditor.cs`, drawn by `FormView.DrawTab` for the NPC «Appearance» tab: a working Npc copy, Moved → preview,
 let go → one `EditTarget.Apply` with the whole appearance; preview = `FaceGenExport.Build` on a worker into `AssetFileSystem.AddMemory`
 paths under meshes\stbeditor\facepreview, drawn by `ObjectPreview`).
+v0.40.0: navmesh generation (`Core/NavmeshGenerator.cs`: DotRecast, Skyrim (x, y, z) → Recast (x, z, −y), heights from the detail
+mesh, pieces kept by door seeds / cell edge; `Render/NavmeshGeometry.cs`: what counts as ground — STAT/MSTT/FURN/CONT/TREE/FLOR/SCOL
+meshes with collision, no doors/activators/effects/alpha; `Panels/RenderWindow.NavmeshGenerate.cs`: worker, then into the cell's biggest
+NAVM (neighbours' links into it dropped) + Finalize). Tuned against the game's navmeshes with `stbedit-cli navgen`.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

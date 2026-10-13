@@ -73,6 +73,7 @@ public static partial class NifFile
             return model;
         }
 
+        model.HasCollision = header.BlockTypes.Any(t => t.StartsWith("bhk", StringComparison.Ordinal));
         var context = new Context(data, header, model, raw);
         var roots = ReadRoots(data, offset, header.BlockSizes.Length);
 

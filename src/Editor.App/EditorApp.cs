@@ -315,6 +315,7 @@ internal sealed class EditorApp : IDisposable
         RunPlaceAutotest();
         RunFaceGenAutotest();
         RunHavokAutotest();
+        RunNavGenAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -588,6 +589,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-place") || _placeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-facegen") || _faceGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || _havokStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-navgen") || _navGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1789,6 +1791,43 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _navGenStage, _navGenFrames, _navGenBefore;
+
+    /// <summary>
+    /// --autotest-navgen (with --cell): Generate navmesh for the open cell with the default settings, as the Navmesh panel
+    /// does; logs the triangles before and after and the summary, a screenshot from above (%TEMP%\stbeditor_navgen_after.bmp),
+    /// then Ctrl+Z until nothing is pending. Nothing is saved.
+    /// </summary>
+    private void RunNavGenAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-navgen") || Session is null || Loader is not null || _navGenStage == 9) return;
+        int Triangles() => RenderWindow.Scene?.Navmeshes.Sum(n => n.Record.Data?.Triangles.Count ?? 0) ?? 0;
+        switch (_navGenStage)
+        {
+            case 0 when RenderWindow.Scene is not null && RenderWindow.IsSettled && Session.Doors.IsCompleted && ++_navGenFrames > 20:
+                _navGenBefore = Triangles();
+                RenderWindow.SetNavmeshMode(true);
+                if (!RenderWindow.GenerateNavmesh(this, new Core.NavmeshGenerationSettings { KeepUnreachedArea = RenderWindow.Scene!.IsInterior ? 0 : 40000 })) { Log.Error("autotest-navgen: did not start"); _navGenStage = 9; break; }
+                Log.Info($"autotest-navgen: started, {_navGenBefore} navmesh triangles loaded");
+                _navGenStage = 1;
+                _navGenFrames = 0;
+                break;
+            case 1 when !RenderWindow.NavmeshGenerating && ++_navGenFrames > 5:
+                Log.Info($"autotest-navgen: {_navGenBefore} -> {Triangles()} triangles; {RenderWindow.NavmeshGenerationSummary}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                RenderWindow.TopViewForTest();
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_navgen_after.bmp");
+                _navGenStage = 2;
+                _navGenFrames = 0;
+                break;
+            case 2 when ++_navGenFrames > 30:
+                for (var i = 0; i < 4 && Document.PendingCount > 0; i++) Document.Undo();
+                RenderWindow.RefreshNavmeshesNow(this);
+                Log.Info($"autotest-navgen: after Ctrl+Z {Triangles()} triangles (was {_navGenBefore}), pending {Document.PendingCount}");
+                _navGenStage = 9;
                 break;
         }
     }

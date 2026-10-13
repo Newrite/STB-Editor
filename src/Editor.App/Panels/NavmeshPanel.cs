@@ -2,6 +2,7 @@ using Hexa.NET.ImGui;
 using Mutagen.Bethesda.Skyrim;
 using StbEditor.App.Services;
 using StbEditor.App.Ui;
+using StbEditor.Core;
 using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
@@ -12,6 +13,8 @@ internal sealed class NavmeshPanel : Panel
     private string? _summary;
     private int _findIndex;
     private int _findMesh;
+    private NavmeshGenerationSettings _generate = new() { KeepUnreachedArea = 0 };
+    private bool _keepUnreached;
 
     private static readonly (string Label, NavmeshTriangle.Flag Flag, string Tip)[] Flags =
     [
@@ -48,6 +51,7 @@ internal sealed class NavmeshPanel : Panel
         if (ImGui.Button(T("Finalize cell"))) _summary = window.FinalizeNavmeshes(app, false) ?? _summary;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The same for every navmesh of the open cell (the centre cell outdoors)"));
         if (_summary is not null) ImGui.TextColored(Theme.TextDim, _summary);
+        DrawGenerate(app, scene);
         DrawFindByIndex(app, scene);
         ImGui.Separator();
 
@@ -101,6 +105,42 @@ internal sealed class NavmeshPanel : Panel
         DrawLegend();
     }
 
+    /// <summary>CK: Generate NavMesh for the open cell, with the actor's size and how closely it follows the geometry.</summary>
+    private void DrawGenerate(EditorApp app, Render.Scene scene)
+    {
+        var window = app.RenderWindow;
+        if (window.NavmeshGenerating)
+        {
+            ImGui.TextColored(Theme.TextDim, TF($"Generating navmesh… {window.NavmeshGenerationTime.TotalSeconds:0} s"));
+            return;
+        }
+        if (ImGui.Button(scene.IsInterior ? T("Generate navmesh (cell)") : T("Generate navmesh (centre cell)")))
+            window.GenerateNavmesh(app, _generate with { KeepUnreachedArea = _keepUnreached || !scene.IsInterior ? 40000 : 0 });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(T("CK: Generate NavMesh — the walkable ground of the cell from its meshes (with collision) and terrain. It replaces the triangles of the cell's biggest navmesh, or makes a new one in the active file; Finalize follows. One Ctrl+Z each."));
+        if (window.NavmeshGenerationSummary is { } done) ImGui.TextColored(Theme.TextDim, done);
+        if (!ImGui.TreeNode(T("Generation settings"))) return;
+        var width = ImGui.GetFontSize() * 6;
+        void Number(string label, float value, string tip, Func<float, NavmeshGenerationSettings> set)
+        {
+            ImGui.SetNextItemWidth(width);
+            if (Fields.Float(label, value, out var v) && v > 0) _generate = set(v);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(tip);
+        }
+        Number(T("Actor radius"), _generate.AgentRadius, T("How far the navmesh keeps from walls (units; 70 = 1 m)"), v => _generate with { AgentRadius = v });
+        Number(T("Actor height"), _generate.AgentHeight, T("Free room above the ground an actor needs"), v => _generate with { AgentHeight = v });
+        Number(T("Step height"), _generate.AgentClimb, T("Highest step an actor walks up"), v => _generate with { AgentClimb = v });
+        Number(T("Max slope"), _generate.MaxSlope, T("Steepest ground that is still walkable (degrees)"), v => _generate with { MaxSlope = Math.Min(v, 89) });
+        Number(T("Cell size"), _generate.CellSize, T("Voxel size: smaller follows the walls closer, takes longer and makes more triangles"), v => _generate with { CellSize = Math.Max(v, 2), CellHeight = Math.Max(v, 2) / 2 });
+        if (scene.IsInterior)
+        {
+            ImGui.Checkbox(T("Keep pieces no door reaches"), ref _keepUnreached);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Off: only the ground connected to a door is kept (no table tops, beams or the tops of the walls). On: big separate pieces stay too (rooms reached by a jump or a drop)."));
+        }
+        if (ImGui.SmallButton(T("Defaults"))) (_generate, _keepUnreached) = (new NavmeshGenerationSettings { KeepUnreachedArea = 0 }, false);
+        ImGui.TreePop();
+    }
+
     /// <summary>CK: Select Triangle by Index — and a vertex — in one of the loaded navmeshes.</summary>
     private void DrawFindByIndex(EditorApp app, Render.Scene scene)
     {
@@ -128,6 +168,6 @@ internal sealed class NavmeshPanel : Panel
         ImGui.Separator();
         ImGui.TextColored(Theme.TextDim, T("Colours: green walkable · yellow preferred · blue water · orange door · purple no large creatures."));
         ImGui.TextColored(Theme.TextDim, T("Edges: red = open border, light blue = linked to the next navmesh."));
-        ImGui.TextColored(Theme.TextDim, T("Navmesh generation is not done here yet; after editing press Finalize."));
+        ImGui.TextColored(Theme.TextDim, T("After editing press Finalize."));
     }
 }

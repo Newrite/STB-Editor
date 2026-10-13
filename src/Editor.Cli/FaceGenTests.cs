@@ -246,6 +246,144 @@ internal static class FaceGenTests
         }
     }
 
+    /// <summary>
+    /// navgen &lt;game&gt; &lt;cell EditorID&gt; [--cs N] [--radius N] [--obj file.obj]: generate the cell's navmesh from its meshes
+    /// (never written anywhere) and set it against the navmesh the game has: triangles, area, winding, how much of each
+    /// one the other covers.
+    /// </summary>
+    public static void NavGen(Workspace ws, string[] args)
+    {
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var vfs = AssetFileSystem.Build(ws);
+        var cell = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var builder = new SceneBuilder(ws, catalog);
+        var scene = builder.BuildInterior(cell.FormKey);
+        float Arg(string name, float fallback) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault() is { } t && float.TryParse(t, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+        var settings = new StbEditor.Core.NavmeshGenerationSettings { CellSize = Arg("--cs", 8), AgentRadius = Arg("--radius", 20), AgentClimb = Arg("--climb", 36), KeepUnreachedArea = Arg("--big", 40000) };
+
+        var models = new Dictionary<string, (IReadOnlyList<NifShape>, bool)?>(StringComparer.OrdinalIgnoreCase);
+        (IReadOnlyList<NifShape>, bool)? Shapes(SceneObject o)
+        {
+            if (o.ModelPath is not { } path) return null;
+            if (!models.TryGetValue(path, out var found))
+            {
+                try { found = vfs.ReadAllBytes(path) is { } bytes && NifFile.Load(bytes, path) is var m ? (m.Shapes, m.HasCollision) : null; } catch { found = null; }
+                models[path] = found;
+            }
+            return found;
+        }
+        foreach (var o in scene.Objects) if (o.ModelPath is not null) { Shapes(o); }
+        if (args.SkipWhile(a => a != "--near").Skip(1).FirstOrDefault() is { } near)
+        {
+            var p = near.Split(',').Select(t => float.Parse(t, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            var at = new Vector3(p[0], p[1], p[2]);
+            foreach (var o in scene.Objects.Where(o => o.Kind == SceneObjectKind.Mesh && Vector3.Distance(o.Position, at) < 1500).OrderBy(o => Vector3.Distance(o.Position, at)).Take(25))
+                Console.WriteLine($"  near: {o.BaseSignature} {o.BaseEditorId} {o.Position} r {o.BoundsRadius:0} {o.ModelPath} collision {(Shapes(o) is { Item2: true })}");
+            // Which object's triangles lie under the point.
+            foreach (var o in scene.Objects.Where(o => o.Kind == SceneObjectKind.Mesh))
+            {
+                if (Shapes(o) is not { } found) continue;
+                foreach (var shape in found.Item1)
+                    for (var i = 0; i + 2 < shape.Indices.Length; i += 3)
+                    {
+                        var t = (Vector3.Transform(shape.Positions[(int)shape.Indices[i]], o.World), Vector3.Transform(shape.Positions[(int)shape.Indices[i + 1]], o.World), Vector3.Transform(shape.Positions[(int)shape.Indices[i + 2]], o.World));
+                        if (!Inside(at, t, out var z) || MathF.Abs(z - at.Z) > 80) continue;
+                        Console.WriteLine($"  under: {o.BaseSignature} {o.BaseEditorId} {o.ModelPath} shape {shape.Name} z {z:0} collision {found.Item2} hidden {shape.IsHidden} kind {shape.Material.Kind} alpha {shape.Material.AlphaBlend}");
+                        goto next;
+                    }
+                next:;
+            }
+        }
+        // Bounds of what is there (the objects' spheres).
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        foreach (var o in scene.Objects.Where(o => NavmeshGeometry.Solid.Contains(o.BaseSignature) && o.Kind == SceneObjectKind.Mesh))
+        {
+            min = Vector3.Min(min, o.BoundsCenter - new Vector3(o.BoundsRadius));
+            max = Vector3.Max(max, o.BoundsCenter + new Vector3(o.BoundsRadius));
+        }
+        // Bounds from the loaded meshes (UpdateBounds needs GPU models): use positions instead.
+        var (vertices, indices) = NavmeshGeometry.Collect(scene, new Vector3(-1e6f), new Vector3(1e6f), Shapes);
+        if (vertices.Count > 0)
+        {
+            min = vertices.Aggregate(new Vector3(float.MaxValue), Vector3.Min);
+            max = vertices.Aggregate(new Vector3(float.MinValue), Vector3.Max);
+        }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var seeds = args.Contains("--no-seeds") ? null : scene.Objects.Where(o => o.BaseSignature == "DOOR" && !o.IsDeleted).Select(o => o.Position).ToList();
+        var generated = StbEditor.Core.NavmeshGenerator.Generate(vertices, indices, min, max, settings, seeds: seeds, roofed: true);
+        Console.WriteLine($"{cell.EditorId}: {indices.Count / 3:N0} input triangles from {models.Count} meshes, bounds {min} .. {max}; generated {generated.Polygons} polygons, {generated.Triangles.Count} triangles kept ({generated.DroppedTriangles} in {generated.DroppedPieces} unreachable pieces dropped; {seeds?.Count ?? 0} doors), {generated.Vertices.Count} vertices in {sw.ElapsedMilliseconds} ms");
+
+        var game = builder.NavmeshesOf(cell.FormKey, null);
+        var gameTris = new List<(Vector3 A, Vector3 B, Vector3 C)>();
+        foreach (var view in game)
+        {
+            if (view.Record.Data is not { } data) continue;
+            foreach (var t in data.Triangles)
+            {
+                var v = t.Vertices;
+                Vector3 P(int i) => new(data.Vertices[i].X, data.Vertices[i].Y, data.Vertices[i].Z);
+                gameTris.Add((P(v.X), P(v.Y), P(v.Z)));
+            }
+        }
+        Console.WriteLine("  game triangle flags: " + string.Join(", ", game.SelectMany(v => v.Record.Data?.Triangles ?? []).GroupBy(t => (t.Flags, t.CoverFlags)).OrderByDescending(g => g.Count()).Take(8).Select(g => $"{g.Key.Flags}/{g.Key.CoverFlags} x{g.Count()}")));
+        var ours = generated.Triangles.Select(t => (generated.Vertices[t.A], generated.Vertices[t.B], generated.Vertices[t.C])).ToList();
+        static float Area((Vector3 A, Vector3 B, Vector3 C) t) => Vector3.Cross(t.B - t.A, t.C - t.A).Length() / 2;
+        static float Up((Vector3 A, Vector3 B, Vector3 C) t) => Vector3.Cross(t.B - t.A, t.C - t.A).Z;
+        Console.WriteLine($"  dropped pieces by area: {string.Join(" ", generated.DroppedAreas.Take(15).Select(a => a.ToString("N0")))}{(generated.DroppedAreas.Count > 15 ? " …" : "")}; under 20 000: {generated.DroppedAreas.Count(a => a < 20000)}");
+        Console.WriteLine($"  game navmesh: {game.Count} navmesh(es), {gameTris.Count} triangles, area {gameTris.Sum(Area):N0}, counterclockwise from above {gameTris.Count(t => Up(t) > 0)}/{gameTris.Count}");
+        Console.WriteLine($"  generated:    {ours.Count} triangles, area {ours.Sum(Area):N0}, counterclockwise from above {ours.Count(t => Up(t) > 0)}/{ours.Count}");
+        Console.WriteLine($"  game triangles whose centre is on ours: {Covered(gameTris, ours):P0}; ours on the game's: {Covered(ours, gameTris):P0}");
+
+        if (args.SkipWhile(a => a != "--game-obj").Skip(1).FirstOrDefault() is { } gameObj)
+        {
+            using var w = new StreamWriter(gameObj);
+            foreach (var (a, b, c) in gameTris)
+            {
+                foreach (var v in new[] { a, b, c }) w.WriteLine(FormattableString.Invariant($"v {v.X} {v.Y} {v.Z}"));
+                w.WriteLine("f -3 -2 -1");
+            }
+        }
+        if (args.SkipWhile(a => a != "--obj").Skip(1).FirstOrDefault() is { } obj)
+        {
+            using var w = new StreamWriter(obj);
+            foreach (var v in generated.Vertices) w.WriteLine(FormattableString.Invariant($"v {v.X} {v.Y} {v.Z}"));
+            foreach (var (a, b, c) in generated.Triangles) w.WriteLine($"f {a + 1} {b + 1} {c + 1}");
+            Console.WriteLine($"  written {obj}");
+        }
+
+        static double Covered(List<(Vector3 A, Vector3 B, Vector3 C)> what, List<(Vector3 A, Vector3 B, Vector3 C)> by)
+        {
+            if (what.Count == 0) return 0;
+            var hit = 0;
+            foreach (var t in what)
+            {
+                var c = (t.A + t.B + t.C) / 3;
+                foreach (var u in by)
+                {
+                    if (!Inside(c, u, out var z) || MathF.Abs(z - c.Z) > 40) continue;
+                    hit++;
+                    break;
+                }
+            }
+            return (double)hit / what.Count;
+        }
+
+        static bool Inside(Vector3 p, (Vector3 A, Vector3 B, Vector3 C) t, out float z)
+        {
+            z = 0;
+            var d = (t.B.Y - t.C.Y) * (t.A.X - t.C.X) + (t.C.X - t.B.X) * (t.A.Y - t.C.Y);
+            if (MathF.Abs(d) < 1e-6f) return false;
+            var a = ((t.B.Y - t.C.Y) * (p.X - t.C.X) + (t.C.X - t.B.X) * (p.Y - t.C.Y)) / d;
+            var b = ((t.C.Y - t.A.Y) * (p.X - t.C.X) + (t.A.X - t.C.X) * (p.Y - t.C.Y)) / d;
+            var c = 1 - a - b;
+            if (a < -0.01f || b < -0.01f || c < -0.01f) return false;
+            z = a * t.A.Z + b * t.B.Z + c * t.C.Z;
+            return true;
+        }
+    }
+
     /// <summary>Least-squares weights of <paramref name="morphs"/> that best give <paramref name="target"/>.</summary>
     public static Dictionary<string, double> Fit(List<(string Name, Vector3[] D)> morphs, Vector3[] target)
     {

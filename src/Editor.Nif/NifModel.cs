@@ -160,6 +160,9 @@ public sealed class NifModel
     public uint Version { get; init; }
     public uint BsVersion { get; init; }
 
+    /// <summary>The file has Havok collision (bhk… blocks): the game collides with it (navmesh generation, physics).</summary>
+    public bool HasCollision { get; internal set; }
+
     public Vector3 BoundsMin { get; internal set; } = new(float.MaxValue);
     public Vector3 BoundsMax { get; internal set; } = new(float.MinValue);
 

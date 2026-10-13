@@ -56,6 +56,10 @@ public sealed class GpuModel : IDisposable
 
     public required string Path { get; init; }
     public required List<GpuShape> Shapes { get; init; }
+
+    /// <summary>The NIF has Havok collision (navmesh generation uses only what the game collides with).</summary>
+    public bool HasCollision { get; set; }
+
     public required Vector3 BoundsMin { get; init; }
     public required Vector3 BoundsMax { get; init; }
 
@@ -337,7 +341,9 @@ public sealed class MeshCache(ID3D11Device device, AssetFileSystem assets)
 
         var bytes = assets.ReadAllBytes(path) ?? throw new FileNotFoundException(path);
         var model = NifFile.Load(bytes, path);
-        return GpuModel.Create(device, path, model.Shapes, model.Particles);
+        var created = GpuModel.Create(device, path, model.Shapes, model.Particles);
+        created.HasCollision = model.HasCollision;
+        return created;
     }
 }
 

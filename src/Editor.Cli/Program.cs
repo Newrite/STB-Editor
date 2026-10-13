@@ -1021,6 +1021,9 @@ switch (command)
     case "facegenbuild":
         FaceGenTests.Build(ws, args);
         break;
+    case "navgen":
+        FaceGenTests.NavGen(ws, args);
+        break;
     case "facegensliders":
         FaceGenTests.Sliders(ws, args);
         break;
@@ -1028,6 +1031,19 @@ switch (command)
     {
         // reflect <game> <Mutagen getter interface, e.g. INpcGetter>: properties, to write code against.
         var type = typeof(Mutagen.Bethesda.Skyrim.ISkyrimModGetter).Assembly.GetTypes().FirstOrDefault(x => x.Name == args[2] || x.FullName?.EndsWith("." + args[2]) == true);
+        if (type is null && args.Contains("--recast"))
+        {
+            // Navmesh generation library: constructors and methods too.
+            type = typeof(DotRecast.Recast.RcConfig).Assembly.GetTypes().Concat(typeof(DotRecast.Core.RcContext).Assembly.GetTypes())
+                .FirstOrDefault(x => x.Name == args[2]);
+            if (type is null) { Console.WriteLine("no such type"); break; }
+            foreach (var c in type.GetConstructors()) Console.WriteLine($"  ctor({string.Join(", ", c.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"))})");
+            foreach (var m in type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly))
+                Console.WriteLine($"  {(m.IsStatic ? "static " : "")}{m.ReturnType.Name} {m.Name}({string.Join(", ", m.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"))})");
+            foreach (var f in type.GetFields()) Console.WriteLine($"  field {f.FieldType.Name} {f.Name}");
+            foreach (var pr in type.GetProperties()) Console.WriteLine($"  prop {pr.PropertyType.Name} {pr.Name}");
+            break;
+        }
         if (type is null) { Console.WriteLine("no such type"); break; }
         if (type.IsEnum)
         {

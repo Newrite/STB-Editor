@@ -11,6 +11,8 @@ internal sealed class InspectorPanel : Panel
 
     public override string Name => "Inspector";
 
+    public RecordForm Form => _form;
+
     protected override void DrawContent(EditorApp app)
     {
         if (!RequireSession(app)) return;

@@ -636,6 +636,16 @@ internal sealed partial class RenderWindow
     private Vector3 _gizmoTestBeforePosition;
     private bool _gizmoTestMove;
 
+    /// <summary>The object the gizmo test turns (else the one nearest the scene focus).</summary>
+    public SceneObject? GizmoTestTarget { get; set; }
+
+    /// <summary>Camera <paramref name="distance"/> units south of and above the object, looking at its middle (autotests).</summary>
+    public void LookAtForTest(SceneObject obj, float distance)
+    {
+        _camera.Position = obj.BoundsCenter + new Vector3(0, -distance, distance * 0.5f);
+        _camera.LookAt(obj.BoundsCenter);
+    }
+
     /// <summary>
     /// --autotest-gizmo (with --cell): select an object, rotate tool in world space, find a ring of the
     /// gizmo by moving a fake mouse out from the centre, drag it, check the object turned. True when done.
@@ -646,7 +656,7 @@ internal sealed partial class RenderWindow
         switch (_gizmoTest)
         {
             case 0 when IsSettled:
-                _gizmoTestObject = _scene!.Objects
+                _gizmoTestObject = GizmoTestTarget ?? _scene!.Objects
                     .Where(o => o.Model is { IsEmpty: false } && !o.IsDeleted && o.BoundsRadius is > 40 and < 400)
                     .OrderBy(o => Vector3.Distance(o.Position, _scene.Focus)).FirstOrDefault();
                 if (_gizmoTestObject is null) { Log.Error("autotest-gizmo: no object"); return true; }
@@ -929,6 +939,31 @@ internal sealed partial class RenderWindow
     {
         var signature = app.Session!.Catalog.Get(baseKey)!.Signature;
         CreateNew(app, baseKey, signature, position, Vector3.Zero, 1f);
+    }
+
+    /// <summary>Drops a form at the centre of the view, as a drop from the Object Window does (autotests); the new reference.</summary>
+    public SceneObject? DropAtCentreForTest(EditorApp app, FormKey baseKey)
+    {
+        PlaceAt(app, baseKey, _viewSize * 0.5f, _viewSize);
+        return SingleSelection;
+    }
+
+    /// <summary>What a click on the object's bounds centre on screen picks (autotests).</summary>
+    public SceneObject? PickOnScreenForTest(SceneObject obj)
+    {
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(_camera.FieldOfView, _viewSize.X / _viewSize.Y, 10f, 1_000_000f);
+        var clip = Vector4.Transform(new Vector4(obj.BoundsCenter, 1f), _camera.View * projection);
+        if (clip.W <= 0) return null;
+        var pixel = new Vector2((clip.X / clip.W * 0.5f + 0.5f) * _viewSize.X, (0.5f - clip.Y / clip.W * 0.5f) * _viewSize.Y);
+        return PickAt(pixel, _viewSize)?.Object;
+    }
+
+    /// <summary>A right-button drag on the selection (CK), turned by <paramref name="degrees"/> about Z (autotests).</summary>
+    public void RotateSelectionForTest(float degrees)
+    {
+        BeginDrag(DragKind.Rotate, Vector3.Zero, Vector2.Zero);
+        RotateSelection(Vector3.UnitZ, TransformMath.Radians(degrees));
+        EndDrag("Rotate");
     }
 
     /// <summary>Creates the reference in the scene and the document (one undo step unless batched).</summary>

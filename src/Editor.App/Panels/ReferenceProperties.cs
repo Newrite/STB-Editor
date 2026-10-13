@@ -201,7 +201,7 @@ internal static class ReferenceProperties
     public static IReadOnlyList<string> MoreMembers(IPlacedGetter record) => MoreTab(record).Members.Select(m => m.Name).ToList();
 
     /// <summary>A reference made in this session has no record yet: start from an empty one with its base.</summary>
-    private static IPlacedGetter? NewRecord(EditorSession session, SceneObject obj)
+    internal static IPlacedGetter? NewRecord(EditorSession session, SceneObject obj)
     {
         if (obj.BaseSignature is "NPC_" or "LVLN")
         {

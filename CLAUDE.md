@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.36.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.36.1, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -65,6 +65,8 @@ v0.33.0: vertex colour brush (`LandBrushMode.Color`, `LandscapeBrush.Color`; Lan
 v0.34.0: object palette (`Panels/RenderWindow.Palette.cs` EditTool.Palette, `Panels/PaletteWindow.cs`).
 v0.35.0: layers (`Panels/LayersWindow.cs`, layers.json in %LOCALAPPDATA%; RenderOptions.HiddenReferences / FrozenReferences, `Picking.Pick(selecting:)`).
 v0.36.0: Story Manager tree (`Core/StoryManager.cs`: children by Parent, ordered by the PreviousSibling chain; `Panels/StoryManagerWindow.cs`).
+v0.36.1: Inspector of references made in this session (`RecordForm.Load` starts them from `ReferenceProperties.NewRecord`),
+forms re-read after a save (`_loadedIn` session); `--autotest-place` drops a base like the Object Window and checks it.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

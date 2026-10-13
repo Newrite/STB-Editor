@@ -21,9 +21,14 @@ internal sealed class RecordForm
     public EditTarget? Target { get; private set; }
 
     private FormKey? _loadedFor;
+    private StbEditor.App.Services.EditorSession? _loadedIn;
     private List<(string Plugin, IMajorRecordGetter Record)> _versions = [];
     private string? _error;
     private StbEditor.Render.Scene? _errorScene;
+
+    /// <summary>Why the record could not be shown, and the versions shown (autotests read them).</summary>
+    public string? Error => _error;
+    public IReadOnlyList<(string Plugin, IMajorRecordGetter Record)> Versions => _versions;
 
     /// <summary>Records that do not sit in a top-level group (or need their own tools) are not field-edited here.</summary>
     private static readonly HashSet<string> NotFieldEditable = ["CELL", "WRLD", "LAND", "NAVM", "NAVI", "DIAL", "INFO", "TES4"];
@@ -32,8 +37,9 @@ internal sealed class RecordForm
     public void Draw(EditorApp app, FormKey key, bool inWindow)
     {
         var session = app.Session!;
-        // A placed reference is found through the loaded scene: try again once a scene is there.
-        if (_loadedFor != key || (_error is not null && _errorScene != app.RenderWindow.Scene)) Load(app, key);
+        // A placed reference is found through the loaded scene: try again once a scene is there. After a save
+        // everything is read again: the versions (and a new reference's record) come from the new load.
+        if (_loadedFor != key || _loadedIn != session || (_error is not null && _errorScene != app.RenderWindow.Scene)) Load(app, key);
 
         var catalog = session.Catalog.Get(key);
         var placedObject = catalog is null ? app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) : null;
@@ -304,6 +310,7 @@ internal sealed class RecordForm
     private void Load(EditorApp app, FormKey key)
     {
         _loadedFor = key;
+        _loadedIn = app.Session;
         _versions = [];
         _error = null;
         _errorScene = app.RenderWindow.Scene;
@@ -320,14 +327,16 @@ internal sealed class RecordForm
                 foreach (var context in session.Workspace.LinkCache.ResolveAllSimpleContexts(key, type))
                     _versions.Add((context.ModKey.FileName.String, context.Record));
             }
-            else if (app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) is { Record: { } placed })
+            else if (app.RenderWindow.Scene?.Objects.FirstOrDefault(o => o.Reference == key) is { } obj)
             {
-                // Placed references are not in the catalog; the loaded scene holds the winner.
-                _versions.Add((T("winning version"), placed));
+                // Placed references are not in the catalog; the loaded scene holds the winner. One made in this
+                // session (dropped, pasted, duplicated) is in no plugin yet: its edits start from an empty record.
+                if (obj.Record is { } placed) _versions.Add((T("winning version"), placed));
+                else if (ReferenceProperties.NewRecord(session, obj) is { } fresh) _versions.Add((T("new (unsaved)"), fresh));
             }
 
             if (_versions.Count == 0 && app.Document.Override(key) is { Place: RecordPlace.TopLevel } created)
-                _versions.Add(("new (unsaved)", created.Record));
+                _versions.Add((T("new (unsaved)"), created.Record));
 
             if (_versions.Count == 0) _error = "Record not found in the loaded plugins (placed references show once their cell is loaded).";
         }

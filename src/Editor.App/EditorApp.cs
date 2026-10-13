@@ -312,6 +312,7 @@ internal sealed class EditorApp : IDisposable
         RunHeightmapAutotest();
         RunVertexColorAutotest();
         RunPaletteAutotest();
+        RunPlaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
         RunFragmentsAutotest();
@@ -581,6 +582,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-heightmap") || _heightStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-vcolor") || _vcolorStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-place") || _placeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
@@ -1675,6 +1677,85 @@ internal sealed class EditorApp : IDisposable
             }
             case 1 when ++_vcolorFrames > 20:
                 _vcolorStage = 9;
+                break;
+        }
+    }
+
+    private int _placeStage, _placeFrames;
+    private SceneObject? _placed;
+
+    /// <summary>
+    /// --autotest-place &lt;dir&gt; [base FormID] (with --cell): a draft active file in &lt;dir&gt;; the base (default
+    /// XMarkerHeading) dropped at the centre of the view as from the Object Window; its model, a click on it, the
+    /// Inspector and a right-drag turn go to the log. Nothing is saved (restore settings.json).
+    /// </summary>
+    private void RunPlaceAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-place");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _placeStage == 9) return;
+        switch (_placeStage)
+        {
+            case 0 when RenderWindow.Scene is not null && RenderWindow.IsSettled && ++_placeFrames > 30:
+            {
+                SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorPlaceAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+                var text = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "00000034";
+                _placed = session.Workspace.ParseFormReference(text) is { } baseKey ? RenderWindow.DropAtCentreForTest(this, baseKey) : null;
+                Log.Info($"autotest-place: dropped {text} -> {_placed?.BaseEditorId} [{_placed?.BaseSignature}] at {_placed?.Position}, ref {_placed?.Reference}, selected {Selected}");
+                _placeStage = _placed is null ? 9 : 1;
+                _placeFrames = 0;
+                break;
+            }
+            case 1 when ++_placeFrames > 60:
+            {
+                var o = _placed!;
+                var options = RenderWindow.Options!;
+                var shapes = o.Model?.Shapes.Select(s => $"{s.Source.Name} visible {SceneRenderer.IsShapeVisible(s.Source, options)} blended {s.Material.AlphaBlend}") ?? [];
+                Log.Info($"autotest-place: kind {o.Kind}, model {o.ModelPath} loaded {o.Model is not null} failed {o.ModelFailed}, radius {o.BoundsRadius:0}, shapes [{string.Join("; ", shapes)}]");
+                Log.Info($"autotest-place: a click on it picks {RenderWindow.PickOnScreenForTest(o)?.BaseEditorId ?? "nothing"}; inspector {(Inspector.Form.Error ?? "shows the reference")}");
+                var before = o.Rotation.Z;
+                RenderWindow.RotateSelectionForTest(90);
+                Log.Info($"autotest-place: right-drag turn {before * 180 / MathF.PI:0.#} -> {o.Rotation.Z * 180 / MathF.PI:0.#} deg, undo '{Document.History.UndoName}'");
+                RenderWindow.GizmoTestTarget = o;
+                _placeStage = 2;
+                _placeFrames = 0;
+                break;
+            }
+            case 2:
+                // The rotate gizmo on the placed object (same steps as --autotest-gizmo).
+                if (!RenderWindow.GizmoTestStep()) break;
+                RenderWindow.GizmoTestTarget = null;
+                RenderWindow.LookAtForTest(_placed!, 260);
+                _placeStage = 3;
+                _placeFrames = 0;
+                break;
+            case 3 when ++_placeFrames > 20:
+            {
+                // A field of the new reference set in the Inspector's All fields, then saved with its placement.
+                Log.Info($"autotest-place: inspector {(Inspector.Form.Error ?? "shows the reference")}, rotation {_placed!.Rotation.Z * 180 / MathF.PI:0.#} deg, pending {Document.PendingCount}");
+                Inspector.Form.Target?.Apply("EditorID", r => r.EditorID = "STBPlaceAutotestRef");
+                Log.Info($"autotest-place: EditorID set through the Inspector: {StbEditor.Core.OverrideEditing.Override(Document, _placed.Reference)?.Record.EditorID}; saving");
+                Save();
+                _placeStage = 4;
+                break;
+            }
+            case 4 when !Saver.IsBusy && Document.PendingCount == 0 && RenderWindow.IsSettled:
+            {
+                var path = Path.Combine(cli[arg + 1], "STBEditorPlaceAutotest.esp");
+                using (var mod = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(path, session.Game.Release))
+                {
+                    var saved = mod.EnumerateMajorRecords<Mutagen.Bethesda.Skyrim.IPlacedObjectGetter>().FirstOrDefault(r => r.FormKey == _placed!.Reference);
+                    Log.Info($"autotest-place: saved {(saved is null ? "NOT FOUND" : $"{saved.EditorID} base {saved.Base.FormKey} rotation z {saved.Placement?.Rotation.Z * 180 / MathF.PI:0.#} deg at {saved.Placement?.Position}")}");
+                }
+                // Selected again after the reload, the Inspector reads the saved reference (not the record it had before).
+                Select(_placed!.Reference);
+                _placeStage = 5;
+                _placeFrames = 0;
+                break;
+            }
+            case 5 when ++_placeFrames > 10:
+                Log.Info($"autotest-place: after the reload the inspector shows {string.Join(", ", Inspector.Form.Versions.Select(v => $"{v.Plugin}: {v.Record.EditorID}"))}{(Inspector.Form.Error is { } error ? " / " + error : "")}");
+                _placeStage = 9;
                 break;
         }
     }

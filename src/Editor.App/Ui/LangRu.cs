@@ -1514,6 +1514,7 @@ internal static class LangRu
         ["Copy"] = "Копировать",
         ["Duplicate {0} as {1}"] = "Дублировать {0} как {1}",
         ["winning version"] = "побеждающая версия",
+        ["new (unsaved)"] = "новая (не сохранена)",
         ["Cannot read record: {0}"] = "Не удалось прочитать запись: {0}",
 
         // ---- landscape

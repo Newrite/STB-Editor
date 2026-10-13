@@ -164,6 +164,97 @@ internal static class FrameworksView
         ImGui.EndChild();
     }
 
+    /// <summary>A SPID line that gives an NPC a form: the reference, and whether some filter could not be checked.</summary>
+    public sealed record Gift(FrameworkRef Ref, bool Unsure);
+
+    private static readonly Dictionary<FormKey, Task<List<Gift>>> Gifts = new();
+    private static object? _giftsFor;
+
+    /// <summary>Every SPID line whose filters this NPC passes (worked out on a worker once per NPC).</summary>
+    public static Task<List<Gift>> GiftsOf(EditorSession session, INpcGetter npc)
+    {
+        if (!ReferenceEquals(_giftsFor, session)) { Gifts.Clear(); _giftsFor = session; }
+        if (Gifts.TryGetValue(npc.FormKey, out var task)) return task;
+        var lookup = new RecordLookup(session.Workspace, session.Catalog);
+        task = session.Frameworks.ContinueWith(t =>
+        {
+            var facts = SpidMatch.Npc.Of(npc, lookup);
+            IEnumerable<FormKey> Items(FormKey k) => lookup.Resolve<IFormListGetter>(k)?.Items.Select(i => i.FormKey) ?? [];
+            // A line is evaluated once even when it names several forms.
+            var verdicts = new Dictionary<(string, int), bool?>();
+            var gifts = new List<Gift>();
+            foreach (var r in t.Result.All)
+            {
+                if (r.Framework != "SPID" || r.Role != "gives") continue;
+                if (!verdicts.TryGetValue((r.File, r.Line), out var verdict))
+                    verdicts[(r.File, r.Line)] = verdict = SpidMatch.Matches(r.Fields, facts, session.ByEditorId, Items);
+                if (verdict != false) gifts.Add(new Gift(r, verdict is null));
+            }
+            return gifts;
+        }, TaskScheduler.Default);
+        Gifts[npc.FormKey] = task;
+        return task;
+    }
+
+    /// <summary>
+    /// The NPC form's «Spells and perks» tab, below the record's own lists: what SPID adds at run time — spells and perks
+    /// first, then items, keywords, factions, outfits, packages… — with the chance, the line and whether the NPC has it already.
+    /// </summary>
+    public static void DrawNpc(EditorApp app, EditorSession session, INpcGetter npc)
+    {
+        ImGui.Spacing();
+        ImGui.SeparatorText(T("Added by SPID (at run time)"));
+        var task = GiftsOf(session, npc);
+        if (!task.IsCompleted) { ImGui.TextColored(Theme.Warning, T("reading framework configs…")); return; }
+        if (!task.IsCompletedSuccessfully) { ImGui.TextColored(Theme.Error, task.Exception?.GetBaseException().Message ?? "?"); return; }
+        var gifts = task.Result;
+        if (gifts.Count == 0) { ImGui.TextColored(Theme.TextDim, T("No SPID line gives this NPC anything.")); return; }
+        var own = new HashSet<FormKey>((npc.ActorEffect ?? []).Select(s => s.FormKey).Concat((npc.Perks ?? []).Select(p => p.Perk.FormKey)));
+        static int Order(string kind) => kind.ToLowerInvariant() switch { "spell" => 0, "perk" => 1, _ => 2 };
+        var sorted = gifts.OrderBy(g => Order(g.Ref.Kind)).ThenBy(g => g.Ref.Kind, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(g => session.Catalog.Get(g.Ref.Form)?.EditorId, StringComparer.OrdinalIgnoreCase).ToList();
+        ImGui.TextColored(Theme.TextDim, T("Double-click opens the form; «?» — a filter the editor cannot check (level following the player, location…), the NPC may not get it."));
+        var flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
+        if (!ImGui.BeginTable("##spidgifts", 5, flags)) return;
+        ImGui.TableSetupColumn(T("Type"), ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 4);
+        ImGui.TableSetupColumn(T("Form"), ImGuiTableColumnFlags.WidthStretch, 1.6f);
+        ImGui.TableSetupColumn(T("Chance"), ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 3.5f);
+        ImGui.TableSetupColumn(T("Line"), ImGuiTableColumnFlags.WidthStretch, 2f);
+        ImGui.TableSetupColumn(T("Mod / file"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableHeadersRow();
+        for (var i = 0; i < sorted.Count; i++)
+        {
+            var (r, unsure) = (sorted[i].Ref, sorted[i].Unsure);
+            var entry = session.Catalog.Get(r.Form);
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(r.Kind);
+            ImGui.TableNextColumn();
+            var label = $"{entry?.EditorId ?? session.Workspace.FormIdText(r.Form)}  {entry?.Name}";
+            var colour = unsure ? Theme.Warning : Theme.Text;
+            ImGui.PushStyleColor(ImGuiCol.Text, colour);
+            ImGui.Selectable($"{(unsure ? "? " : "")}{label}##gift{i}", false, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick);
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && entry is not null) app.FormWindows.Open(r.Form);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(r.Text + (own.Contains(r.Form) ? "\n" + T("the record has it already") : "") + (unsure ? "\n" + T("a filter of the line could not be checked") : ""));
+            if (own.Contains(r.Form)) { ImGui.SameLine(); ImGui.TextColored(Theme.TextDim, T("(already in the record)")); }
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted($"{SpidMatch.Chance(r.Fields)}%");
+            ImGui.TableNextColumn();
+            ImGui.TextColored(Theme.TextDim, r.Text.Length > 120 ? r.Text[..120] + "…" : r.Text);
+            ImGui.TableNextColumn();
+            ImGui.TextColored(Theme.TextDim, $"{r.Mod} · {Path.GetFileName(r.File)}:{r.Line}");
+        }
+        ImGui.EndTable();
+    }
+
+    /// <summary>Autotests: what SPID gives an NPC (waits for it).</summary>
+    public static string GiftsForTest(EditorSession session, INpcGetter npc)
+    {
+        var gifts = GiftsOf(session, npc).GetAwaiter().GetResult();
+        return $"{gifts.Count} gift(s): " + string.Join(", ", gifts.Take(12).Select(g => $"{g.Ref.Kind} {session.Catalog.Get(g.Ref.Form)?.EditorId}{(g.Unsure ? "?" : "")}"));
+    }
+
     /// <summary>Autotests: how many a line reaches (waits for it).</summary>
     public static (int Matched, int Unknown) ReachForTest(EditorSession session, FrameworkRef r)
     {

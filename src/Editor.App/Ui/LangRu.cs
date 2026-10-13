@@ -1795,6 +1795,16 @@ internal static class LangRu
         ["width {0}"] = "ширина {0}",
         ["column + offset {0:0.###}, row + offset {1:0.###}"] = "столбец + смещение {0:0.###}, строка + смещение {1:0.###}",
 
+        // ---- Frameworks
+        ["Added by SPID (at run time)"] = "Добавит SPID (в игре)",
+        ["No SPID line gives this NPC anything."] = "Ни одна строка SPID этому NPC ничего не выдаёт.",
+        ["Double-click opens the form; «?» — a filter the editor cannot check (level following the player, location…), the NPC may not get it."] = "Двойной клик открывает форму; «?» — фильтр, который редактор не проверит (уровень от игрока, локация…), NPC может это и не получить.",
+        ["Form"] = "Форма",
+        ["Chance"] = "Шанс",
+        ["the record has it already"] = "в записи это уже есть",
+        ["a filter of the line could not be checked"] = "один из фильтров строки не проверить",
+        ["(already in the record)"] = "(уже в записи)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

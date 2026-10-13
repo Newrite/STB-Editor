@@ -1881,7 +1881,13 @@ internal sealed class EditorApp : IDisposable
                 var name = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "aaMZp_DamageWeaponsNPC";
                 var key = session.ByEditorId(name);
                 Log.Info($"autotest-frameworks: {index.All.Count} references, {string.Join(", ", index.Files.Select(f => $"{f.Value} {f.Key}"))} file(s)");
-                if (key is { } k)
+                if (key is { } npcKey && new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog).Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(npcKey) is { } npc)
+                {
+                    // An NPC: its form (with --inspector-tab "Spells and perks" the SPID section shows) and what SPID gives it.
+                    FormWindows.Open(npcKey);
+                    Log.Info($"autotest-frameworks: {name} gets {Panels.FrameworksView.GiftsForTest(session, npc)}");
+                }
+                else if (key is { } k)
                 {
                     UseInfo.Open(k);
                     foreach (var r in index.Of(k))

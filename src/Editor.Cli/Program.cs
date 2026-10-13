@@ -1425,6 +1425,14 @@ switch (command)
         foreach (var id in args.Skip(2))
         {
             if (ById(id) is not { } key) { Console.WriteLine($"{id}: no such record"); continue; }
+            // An NPC: what SPID gives it (as the form's «Spells and perks» tab lists).
+            if (lookup.Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(key) is { } npcRecord)
+            {
+                var facts = StbEditor.Core.SpidMatch.Npc.Of(npcRecord, lookup);
+                foreach (var r in index.All.Where(r => r.Framework == "SPID" && r.Role == "gives"))
+                    if (StbEditor.Core.SpidMatch.Matches(r.Fields, facts, ById, ListItems) is var verdict && verdict != false)
+                        Console.WriteLine($"{id} gets {r.Kind} {catalog.Get(r.Form)?.EditorId}{(verdict is null ? " (maybe)" : "")} chance {StbEditor.Core.SpidMatch.Chance(r.Fields)}% — {Path.GetFileName(r.File)}:{r.Line}");
+            }
             foreach (var r in index.Of(key))
             {
                 var line = $"{id}: {r.Framework} {r.Role} {r.Kind} — {r.Mod} {Path.GetFileName(r.File)}:{r.Line}: {r.Text}";

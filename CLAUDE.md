@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.65.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.66.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -144,6 +144,8 @@ star = ((width / 2 − column) × fStatsStarXIncrement, row × Y, ZInitialOffset
 of perk nodes — from SkyrimSE.exe 1.5.97 StatsMenu; slot order Enchanting, Smithing, Heavy Armor, Block, Two-Handed, One-Handed,
 Archery, Light Armor, Sneak, Lockpicking, Pickpocket, Speech, Alchemy, Illusion, Conjuration, Destruction, Restoration, Alteration;
 camera at the dome's centre; `PerkTreeEditor.DrawSky` renders it through `ObjectPreview`, star drags = ray ∩ the tree's slope).
+v0.66.0: what SPID gives an NPC (`FrameworksView.GiftsOf` / `DrawNpc`, drawn by `FormView.DrawTab` under the NPC «Spells and perks» tab;
+each SPID line evaluated once per NPC with `SpidMatch`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -257,6 +257,9 @@ internal static class FormView
         }
         var path = new List<object>();
         DrawMembers(app, record, tab.Members, path, target, 0);
+        // What SPID adds to the NPC at run time, next to what the record has.
+        if (record is Mutagen.Bethesda.Skyrim.INpcGetter actor && tab.Title == "Spells and perks" && app.Session is { } session)
+            FrameworksView.DrawNpc(app, session, actor);
         // A perk's «Activate» entries run Papyrus fragments.
         if (record is Mutagen.Bethesda.Skyrim.IPerkGetter perk && tab.Members is [{ Name: "Effects" }] && RecordFragments.Slots(perk).Count > 0)
             FragmentsPanel.Draw(app, perk, target);

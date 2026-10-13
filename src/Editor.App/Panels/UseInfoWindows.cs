@@ -124,6 +124,15 @@ internal sealed class UseInfoWindows
                 DrawPlaced(app, session, entry.Placed.Where(r => Matches(session, r, filter)).ToList());
                 ImGui.EndTabItem();
             }
+            // SKSE frameworks' configs (SPID, KID, BOS…): what they do with the record.
+            var frameworks = session.Frameworks;
+            var refs = frameworks.IsCompletedSuccessfully ? frameworks.Result.Of(entry.Target) : [];
+            if (ImGui.BeginTabItem((frameworks.IsCompleted ? TF($"Frameworks ({refs.Count})") : T("Frameworks (…)")) + "###frameworks"))
+            {
+                if (!frameworks.IsCompleted) ImGui.TextColored(Theme.Warning, T("reading framework configs…"));
+                else FrameworksView.DrawTable(app, session, refs.Where(r => filter.Length == 0 || r.Text.Contains(filter, StringComparison.OrdinalIgnoreCase) || r.Mod.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList(), false);
+                ImGui.EndTabItem();
+            }
             ImGui.EndTabBar();
         }
     }

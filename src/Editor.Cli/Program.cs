@@ -1391,6 +1391,40 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "frameworks":
+    {
+        // frameworks <game> [EditorID…]: what SPID, KID, BOS, FLM, DESC, SRD, OAR and DAR configs do with records; with EditorIDs, their lines
+        // (and for SPID lines how many NPCs match).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var vfs = AssetFileSystem.Build(ws);
+        var ids = catalog.ByKey.Values.Where(r => r.EditorId is { Length: > 0 }).GroupBy(r => r.EditorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().FormKey, StringComparer.OrdinalIgnoreCase);
+        Mutagen.Bethesda.Plugins.FormKey? ById(string id) => ids.TryGetValue(id, out var k) ? k : null;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var files = new[] { ".ini", ".yaml", ".yml", ".json", ".txt" }.SelectMany(e => vfs.Enumerate("", e)).Where(p => StbEditor.Core.FrameworkIndex.FrameworkOf(p) is not null)
+            .Select(p => (p, vfs.Find(p)?.Container ?? "?", (Func<string?>)(() => vfs.ReadAllBytes(p) is { } b ? System.Text.Encoding.UTF8.GetString(b) : null))).ToList();
+        var index = StbEditor.Core.FrameworkIndex.Build(files, ById);
+        Console.WriteLine($"{index.All.Count} references to {index.ByForm.Count} records in {string.Join(", ", index.Files.Select(f => $"{f.Value} {f.Key}"))} file(s), {clock.ElapsedMilliseconds} ms");
+        foreach (var g in index.All.GroupBy(r => (r.Framework, r.Role))) Console.WriteLine($"  {g.Key.Framework} {g.Key.Role}: {g.Count()}");
+        var npcs = new Lazy<List<StbEditor.Core.SpidMatch.Npc>>(() => (catalog.BySignature.GetValueOrDefault("NPC_") ?? []).Select(r => lookup.Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(r.FormKey)).OfType<Mutagen.Bethesda.Skyrim.INpcGetter>().Select(n => StbEditor.Core.SpidMatch.Npc.Of(n, lookup)).ToList());
+        IEnumerable<Mutagen.Bethesda.Plugins.FormKey> ListItems(Mutagen.Bethesda.Plugins.FormKey k) => lookup.Resolve<Mutagen.Bethesda.Skyrim.IFormListGetter>(k)?.Items.Select(i => i.FormKey) ?? [];
+        foreach (var id in args.Skip(2))
+        {
+            if (ById(id) is not { } key) { Console.WriteLine($"{id}: no such record"); continue; }
+            foreach (var r in index.Of(key))
+            {
+                var line = $"{id}: {r.Framework} {r.Role} {r.Kind} — {r.Mod} {Path.GetFileName(r.File)}:{r.Line}: {r.Text}";
+                if (r.Framework == "SPID" && r.Role == "gives")
+                {
+                    var results = npcs.Value.Select(n => StbEditor.Core.SpidMatch.Matches(r.Fields, n, ById, ListItems)).ToList();
+                    line += $"  => {results.Count(x => x == true)} NPC(s) match, {results.Count(x => x is null)} maybe, chance {StbEditor.Core.SpidMatch.Chance(r.Fields)}%";
+                }
+                Console.WriteLine(line);
+            }
+        }
+        break;
+    }
     case "hulltest":
     {
         // hulltest <game> <interior EditorID>: Bepu hulls of every collision piece of the cell's meshes, one by one (finds a piece that breaks it).

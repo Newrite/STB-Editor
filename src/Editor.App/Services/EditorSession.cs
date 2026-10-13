@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using StbEditor.Core;
+using Mutagen.Bethesda.Plugins;
 using StbEditor.Assets;
 using StbEditor.Data;
 using StbEditor.Data.Catalog;
@@ -32,6 +34,31 @@ internal sealed class EditorSession : IDisposable
     {
         var index = DialogueIndex.Build(Workspace, Catalog, _closing.Token);
         Log.Info($"dialogue index: {index.TopicCount:N0} quest topics in {index.BuildTime.TotalSeconds:0.0} s");
+        return index;
+    }, _closing.Token);
+
+    private Task<FrameworkIndex>? _frameworks;
+    private Dictionary<string, FormKey>? _editorIds;
+
+    /// <summary>EditorID → record (the first one of each), for config files that name records that way.</summary>
+    public FormKey? ByEditorId(string editorId)
+    {
+        _editorIds ??= Catalog.ByKey.Values.Where(r => r.EditorId is { Length: > 0 }).GroupBy(r => r.EditorId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().FormKey, StringComparer.OrdinalIgnoreCase);
+        return _editorIds.TryGetValue(editorId, out var key) ? key : null;
+    }
+
+    /// <summary>What SKSE frameworks (SPID, KID, BOS, FLM, Description Framework, SRD, OAR, DAR) do with records, from their config files.</summary>
+    public Task<FrameworkIndex> Frameworks => _frameworks ??= System.Threading.Tasks.Task.Run(() =>
+    {
+        var clock = Stopwatch.StartNew();
+        var files = new[] { ".ini", ".yaml", ".yml", ".json", ".txt" }
+            .SelectMany(ext => Assets.Enumerate("", ext))
+            .Where(p => FrameworkIndex.FrameworkOf(p) is not null)
+            .Select(p => (p, Assets.Find(p)?.Container ?? "?", (Func<string?>)(() => Assets.ReadAllBytes(p) is { } b ? System.Text.Encoding.UTF8.GetString(b).TrimStart('\uFEFF') : null)))
+            .ToList();
+        var index = FrameworkIndex.Build(files, ByEditorId, _closing.Token);
+        Log.Info($"framework index: {index.All.Count:N0} references in {string.Join(", ", index.Files.Select(f => $"{f.Value} {f.Key}"))} file(s), {clock.Elapsed.TotalSeconds:0.0} s");
         return index;
     }, _closing.Token);
 

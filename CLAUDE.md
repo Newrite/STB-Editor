@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.63.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.64.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -136,6 +136,9 @@ ushort × error, chunk transform; strips then a triangle list; big tris). Physic
 (0.61.0 was tagged on the 0.60.0 commit by mistake and the tag removed; the release script now refuses to tag without a commit.)
 v0.63.0: perk tree plates + «As in the game» view (`PerkTreeEditor.DrawGame`: taken ranks per AVIF in memory, a node can be taken when
 a node linking to it is taken or it hangs from the root, rank perks = Next Perk chain, required level from conditions). LOD crossed out.
+v0.64.0: SKSE framework configs (`Core/FrameworkIndex.cs` reads _DISTR / _KID / _SWAP / _FLM / _DESC / _SRD / OAR json / DAR txt
+through `AssetFileSystem` loose files, `EditorSession.Frameworks`; `Core/SpidMatch.cs`, `Core/KidMatch.cs` evaluate filters;
+`Panels/FrameworksView.cs`: Use Info tab, World → Framework configs, form header chip).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

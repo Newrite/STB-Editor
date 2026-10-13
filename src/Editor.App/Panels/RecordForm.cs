@@ -70,6 +70,16 @@ internal sealed class RecordForm
         if (ImGui.SmallButton(T("Copy FormKey"))) ImGui.SetClipboardText(key.ToString());
         ImGui.SameLine();
         if (ImGui.SmallButton(T("Use Info"))) app.UseInfo.Open(key);
+        // Framework configs that give, swap or list this record (SPID, KID, BOS…): a chip that opens them in Use Info.
+        if (app.Session!.Frameworks is { IsCompletedSuccessfully: true } frameworks && frameworks.Result.Of(key) is { Count: > 0 } refs)
+        {
+            ImGui.SameLine();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+            if (ImGui.SmallButton(TF($"Frameworks: {string.Join(", ", refs.Select(r => r.Framework).Distinct())} ({refs.Count})"))) app.UseInfo.Open(key);
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(string.Join("\n", refs.Take(8).Select(r => $"{r.Framework}: {FrameworksView.RoleText(r)} — {r.Mod}")) + (refs.Count > 8 ? "\n…" : ""));
+        }
+        else _ = app.Session!.Frameworks;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Which records use this one and where it is placed in the world (CK: Use Info, xEdit: Referenced By)"));
         if (placedObject is null && editable && _versions.Count > 0)
         {

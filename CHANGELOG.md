@@ -2,6 +2,22 @@
 
 Each `## <version>` section is the release description on GitHub (see `docs/DEVELOPING.md`, «Релиз»).
 
+## 0.64.0
+
+- **Фреймворки SKSE видны в редакторе.** Редактор читает конфиги популярных фреймворков из модов сборки: SPID
+  (`_DISTR.ini`), KID (`_KID.ini`), Base Object Swapper (`_SWAP.ini`), FormList Manipulator (`_FLM.ini`), Description
+  Framework (`_DESC.ini`), Sound Record Distributor (`_SRD.yaml`), Open Animation Replacer (`config.json` / `user.json`) и
+  Dynamic Animation Replacer (`_conditions.txt`). Записи в них — по EditorID, `0x123~Plugin.esp`, `Plugin.esp|123`, парам
+  pluginName / formID.
+- В «Где используется» — новая вкладка «Фреймворки»: что каждый конфиг делает с записью (SPID выдаёт NPC, KID добавляет
+  ключевое слово, BOS заменяет в мире, FLM добавляет в список, описание, звуки, условия замены анимаций), строка, мод и
+  файл. Для строк SPID и KID — **«кому достаётся»**: фильтры проверяются по NPC (EditorID, имя, ключевые слова, фракции, раса,
+  класс, голос, наряд, заклинания, перки, уровень, пол, уникальность, ребёнок) или по записям нужного типа KID; шанс
+  показывается. На STB: перк aaMZp_DamageWeaponsNPC из STB_DISTR.ini получают 8 717 NPC, ключевое слово
+  CA_WorkbenchDefault по `*Hood` — 150 доспехов.
+- В шапке формы записи, которую упоминают конфиги, — кнопка «Фреймворки: SPID, BOS… (n)».
+- World → «Конфиги фреймворков…» — все ссылки сборки (10 461 на 3 012 записей) с фильтром по фреймворку и тексту.
+
 ## 0.63.0
 
 - **Дерево перков: новый вид.** Узлы — плашки с названием перка и требуемым уровнем навыка (как узлы графа диалогов),

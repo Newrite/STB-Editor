@@ -466,7 +466,8 @@ internal sealed partial class RenderWindow : Panel
         }
 
         BrushOverlay();
-        var background = _scene?.IsInterior == true ? new Vector4(0.05f, 0.05f, 0.06f, 1) : new Vector4(0.50f, 0.60f, 0.72f, 1);
+        ApplySky(app);
+        var background = _scene?.IsInterior == true ? new Vector4(0.05f, 0.05f, 0.06f, 1) : _skyColour ?? new Vector4(0.50f, 0.60f, 0.72f, 1);
         try
         {
             _renderer.Render(_scene, _camera, _target, _selection, background);
@@ -629,6 +630,7 @@ internal sealed partial class RenderWindow : Panel
         Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
         Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
+        DrawSky(app);
         Toggle(T("Borders"), () => options.CellBorders, v => options.CellBorders = v, T("Cell borders (CK: B)"));
         Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes (N edits them)"));
         Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, T("Particles: fire, smoke, dust, sparks"));

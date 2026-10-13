@@ -319,6 +319,7 @@ internal sealed class EditorApp : IDisposable
         RunPerkTreeAutotest();
         RunIdleTreeAutotest();
         RunVoiceAutotest();
+        RunSkyAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -600,6 +601,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-perktree") || _perkStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-idletree") || _idleStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-voice") || _voiceStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-sky") || _skyStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1803,6 +1805,51 @@ internal sealed class EditorApp : IDisposable
                 _havokStage = 9;
                 break;
         }
+    }
+
+    private int _skyStage, _skyFrames;
+    private static readonly float[] SkyHours = [6.5f, 12f, 19f, 23f];
+
+    /// <summary>
+    /// --autotest-sky [WTHR EditorID] (with --cell of an exterior; default SkyrimClear): the view lit as that weather at
+    /// 6:30, 12, 19 and 23 — a shot each (%TEMP%\stbeditor_sky_&lt;hour&gt;.bmp) and the light logged; then the default light.
+    /// </summary>
+    private void RunSkyAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-sky");
+        if (arg < 0 || Session is not { } session || Loader is not null || _skyStage == 9) return;
+        if (_skyStage == 0)
+        {
+            if (RenderWindow.Scene is null || !RenderWindow.IsSettled || ++_skyFrames < 20) return;
+            var name = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "SkyrimClear";
+            var weather = session.Catalog.BySignature.GetValueOrDefault("WTHR")?.FirstOrDefault(r => string.Equals(r.EditorId, name, StringComparison.OrdinalIgnoreCase));
+            if (weather is null) { Log.Error($"autotest-sky: no weather {name}"); _skyStage = 9; return; }
+            RenderWindow.SetSky(weather.FormKey, SkyHours[0]);
+            _skyStage = 1;
+            _skyFrames = 0;
+            return;
+        }
+        var index = _skyStage - 1;
+        if (index < SkyHours.Length)
+        {
+            ++_skyFrames;
+            if (_skyFrames == 5)
+            {
+                var l = RenderWindow.Scene!.Lighting;
+                Log.Info($"autotest-sky: {SkyHours[index]:0.#}h sun {l.DirectionalColor} from {l.DirectionTowardsLight}, ambient {l.Ambient}, fog {l.FogColor} {l.FogNear:0}-{l.FogFar:0}");
+                ShotRequest = Path.Combine(Path.GetTempPath(), $"stbeditor_sky_{SkyHours[index]:0.#}.bmp".Replace(',', '.'));
+            }
+            if (_skyFrames == 8)
+            {
+                _skyStage++;
+                _skyFrames = 0;
+                if (index + 1 < SkyHours.Length) RenderWindow.SetSky(RenderWindow.Weather, SkyHours[index + 1]);
+            }
+            return;
+        }
+        RenderWindow.SetSky(null, 12);
+        _skyStage = 9;
     }
 
     private int _voiceStage, _voiceFrames;

@@ -1505,6 +1505,14 @@ internal static class LangRu
         ["Quest / topic"] = "Квест / топик",
         ["Open the topic"] = "Открыть топик",
 
+        // ---- sky
+        ["Sky"] = "Небо",
+        ["Light the view as a weather at an hour of the day (CK: sky / time of day)"] = "Осветить вид как погода в заданный час (CK: небо / время суток)",
+        ["hour %.1f"] = "час %.1f",
+        ["Default light"] = "Свет по умолчанию",
+        ["Filter weathers"] = "Фильтр погод",
+        ["This worldspace's climate:"] = "Климат этого мира:",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

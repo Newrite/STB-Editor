@@ -240,6 +240,11 @@ internal static class FormView
             finally { ConditionsEditor.Aliases = null; ConditionsEditor.PackageData = null; }
             return;
         }
+        if (record is Mutagen.Bethesda.Skyrim.INpcGetter npc && FaceEditor.Draws(tab))
+        {
+            FaceEditor.Draw(app, npc, tab, target, () => DrawMembers(app, record, tab.Members, [], target, 0));
+            return;
+        }
         var path = new List<object>();
         DrawMembers(app, record, tab.Members, path, target, 0);
         // A perk's «Activate» entries run Papyrus fragments.

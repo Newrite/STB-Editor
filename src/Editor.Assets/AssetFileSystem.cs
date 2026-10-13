@@ -199,9 +199,17 @@ public sealed class AssetFileSystem
         return root + p;
     }
 
+    /// <summary>Files that exist only in memory (previews: a face being edited); they win over everything.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _memory = new(StringComparer.OrdinalIgnoreCase);
+
+    public void AddMemory(string path, byte[] bytes) => _memory[Normalize(path)] = bytes;
+
+    public void RemoveMemory(string path) => _memory.TryRemove(Normalize(path), out _);
+
     public AssetSource? Find(string path)
     {
         var key = Normalize(path);
+        if (_memory.ContainsKey(key)) return new AssetSource(key, "memory", null, null);
 
         if (_loose.TryGetValue(key, out var loose))
             return new AssetSource(key, loose.Container, null, loose.FullPath);
@@ -225,12 +233,13 @@ public sealed class AssetFileSystem
     public bool Exists(string path)
     {
         var key = Normalize(path);
-        return _loose.ContainsKey(key) || _archived.ContainsKey(key);
+        return _memory.ContainsKey(key) || _loose.ContainsKey(key) || _archived.ContainsKey(key);
     }
 
     public byte[]? ReadAllBytes(string path)
     {
         var key = Normalize(path);
+        if (_memory.TryGetValue(key, out var held)) return held;
 
         if (_loose.TryGetValue(key, out var loose))
             return File.ReadAllBytes(loose.FullPath);

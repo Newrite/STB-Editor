@@ -41,7 +41,7 @@ internal sealed class EditorApp : IDisposable
     /// <summary>Bumped on every selection change so panels can scroll to it once.</summary>
     public int SelectionVersion { get; private set; }
 
-    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || ObjectWindow.IsScanning || UseInfo.IsBusy
+    public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
         || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
@@ -315,6 +315,7 @@ internal sealed class EditorApp : IDisposable
         RunPlaceAutotest();
         RunFaceGenAutotest();
         RunHavokAutotest();
+        RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
         RunFragmentsAutotest();
@@ -587,6 +588,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-place") || _placeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-facegen") || _faceGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || _havokStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
@@ -1687,6 +1689,55 @@ internal sealed class EditorApp : IDisposable
 
     /// <summary>A frame to save as BMP once this frame is drawn (autotests: pictures before and after a change).</summary>
     public string? ShotRequest { get; set; }
+
+    private int _faceStage, _faceFrames;
+
+    /// <summary>
+    /// --autotest-face [NPC FormID] (use with --inspector-tab Appearance): the NPC's form window on its face editor; two
+    /// sliders moved as a person would; the preview rebuilt (pictures before / after in %TEMP%), the record changed in one
+    /// undo step each. Nothing is saved.
+    /// </summary>
+    private void RunFaceAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-face");
+        if (arg < 0 || Session is not { } session || Loader is not null || _faceStage == 9) return;
+        var text = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "00013479";
+        if (session.Workspace.ParseFormReference(text) is not { } key) { _faceStage = 9; return; }
+        switch (_faceStage)
+        {
+            case 0:
+                FormWindows.Open(key);
+                _faceStage = 1;
+                break;
+            case 1 when Panels.FaceEditor.PreviewCurrent && ++_faceFrames > 30:
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_face_before.bmp");
+                _faceStage = 2;
+                _faceFrames = 0;
+                break;
+            case 2 when ++_faceFrames > 2:
+            {
+                var a = Panels.FaceEditor.SetSliderForTest("NoseLongVsShort", 1f);
+                var b = Panels.FaceEditor.SetSliderForTest("JawNarrowVsWide", 1f);
+                var morph = (StbEditor.Core.OverrideEditing.Override(Document, key)?.Record as Mutagen.Bethesda.Skyrim.INpcGetter)?.FaceMorph;
+                Log.Info($"autotest-face: sliders set {a}/{b}; record now nose {morph?.NoseLongVsShort}, jaw {morph?.JawNarrowVsWide}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                _faceStage = 3;
+                _faceFrames = 0;
+                break;
+            }
+            case 3 when Panels.FaceEditor.PreviewCurrent && ++_faceFrames > 20:
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_face_after.bmp");
+                _faceStage = 4;
+                _faceFrames = 0;
+                break;
+            case 4 when ++_faceFrames > 2:
+                Document.Undo();
+                Document.Undo();
+                Log.Info($"autotest-face: after two Ctrl+Z pending {Document.PendingCount}");
+                _faceStage = 9;
+                break;
+        }
+    }
 
     private int _havokStage, _havokFrames;
     private List<(SceneObject Object, StbEditor.Core.RefState Resting)> _havokItems = [];

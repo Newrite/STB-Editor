@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.38.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.39.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -82,6 +82,9 @@ tint = QNAM, then each layer but SkinTone lerped by mask red × value; hair tint
 v0.38.0: Run Havok Sim (`Render/PhysicsDrop.cs`, BepuPhysics 2.4: metres inside, convex hull bodies, static meshes shared per model, triangles
 turned clockwise for Bepu, contents of a moving piece and pieces starting inside each other left out; `RenderWindow.RunHavokSim` on a worker,
 `FinishHavokSim` one undo step; Alt+H).
+v0.39.0: face editor (`Panels/FaceEditor.cs`, drawn by `FormView.DrawTab` for the NPC «Appearance» tab: a working Npc copy, Moved → preview,
+let go → one `EditTarget.Apply` with the whole appearance; preview = `FaceGenExport.Build` on a worker into `AssetFileSystem.AddMemory`
+paths under meshes\stbeditor\facepreview, drawn by `ObjectPreview`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

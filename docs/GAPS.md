@@ -42,7 +42,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | Что | Где есть | Важность | Объём |
 |---|---|---|---|
 | ✅ 0.37.0 (экспорт головы и тинта как у CK, сверено с его файлами; ползунки лица — следующая строка) **FaceGen**: экспорт лица NPC (меш + тинт), иначе «тёмное лицо» после правок внешности | CK: Ctrl+F4 | ★★★ | L |
-| Лицо: ползунки морфов, части головы, слои тинта с превью | CK: Actor → Character Gen Parts / Face | ★★ | L |
+| ✅ 0.39.0 (части головы, пресеты, 18 ползунков, цвета, слои тинта, живое превью головы; пресетов тинта (TIAS) в списке нет — цвет задаётся напрямую) Лицо: ползунки морфов, части головы, слои тинта с превью | CK: Actor → Character Gen Parts / Face | ★★ | L |
 | Дерево перков (AVIF) графически | CK: Actor Values; xEdit-скрипт PerkTreeUI | ★ | M |
 | Дерево idle-анимаций (IDLE) | CK: Animations | ★ | M |
 | ✅ 0.31.0 (тинт тела: проверка и исправление; Filtered Dialogue, Export Relationship Data — нет) Update NPC Body Tint Colors, Filtered Dialogue, Export Relationship Data | CK | ★ | S |

@@ -36,7 +36,8 @@ public static class FaceGenExport
     }
 
     /// <param name="read">Asset bytes by path (meshes\… / textures\…), as the game would find them.</param>
-    public static FaceGenFiles Build(INpcGetter npc, RecordLookup lookup, Func<string, byte[]?> read)
+    /// <param name="tintSlot">What the face's tint slot names (the NPC's own tint path unless a preview puts it elsewhere).</param>
+    public static FaceGenFiles Build(INpcGetter npc, RecordLookup lookup, Func<string, byte[]?> read, string? tintSlot = null)
     {
         var race = lookup.Resolve<IRaceGetter>(npc.Race.FormKey) ?? throw new InvalidOperationException("race not found");
         var female = npc.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female);
@@ -78,7 +79,7 @@ public static class FaceGenExport
 
             var set = part.Type == HeadPart.TypeEnum.Face && headTexture is not null ? headTexture : lookup.Resolve<ITextureSetGetter>(part.TextureSet.FormKey);
             var textures = set is null ? new string?[9] : Slots(set);
-            if (part.Type == HeadPart.TypeEnum.Face) textures[6] = TintSlot(npc.FormKey);
+            if (part.Type == HeadPart.TypeEnum.Face) textures[6] = tintSlot ?? TintSlot(npc.FormKey);
 
             Vector3? tint = null;
             if (part.Type is HeadPart.TypeEnum.Hair or HeadPart.TypeEnum.FacialHair or HeadPart.TypeEnum.Eyebrows or HeadPart.TypeEnum.Misc && hairColor is { } hc)

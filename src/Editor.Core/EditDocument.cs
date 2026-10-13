@@ -55,7 +55,7 @@ public sealed class EditDocument
     public void EditMasters(string name, MasterEdit? masters)
     {
         if (Equals(Masters, masters)) return;
-        Record(new MastersCommand(name, Masters, masters is { Add.Count: 0, Clean: false } ? null : masters));
+        Record(new MastersCommand(name, Masters, masters is { Add.Count: 0, Clean: false, Sort: false } ? null : masters));
     }
 
     private readonly Dictionary<FormKey, Draft> _drafts = new();
@@ -200,11 +200,11 @@ public sealed class EditDocument
     }
 }
 
-/// <summary>Masters to add (in load order after the existing ones) and whether unused masters go.</summary>
-public sealed record MasterEdit(IReadOnlyList<ModKey> Add, bool Clean)
+/// <summary>Masters to add (in load order after the existing ones), whether unused masters go, and whether all are put in load order (xEdit: Sort Masters).</summary>
+public sealed record MasterEdit(IReadOnlyList<ModKey> Add, bool Clean, bool Sort = false)
 {
-    public bool Equals(MasterEdit? other) => other is not null && Clean == other.Clean && Add.SequenceEqual(other.Add);
-    public override int GetHashCode() => HashCode.Combine(Clean, Add.Count);
+    public bool Equals(MasterEdit? other) => other is not null && Clean == other.Clean && Sort == other.Sort && Add.SequenceEqual(other.Add);
+    public override int GetHashCode() => HashCode.Combine(Clean, Sort, Add.Count);
 }
 
 public sealed class MastersCommand(string name, MasterEdit? before, MasterEdit? after) : IEditCommand

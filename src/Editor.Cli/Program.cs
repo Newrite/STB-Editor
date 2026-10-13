@@ -1391,6 +1391,63 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "formidtest":
+    {
+        // formidtest <game> <out folder> <plugin>: a copy of the plugin where one own record that another record points at gets
+        // a new FormID (as Change FormID does); the record must move and the links to it follow.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var outDir = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(outDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+        var mod = plugin.Mod!;
+        var own = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == plugin.ModKey).ToList();
+        var linked = own.SelectMany(r => r.EnumerateFormLinks().Select(l => (From: r, To: l.FormKey))).Where(x => x.To.ModKey == plugin.ModKey && x.To != x.From.FormKey).ToList();
+        var target = linked.GroupBy(x => x.To).OrderByDescending(g => g.Count()).First();
+        var free = Enumerable.Range(0x800, 0xFFF000).Select(i => (uint)i).First(i => own.All(r => r.FormKey.ID != i) && i > own.Max(r => r.FormKey.ID));
+        var map = new Dictionary<Mutagen.Bethesda.Plugins.FormKey, Mutagen.Bethesda.Plugins.FormKey> { [target.Key] = new(plugin.ModKey, free) };
+        Console.WriteLine($"{plugin.Name}: {target.Key} ({target.Count()} link(s) from own records) -> {free:X6}");
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var writer = new PluginWriter(ws, catalog);
+        var temp = writer.Compact(active, map, false);
+        File.Move(temp, copy, overwrite: true);
+        using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(copy, game.Release);
+        var records = check.EnumerateMajorRecords().ToList();
+        var links = records.SelectMany(r => r.EnumerateFormLinks()).ToList();
+        Console.WriteLine($"kept byte for byte {writer.LastCompactRestored}; old key present {records.Any(r => r.FormKey == target.Key)}, new present {records.Any(r => r.FormKey == map[target.Key])}; links to old {links.Count(l => l.FormKey == target.Key)}, to new {links.Count(l => l.FormKey == map[target.Key])}; records {own.Count} own before, {records.Count(r => r.FormKey.ModKey == plugin.ModKey)} after");
+        break;
+    }
+    case "mastersorttest":
+    {
+        // mastersorttest <game> <out folder> [plugin]: a copy of a plugin whose masters are out of load order (the first such one
+        // if none is named) saved with Sort Masters; the masters must come out in load order and every record survive.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var outDir = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(outDir);
+        var order = ws.Active.Select(p => p.Name.ToLowerInvariant()).ToList();
+        bool OutOfOrder(PluginInfo p) => p.Header?.Masters is { Count: > 1 } m && !m.Select(x => order.IndexOf(x.ToLowerInvariant())).SequenceEqual(m.Select(x => order.IndexOf(x.ToLowerInvariant())).OrderBy(i => i));
+        var plugin = args.Length > 3 ? ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase))
+            : ws.Active.Where(p => p.Mod is not null && new FileInfo(p.Location.Path).Length < 5_000_000).First(OutOfOrder);
+        Console.WriteLine($"{plugin.Name}: masters {string.Join(", ", plugin.Header!.Masters)} (out of order: {OutOfOrder(plugin)})");
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var doc = new EditDocument();
+        doc.EditMasters("sort", new MasterEdit([], false, true));
+        var result = new PluginWriter(ws, catalog).Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings.Take(6)) Console.WriteLine("  warn " + w);
+        foreach (var l in result.LossyRecords.Take(6)) Console.WriteLine("  lossy " + l);
+        if (!result.Success) break;
+        File.Move(result.TempPath!, active.Path, overwrite: true);
+        Console.WriteLine($"written masters: {string.Join(", ", StbEditor.Data.Raw.PluginHeader.Read(active.Path).Masters)}");
+        using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(active.Path, game.Release);
+        Console.WriteLine($"records: {plugin.Mod!.EnumerateMajorRecords().Count()} -> {check.EnumerateMajorRecords().Count()}");
+        break;
+    }
     case "dialremovetest":
     {
         // dialremovetest <game> <out folder> <plugin>: a copy of the plugin with one of its own dialogue lines removed (as Delete

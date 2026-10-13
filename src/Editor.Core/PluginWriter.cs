@@ -456,8 +456,11 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
             ? originalMasters.Where(m => needed.Contains(m) || requested.Contains(m)).ToList()
             : originalMasters;
 
+        var final = kept.Concat(added).ToList();
+        // Sort Masters: the whole list in load order (FormIDs are renumbered and the file rewritten).
+        if (masters?.Sort == true) final = [.. final.OrderBy(k => loadOrder.IndexOf(k) is var i && i < 0 ? int.MaxValue : i)];
         mod.ModHeader.MasterReferences.Clear();
-        foreach (var master in kept.Concat(added))
+        foreach (var master in final)
             mod.ModHeader.MasterReferences.Add(new MasterReference { Master = master });
 
         var encoding = new MutagenEncodingWrapper(StringEncodingDetector.WriteEncoding(active.Encoding, workspace.Game.Language));

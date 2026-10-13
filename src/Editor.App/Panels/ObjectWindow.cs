@@ -502,6 +502,10 @@ internal sealed class ObjectWindow : Panel
                         app.Compare.OpenRecords([other, record.FormKey]);
                     }
                     if (ImGui.MenuItem(T("Use Info"))) app.UseInfo.Open(record.FormKey);
+                    var own = app.ActivePlugin is { IsNew: false } activePlugin && record.FormKey.ModKey.FileName.String.Equals(activePlugin.Name, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.MenuItem(T("Change FormID..."), (string?)null, false, own)) app.Compact.ShowChange(app, record.FormKey);
+                    if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                        ImGui.SetTooltip(own ? T("Another number for this record of the active file; links inside the file follow (xEdit: Change FormID)") : T("Only the saved active file's own records can be renumbered"));
                     if (_picked.Count > 1 && _picked.Contains(record.FormKey))
                     {
                         var together = Picked;

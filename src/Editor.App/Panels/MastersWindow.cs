@@ -113,7 +113,7 @@ internal sealed class MastersWindow
                 if (current.Contains(candidate.Name, StringComparer.OrdinalIgnoreCase) || pending?.Add.Contains(candidate.ModKey) == true) continue;
                 if (_addFilter.Length > 0 && !candidate.Name.Contains(_addFilter, StringComparison.OrdinalIgnoreCase)) continue;
                 if (ImGui.Selectable($"{candidate.IndexLabel,-6} {candidate.Name}"))
-                    app.Document.EditMasters(TF($"Add master {candidate.Name}"), new MasterEdit([.. pending?.Add ?? [], candidate.ModKey], pending?.Clean ?? false));
+                    app.Document.EditMasters(TF($"Add master {candidate.Name}"), new MasterEdit([.. pending?.Add ?? [], candidate.ModKey], pending?.Clean ?? false, pending?.Sort ?? false));
             }
             ImGui.EndCombo();
         }
@@ -123,10 +123,23 @@ internal sealed class MastersWindow
         var unused = used is null ? 0 : current.Count(m => !used.Contains(ModKey.FromFileName(m)));
         ImGui.BeginDisabled(unused == 0 || pending?.Clean == true);
         if (ImGui.Button(TF($"Remove unused masters ({unused})")))
-            app.Document.EditMasters(T("Clean masters"), new MasterEdit(pending?.Add ?? [], true));
+            app.Document.EditMasters(T("Clean masters"), new MasterEdit(pending?.Add ?? [], true, pending?.Sort ?? false));
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(T("Masters no record of the active file points at (xEdit: Clean Masters)"));
+
+        // Sort: masters out of load order make xEdit and the CK complain; the game does not care.
+        var loadIndex = session.Workspace.Active.Select(p => p.Name).ToList();
+        var sorted = current.OrderBy(m => loadIndex.FindIndex(n => n.Equals(m, StringComparison.OrdinalIgnoreCase)) is var i && i < 0 ? int.MaxValue : i).ToList();
+        var outOfOrder = !current.SequenceEqual(sorted, StringComparer.OrdinalIgnoreCase);
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!outOfOrder || pending?.Sort == true);
+        if (ImGui.Button(T("Sort masters")))
+            app.Document.EditMasters(T("Sort masters"), new MasterEdit(pending?.Add ?? [], pending?.Clean ?? false, true));
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(outOfOrder ? T("Puts the masters in load order (xEdit: Sort Masters); the file is written anew with its FormIDs renumbered") : T("The masters are already in load order"));
+        if (pending?.Sort == true) ImGui.TextColored(Theme.Good, T("Masters are put in load order on save."));
 
         if (pending is not null)
         {

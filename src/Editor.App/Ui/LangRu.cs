@@ -1616,6 +1616,24 @@ internal static class LangRu
         ["Delete dialogue line"] = "Удаление реплики",
         ["Delete line"] = "Удалить реплику",
 
+        // ---- formid
+        ["Change one FormID"] = "Сменить один FormID",
+        ["record: FormID or EditorID"] = "запись: FormID или EditorID",
+        ["new ID (hex)"] = "новый ID (hex)",
+        ["{0} -> {1}"] = "{0} -> {1}",
+        ["No such record."] = "Такой записи нет.",
+        ["{0} is not the active file's own record (an override keeps its master's number)."] = "{0} — не собственная запись активного файла (переопределение носит номер своего мастера).",
+        ["New ID: hex, 800 to FFFFFF (without the load order byte)."] = "Новый ID: hex, от 800 до FFFFFF (без байта порядка загрузки).",
+        ["A light plugin's numbers go up to FFF."] = "У лёгкого плагина номера — до FFF.",
+        ["{0:X6} is already taken."] = "{0:X6} уже занят.",
+        ["Sort masters"] = "Упорядочить мастера",
+        ["Puts the masters in load order (xEdit: Sort Masters); the file is written anew with its FormIDs renumbered"] = "Ставит мастера в порядке загрузки (xEdit: Sort Masters); файл пишется заново с перенумерованными FormID",
+        ["The masters are already in load order"] = "Мастера уже в порядке загрузки",
+        ["Masters are put in load order on save."] = "При сохранении мастера встанут в порядке загрузки.",
+        ["Change FormID..."] = "Сменить FormID…",
+        ["Another number for this record of the active file; links inside the file follow (xEdit: Change FormID)"] = "Другой номер для этой записи активного файла; ссылки внутри файла следуют за ней (xEdit: Change FormID)",
+        ["Only the saved active file's own records can be renumbered"] = "Перенумеровать можно только собственные записи сохранённого активного файла",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

@@ -187,7 +187,7 @@ internal sealed partial class RenderWindow
         _havok = Task.Run(() =>
         {
             var poses = PhysicsDrop.Simulate(scene, moving, options, out var stats);
-            Log.Info($"Havok sim: {stats.Statics} ground pieces, {stats.Triangles:N0} triangles built in {stats.BuildMilliseconds} ms; {stats.SimulatedSeconds:0.0} s simulated in {stats.RunMilliseconds} ms");
+            Log.Info($"Havok sim: {stats.Statics} ground pieces, {stats.Triangles:N0} triangles built in {stats.BuildMilliseconds} ms; {stats.Compounds} of {moving.Count} falling as their own collision; {stats.SimulatedSeconds:0.0} s simulated in {stats.RunMilliseconds} ms");
             return poses;
         });
     }

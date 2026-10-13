@@ -1391,6 +1391,29 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "nifcollision":
+    {
+        // nifcollision <game> <mesh…>: the Havok collision read as convex pieces (count, complete, bounds against the render mesh).
+        var vfs = AssetFileSystem.Build(ws);
+        var nifCatalog = RecordCatalog.Build(ws, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog"));
+        var nifLookup = new RecordLookup(ws, nifCatalog);
+        foreach (var arg in args.Skip(2))
+        {
+            // A record's EditorID stands for its model.
+            var mesh = arg.EndsWith(".nif", StringComparison.OrdinalIgnoreCase) ? arg
+                : nifCatalog.ByKey.Values.FirstOrDefault(r => string.Equals(r.EditorId, arg, StringComparison.OrdinalIgnoreCase)) is { } rec
+                    && nifLookup.Resolve(rec.FormKey) is Mutagen.Bethesda.Skyrim.IModeledGetter { Model: { } m } ? AssetFileSystem.MeshPath(m.File.DataRelativePath.Path) : arg;
+            var bytes = vfs.ReadAllBytes(mesh);
+            if (bytes is null) { Console.WriteLine($"{mesh}: not found"); continue; }
+            var model = NifFile.Load(bytes, mesh);
+            var points = model.CollisionPieces.SelectMany(p => p).ToList();
+            var low = points.Count > 0 ? points.Aggregate(new System.Numerics.Vector3(float.MaxValue), System.Numerics.Vector3.Min) : default;
+            var high = points.Count > 0 ? points.Aggregate(new System.Numerics.Vector3(float.MinValue), System.Numerics.Vector3.Max) : default;
+            var types = NifFile.Blocks(bytes).Blocks.Select(b => b.Type).Where(t => t.StartsWith("bhk")).Distinct();
+            Console.WriteLine($"{mesh}: {model.CollisionPieces.Count} piece(s), complete {model.CollisionComplete}; collision {low} .. {high}; render {model.BoundsMin} .. {model.BoundsMax}; [{string.Join(", ", types)}]");
+        }
+        break;
+    }
     case "roomcheck":
     {
         // roomcheck <game> [plugin]: room / portal problems in the interiors of a plugin (default Skyrim.esm), counted by kind.

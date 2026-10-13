@@ -237,6 +237,9 @@ public static partial class NifFile
             var name = av.Name ?? string.Empty;
             ctx.NodeWorld[index] = ModelSpace(world, billboard);
 
+            // The node's Havok collision as convex pieces (physics).
+            if (av.Collision >= 0) ReadCollision(ctx, av.Collision, world);
+
             // Collision-only node trees and LE "RootCollisionNode" are not visible geometry.
             if (type == "RootCollisionNode") return;
 

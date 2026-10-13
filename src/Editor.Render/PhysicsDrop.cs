@@ -13,7 +13,11 @@ namespace StbEditor.Render;
 public sealed record DropPose(SceneObject Object, Vector3 Position, Vector3 Rotation, bool Settled);
 
 /// <summary>What a simulation took: ground pieces, triangles, simulated seconds, wall-clock milliseconds to build and to run.</summary>
-public sealed record DropStats(int Statics, int Triangles, float SimulatedSeconds, long BuildMilliseconds, long RunMilliseconds);
+public sealed record DropStats(int Statics, int Triangles, float SimulatedSeconds, long BuildMilliseconds, long RunMilliseconds)
+{
+    /// <summary>Moving objects that fell as their own Havok collision (the rest as their render mesh's convex hull).</summary>
+    public int Compounds { get; init; }
+}
 
 /// <summary>
 /// Run Havok Sim (CK) with BepuPhysics: the given objects fall as rigid bodies (the convex hull of their mesh) onto
@@ -124,6 +128,7 @@ public static class PhysicsDrop
             }
 
             var bodies = new List<(SceneObject Object, BodyHandle Handle, Vector3 Center)>();
+            var compounds = 0;
             var boxes = new List<(Vector3 Min, Vector3 Max)>();
             foreach (var obj in moving)
             {
@@ -133,9 +138,32 @@ public static class PhysicsDrop
                     if (SceneRenderer.IsShapeVisible(shape.Source, options))
                         foreach (var p in shape.Source.Positions) points.Add(p * (obj.Transform.Scale / UnitsPerMetre));
                 if (points.Count < 4) continue;
-                var span = points.ToArray().AsSpan();
-                var hull = new ConvexHull(span, pool, out var center);
-                var inertia = hull.ComputeInertia(1f);
+                TypedIndex shapeIndex;
+                BodyInertia inertia;
+                Vector3 center;
+                if (model.CollisionPieces is { Count: > 0 } pieces)
+                {
+                    // The mesh's own Havok collision: its convex pieces as one compound body (bowls and pots hold things).
+                    using var builder = new CompoundBuilder(pool, simulation.Shapes, pieces.Count);
+                    foreach (var piece in pieces)
+                    {
+                        var scaled = piece.Select(p => p * (obj.Transform.Scale / UnitsPerMetre)).ToArray();
+                        var pieceHull = new ConvexHull(scaled.AsSpan(), pool, out var pieceCenter);
+                        var size = scaled.Aggregate(new Vector3(float.MinValue), Vector3.Max) - scaled.Aggregate(new Vector3(float.MaxValue), Vector3.Min);
+                        builder.Add(pieceHull, new RigidPose(pieceCenter), MathF.Max(size.X * size.Y * size.Z, 1e-6f));
+                    }
+                    builder.BuildDynamicCompound(out var children, out inertia, out center);
+                    // Mass 1 like the hull bodies: only the shape and its balance matter here.
+                    inertia = Scale(inertia, 1f);
+                    shapeIndex = simulation.Shapes.Add(new Compound(children));
+                    compounds++;
+                }
+                else
+                {
+                    var hull = new ConvexHull(points.ToArray().AsSpan(), pool, out center);
+                    inertia = hull.ComputeInertia(1f);
+                    shapeIndex = simulation.Shapes.Add(hull);
+                }
                 var orientation = Orientation(obj);
                 var position = obj.Position / UnitsPerMetre + Vector3.Transform(center, orientation);
                 var boxMin = new Vector3(float.MaxValue);
@@ -148,7 +176,7 @@ public static class PhysicsDrop
                 }
                 boxes.Add((boxMin, boxMax));
                 var handle = simulation.Bodies.Add(BodyDescription.CreateDynamic(new RigidPose(position, orientation), inertia,
-                    new CollidableDescription(simulation.Shapes.Add(hull), 0.1f), new BodyActivityDescription(0.01f)));
+                    new CollidableDescription(shapeIndex, 0.1f), new BodyActivityDescription(0.01f)));
                 bodies.Add((obj, handle, center));
             }
             // Pieces that start inside each other (a plate in a pot: the pot's convex hull is solid, two plates in one
@@ -174,7 +202,7 @@ public static class PhysicsDrop
                 simulation.Timestep(step);
                 if (bodies.All(b => !simulation.Bodies.GetBodyReference(b.Handle).Awake)) { settled = true; break; }
             }
-            stats = new DropStats(staticCount, triangleCount, time, built, clock.ElapsedMilliseconds - built);
+            stats = new DropStats(staticCount, triangleCount, time, built, clock.ElapsedMilliseconds - built) { Compounds = compounds };
 
             foreach (var (obj, handle, center) in bodies)
             {
@@ -191,6 +219,19 @@ public static class PhysicsDrop
             pool.Clear();
         }
         return result;
+    }
+
+    /// <summary>An inertia for a total mass of <paramref name="mass"/> (the builder's is for the sum of the pieces' weights).</summary>
+    private static BodyInertia Scale(BodyInertia inertia, float mass)
+    {
+        if (inertia.InverseMass <= 0) return inertia;
+        var factor = inertia.InverseMass * mass; // old mass → new mass
+        var t = inertia.InverseInertiaTensor;
+        return new BodyInertia
+        {
+            InverseMass = 1f / mass,
+            InverseInertiaTensor = new Symmetric3x3 { XX = t.XX / factor, YX = t.YX / factor, YY = t.YY / factor, ZX = t.ZX / factor, ZY = t.ZY / factor, ZZ = t.ZZ / factor },
+        };
     }
 
     /// <summary>The object's rotation as a quaternion (its world matrix without scale and translation).</summary>

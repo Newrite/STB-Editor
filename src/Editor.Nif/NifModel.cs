@@ -163,6 +163,12 @@ public sealed class NifModel
     /// <summary>The file has Havok collision (bhk… blocks): the game collides with it (navmesh generation, physics).</summary>
     public bool HasCollision { get; internal set; }
 
+    /// <summary>The Havok collision as convex pieces (model space, game units), for physics; see <see cref="CollisionComplete"/>.</summary>
+    public List<Vector3[]> CollisionPieces { get; } = [];
+
+    /// <summary>Every collision shape was read into <see cref="CollisionPieces"/> (none was a triangle mesh or unknown).</summary>
+    public bool CollisionComplete { get; internal set; } = true;
+
     public Vector3 BoundsMin { get; internal set; } = new(float.MaxValue);
     public Vector3 BoundsMax { get; internal set; } = new(float.MinValue);
 

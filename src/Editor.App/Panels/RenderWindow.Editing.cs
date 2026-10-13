@@ -651,11 +651,22 @@ internal sealed partial class RenderWindow
     private Vector3 _gizmoTestBefore;
     private Vector3 _gizmoTestBeforePosition;
     private bool _gizmoTestMove;
-    private Vector2 _gizmoTestGrab;
+    private Vector2 _gizmoTestGrab, _gizmoTestCentre;
 
     /// <summary>The object the gizmo test turns (else the one nearest the scene focus), and with the 15° angle snap.</summary>
     public SceneObject? GizmoTestTarget { get; set; }
     public bool GizmoTestSnap { get; set; }
+
+    /// <summary>The gizmo test drags once round the centre instead of along a tangent; the camera almost level with the object.</summary>
+    public bool GizmoTestSweep { get; set; }
+    public bool GizmoTestLevel { get; set; }
+
+    /// <summary>Starts the gizmo test over (another run on the same scene).</summary>
+    public void RestartGizmoTest()
+    {
+        _gizmoTest = 0;
+        _gizmoTestFrame = 0;
+    }
 
     /// <summary>
     /// Camera at most <paramref name="distance"/> units from the object's middle, back along the current view
@@ -709,9 +720,10 @@ internal sealed partial class RenderWindow
                 _gridSnap = false;
                 _angleSnap = GizmoTestSnap;
                 _angleStep = 15f;
-                // From above, so the Z ring is a circle and a diagonal from the centre meets only it.
-                _camera.Position = _gizmoTestObject.Position + new Vector3(0, -120, 700);
-                _camera.LookAt(_gizmoTestObject.Position);
+                // From above, so the Z ring is a circle and a diagonal from the centre meets only it; or almost level
+                // with the object (a mine, a room), where the rings are seen nearly edge-on.
+                _camera.Position = _gizmoTestObject.Position + (GizmoTestLevel ? new Vector3(0, -300, 40) : new Vector3(0, -120, 700));
+                _camera.LookAt(_gizmoTestObject.Position + (GizmoTestLevel ? new Vector3(0, 0, 40) : Vector3.Zero));
                 _gizmoTestBefore = _gizmoTestObject.Rotation;
                 _gizmoTestBeforePosition = _gizmoTestObject.Position;
                 _gizmoTest = 1;
@@ -727,6 +739,7 @@ internal sealed partial class RenderWindow
                     Log.Info($"autotest-gizmo: ring at {_gizmoTestRadius:0} px from the centre");
                     // From here the mouse moves from where the handle was grabbed, not after the moving gizmo.
                     _gizmoTestGrab = ImGuiLayerPosition();
+                    _gizmoTestCentre = _gizmoScreen;
                     StbEditor.App.Ui.ImGuiLayer.TestMouse = (_gizmoTestGrab, true);
                     _gizmoTest = 3;
                     _gizmoTestFrame = 0;
@@ -739,6 +752,20 @@ internal sealed partial class RenderWindow
                     if (_gizmoTestRadius > 500) { Log.Error("autotest-gizmo: no ring found"); StbEditor.App.Ui.ImGuiLayer.TestMouse = null; return true; }
                 }
                 StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition(), false);
+                break;
+            case 3 when GizmoTestSweep && _gizmoTestFrame <= 72:
+            {
+                // Once round the centre, 5° a frame, at the radius the handle was grabbed at.
+                var angle = MathF.PI / 4 + _gizmoTestFrame * 5f * MathF.PI / 180f;
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_gizmoTestCentre + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * _gizmoTestRadius, true);
+                if (_gizmoTestFrame % 12 == 0)
+                    Log.Info($"autotest-gizmo: sweep {_gizmoTestFrame * 5}°: rotation {Deg(_gizmoTestObject!.Rotation)}, moved {Vector3.Distance(_gizmoTestBeforePosition, _gizmoTestObject.Position):0.##}");
+                break;
+            }
+            case 3 when GizmoTestSweep:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (StbEditor.App.Ui.ImGuiLayer.TestMouse?.Position ?? _gizmoTestGrab, false);
+                _gizmoTest = 4;
+                _gizmoTestFrame = 0;
                 break;
             case 3 when _gizmoTestFrame <= 40:
                 // Along the tangent of the ring (found down-right of the centre).

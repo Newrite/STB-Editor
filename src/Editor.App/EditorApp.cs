@@ -1727,6 +1727,15 @@ internal sealed class EditorApp : IDisposable
             case 2:
                 // The rotate gizmo on the placed object (same steps as --autotest-gizmo).
                 if (!RenderWindow.GizmoTestStep()) break;
+                // Then once round with the gizmo: from above, and with the camera almost level (snap 15° both times).
+                if (!RenderWindow.GizmoTestSweep || !RenderWindow.GizmoTestLevel)
+                {
+                    RenderWindow.GizmoTestLevel = RenderWindow.GizmoTestSweep;
+                    RenderWindow.GizmoTestSweep = true;
+                    RenderWindow.RestartGizmoTest();
+                    break;
+                }
+                RenderWindow.GizmoTestSweep = RenderWindow.GizmoTestLevel = false;
                 RenderWindow.GizmoTestTarget = null;
                 RenderWindow.GizmoTestSnap = false;
                 RenderWindow.LookAtForTest(_placed!, 260);
@@ -1748,14 +1757,15 @@ internal sealed class EditorApp : IDisposable
                 break;
             }
             case 11:
-                if (++_placeFrames <= 40)
+                if (++_placeFrames <= 240)
                 {
+                    // 720 px: once round (0.5° a pixel).
                     StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(_placeFrames * 3, 0), true);
-                    if (_placeFrames % 10 == 0)
+                    if (_placeFrames % 30 == 0)
                         Log.Info($"autotest-place: right-drag +{_placeFrames * 3} px ({RenderWindow.DragStateForTest}): position {_placed!.Position}, rotation {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg");
                     break;
                 }
-                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(120, 0), false);
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(720, 0), false);
                 _placeStage = 12;
                 _placeFrames = 0;
                 break;

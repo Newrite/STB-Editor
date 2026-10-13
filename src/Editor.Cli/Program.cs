@@ -1391,6 +1391,19 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "mergeplan":
+    {
+        // mergeplan <game> <signature> [n]: what the merged patch would add / remove for records of that type.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var keys = (catalog.BySignature.GetValueOrDefault(args[2]) ?? []).Where(r => r.Plugins.Count >= 3).Select(r => r.FormKey).ToList();
+        var plan = StbEditor.Core.LeveledMerge.Plan(ws, keys, k => catalog.Get(k)!.Signature);
+        Console.WriteLine($"{plan.Count} of {keys.Count} {args[2]} to merge");
+        string Name(Mutagen.Bethesda.Plugins.FormKey k) => catalog.Get(k)?.EditorId ?? k.ToString();
+        foreach (var r in plan.Take(args.Length > 3 ? int.Parse(args[3]) : 8))
+            Console.WriteLine($"  {r.EditorId} [{string.Join(" > ", r.Plugins)}]: {string.Join(", ", r.AddedEntries.Select(a => "+" + Name(a.Item)).Concat(r.RemovedEntries.Select(a => "-" + Name(a.Item))))}");
+        break;
+    }
     case "navcheck":
     {
         // navcheck <game> <interior EditorID…>: Check NavMeshes on the cells' navmeshes (issue counts by kind).

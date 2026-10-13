@@ -8,8 +8,9 @@ using static StbEditor.App.Ui.Loc;
 namespace StbEditor.App.Panels;
 
 /// <summary>
-/// File → Merge leveled lists (xEdit: Create Merged Patch, leveled lists): finds the lists two or more plugins change,
-/// shows what merging would add or remove against the winning version, and writes the ticked ones into the active file
+/// File → Merged patch (xEdit: Create Merged Patch): finds the leveled lists, containers, NPCs (inventory, factions, perks,
+/// spells, packages, keywords), outfits and form lists two or more plugins change, shows what merging would add or remove
+/// against the winning version, and writes the ticked ones into the active file
 /// (which must load after those plugins) in one undo step.
 /// </summary>
 internal sealed class LeveledMergeWindow
@@ -20,6 +21,12 @@ internal sealed class LeveledMergeWindow
     private List<LeveledMerge.Result>? _result;
     private readonly HashSet<FormKey> _excluded = [];
     private string? _message;
+    private readonly HashSet<string> _kinds = [.. LeveledMerge.Leveled, .. LeveledMerge.Others];
+
+    private static readonly (string Label, string[] Signatures)[] Kinds =
+    [
+        ("Leveled lists", LeveledMerge.Leveled), ("Containers", ["CONT"]), ("NPCs", ["NPC_"]), ("Outfits", ["OTFT"]), ("Form lists", ["FLST"]),
+    ];
 
     public bool IsBusy => _task is not null;
     public IReadOnlyList<LeveledMerge.Result>? Result => _result;
@@ -30,7 +37,8 @@ internal sealed class LeveledMergeWindow
     {
         if (_task is not null || app.Session is not { } session) return;
         var catalog = session.Catalog;
-        var lists = new[] { "LVLI", "LVLN", "LVSP" }.SelectMany(s => catalog.BySignature.GetValueOrDefault(s) ?? []).Select(r => r.FormKey).ToList();
+        // Only records three or more plugins have can need merging (the original and two that change it).
+        var lists = _kinds.SelectMany(s => catalog.BySignature.GetValueOrDefault(s) ?? []).Where(r => r.Plugins.Count >= 3).Select(r => r.FormKey).ToList();
         // The active file's own versions are what is being regenerated.
         var skip = app.ActivePlugin is { } active ? new HashSet<ModKey> { ModKey.FromFileName(active.Name) } : null;
         var progress = new Progress<string>(m => _progress = m);
@@ -44,7 +52,7 @@ internal sealed class LeveledMergeWindow
         if (_result is null || app.Session is not { } session) return 0;
         if (app.ActivePlugin is not { } active)
         {
-            app.ShowActiveFileDialog(T("Merged lists go into the active file — choose it first."));
+            app.ShowActiveFileDialog(T("Merged records go into the active file — choose it first."));
             return 0;
         }
         // The patch must win: a plugin of the merge loading after the active file would hide it.
@@ -58,8 +66,8 @@ internal sealed class LeveledMergeWindow
         }
         var edits = chosen.Select(r => (r.Merged, RecordPlace.TopLevel, (RefContext?)null)).ToList();
         if (edits.Count == 0) return 0;
-        app.Document.CommitEdits(TF($"Merge {edits.Count} leveled list(s)"), edits);
-        _message = TF($"{edits.Count} merged list(s) put into {active.Name} — save to keep them.");
+        app.Document.CommitEdits(TF($"Merge {edits.Count} record(s)"), edits);
+        _message = TF($"{edits.Count} merged record(s) put into {active.Name} — save to keep them.");
         Log.Info($"leveled merge: {_message}");
         return edits.Count;
     }
@@ -76,11 +84,18 @@ internal sealed class LeveledMergeWindow
         }
         if (!_open || app.Session is not { } session) return;
         ImGui.SetNextWindowSize(app.Scaled(960, 560), ImGuiCond.FirstUseEver);
-        if (ImGui.Begin(T("Merge leveled lists") + "###levelmerge", ref _open, ImGuiWindowFlags.NoSavedSettings))
+        if (ImGui.Begin(T("Merged patch") + "###levelmerge", ref _open, ImGuiWindowFlags.NoSavedSettings))
         {
-            ImGui.TextWrapped(T("When several plugins change one leveled list, only the last one counts in the game. Merging keeps each plugin's change, item by item: for every item the entries of the last plugin that changed it win. Check the additions and removals: a plugin may have left something out on purpose."));
-            ImGui.BeginDisabled(_task is not null);
-            if (ImGui.Button(_task is not null ? T("searching…") : T("Find lists to merge"))) Start(app);
+            ImGui.TextWrapped(T("When several plugins change one leveled list, container, NPC, outfit or form list, only the last one counts in the game. Merging keeps each plugin's change, item by item: for every item (an entry, a faction, a spell, a package…) the entries of the last plugin that changed it win. Check the additions and removals: a plugin may have left something out on purpose."));
+            foreach (var (label, signatures) in Kinds)
+            {
+                var on = signatures.All(_kinds.Contains);
+                if (ImGui.Checkbox(T(label), ref on)) { foreach (var sig in signatures) { if (on) _kinds.Add(sig); else _kinds.Remove(sig); } }
+                ImGui.SameLine();
+            }
+            ImGui.NewLine();
+            ImGui.BeginDisabled(_task is not null || _kinds.Count == 0);
+            if (ImGui.Button(_task is not null ? T("searching…") : T("Find records to merge"))) Start(app);
             ImGui.EndDisabled();
             if (_task is not null) { ImGui.SameLine(); ImGui.TextColored(Theme.Warning, _progress); }
             if (_result is { } result)
@@ -100,7 +115,7 @@ internal sealed class LeveledMergeWindow
     {
         if (result.Count == 0)
         {
-            ImGui.TextColored(Theme.TextDim, T("No leveled list needs merging."));
+            ImGui.TextColored(Theme.TextDim, T("Nothing needs merging."));
             return;
         }
         string Name(FormKey key) => app.Session!.Catalog.Get(key)?.EditorId ?? app.Session.Workspace.FormIdText(key);
@@ -108,7 +123,7 @@ internal sealed class LeveledMergeWindow
         if (!ImGui.BeginTable("##merge", 4, flags)) return;
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFrameHeight());
-        ImGui.TableSetupColumn(T("List"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableSetupColumn(T("Record"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
         ImGui.TableSetupColumn(T("Plugins"), ImGuiTableColumnFlags.WidthStretch, 1.4f);
         ImGui.TableSetupColumn(T("Merge adds / removes against the winner"), ImGuiTableColumnFlags.WidthStretch, 2.6f);
         ImGui.TableHeadersRow();
@@ -125,8 +140,9 @@ internal sealed class LeveledMergeWindow
             ImGui.TableNextColumn();
             ImGui.TextColored(Theme.TextDim, string.Join(" > ", r.Plugins));
             ImGui.TableNextColumn();
-            var parts = r.AddedEntries.Select(a => $"+ {Name(a.Item)} @{a.Level}{(a.Count > 1 ? $" x{a.Count}" : "")}")
-                .Concat(r.RemovedEntries.Select(a => $"- {Name(a.Item)} @{a.Level}{(a.Count > 1 ? $" x{a.Count}" : "")}"));
+            var levels = LeveledMerge.Leveled.Contains(r.Signature);
+            string Entry(string sign, (FormKey Item, short Level, int Count) a) => $"{sign} {Name(a.Item)}{(levels ? $" @{a.Level}" : "")}{(a.Count > 1 ? $" x{a.Count}" : "")}";
+            var parts = r.AddedEntries.Select(a => Entry("+", a)).Concat(r.RemovedEntries.Select(a => Entry("-", a)));
             ImGui.TextWrapped(string.Join(", ", parts));
             ImGui.PopID();
         }

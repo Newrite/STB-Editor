@@ -1658,6 +1658,20 @@ internal static class LangRu
         ["no triangle uses this vertex"] = "вершина не входит ни в один треугольник",
         ["at the same place as another vertex (merge them)"] = "в той же точке, что другая вершина (объедините их)",
 
+        // ---- merged patch
+        ["Merged patch..."] = "Merged Patch…",
+        ["Merged records go into the active file — choose it first."] = "Слитые записи пишутся в активный файл — сначала выберите его.",
+        ["Merge {0} record(s)"] = "Слияние записей: {0}",
+        ["{0} merged record(s) put into {1} — save to keep them."] = "Слитых записей: {0} в {1} — сохраните, чтобы оставить.",
+        ["Merged patch"] = "Merged Patch",
+        ["When several plugins change one leveled list, container, NPC, outfit or form list, only the last one counts in the game. Merging keeps each plugin's change, item by item: for every item (an entry, a faction, a spell, a package…) the entries of the last plugin that changed it win. Check the additions and removals: a plugin may have left something out on purpose."] = "Когда несколько плагинов меняют один левел-лист, контейнер, NPC, наряд или список форм, в игре действует только последний. Слияние сохраняет изменения каждого плагина поэлементно: для каждого элемента (запись списка, фракция, заклинание, пакет…) побеждает последний плагин, который его изменил. Проверьте добавления и удаления: плагин мог убрать что-то нарочно.",
+        ["Find records to merge"] = "Найти записи для слияния",
+        ["Nothing needs merging."] = "Сливать нечего.",
+        ["Leveled lists"] = "Левел-листы",
+        ["NPCs"] = "NPC",
+        ["Outfits"] = "Наряды",
+        ["Form lists"] = "Списки форм",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

@@ -48,7 +48,11 @@ public static class LeveledMerge
         return results;
     }
 
-    /// <summary>The list's versions in load order (the original first).</summary>
+    /// <summary>Signatures the merged patch handles.</summary>
+    public static readonly string[] Leveled = ["LVLI", "LVLN", "LVSP"];
+    public static readonly string[] Others = ["CONT", "NPC_", "OTFT", "FLST"];
+
+    /// <summary>The record's versions in load order (the original first).</summary>
     private static List<(ModKey ModKey, IMajorRecordGetter Record)> Versions(ILinkCache cache, FormKey key, string signature)
     {
         IEnumerable<IModContext<IMajorRecordGetter>> contexts = signature switch
@@ -56,12 +60,54 @@ public static class LeveledMerge
             "LVLI" => cache.ResolveAllSimpleContexts<ILeveledItemGetter>(key),
             "LVLN" => cache.ResolveAllSimpleContexts<ILeveledNpcGetter>(key),
             "LVSP" => cache.ResolveAllSimpleContexts<ILeveledSpellGetter>(key),
+            "CONT" => cache.ResolveAllSimpleContexts<IContainerGetter>(key),
+            "NPC_" => cache.ResolveAllSimpleContexts<INpcGetter>(key),
+            "OTFT" => cache.ResolveAllSimpleContexts<IOutfitGetter>(key),
+            "FLST" => cache.ResolveAllSimpleContexts<IFormListGetter>(key),
             _ => [],
         };
         return contexts.Select(c => (c.ModKey, c.Record)).Reverse().ToList();
     }
 
-    private static List<(EntryKey Key, object Entry)> Entries(IMajorRecordGetter record) => record switch
+    /// <summary>One list of a record the merge works on: how to read its entries and how to put merged ones into a copy.</summary>
+    private sealed record ListSpec(string Name, bool ByLevel, Func<IMajorRecordGetter, List<(EntryKey Key, object Entry)>> Read, Action<IMajorRecord, List<object>> Write);
+
+    private static (EntryKey, object) Link<T>(IFormLinkGetter<T> link) where T : class, IMajorRecordGetter => (new EntryKey(link.FormKey, 0, 1), link);
+
+    private static ExtendedList<IFormLinkGetter<T>> Links<T>(List<object> entries) where T : class, IMajorRecordGetter =>
+        new(entries.Cast<IFormLinkGetter<T>>().Select(l => (IFormLinkGetter<T>)new FormLink<T>(l.FormKey)));
+
+    private static (EntryKey, object) Item(IContainerEntryGetter e) =>
+        (new EntryKey(e.Item.Item.FormKey, 0, (short)Math.Clamp(e.Item.Count, short.MinValue, short.MaxValue)), e);
+
+    /// <summary>For lists Mutagen only lets be set at creation: emptied and filled.</summary>
+    private static void Replace<T>(ExtendedList<T> list, IEnumerable<T> items) { var copy = items.ToList(); list.Clear(); list.AddRange(copy); }
+
+    private static ExtendedList<ContainerEntry> Items(List<object> entries) => new(entries.Cast<IContainerEntryGetter>().Select(e => e.DeepCopy()));
+
+    private static IReadOnlyList<ListSpec> Specs(IMajorRecordGetter record) => record switch
+    {
+        ILeveledItemGetter => [new("Entries", true, LeveledEntries, (r, e) => ((LeveledItem)r).Entries = new(e.Cast<ILeveledItemEntryGetter>().Select(x => x.DeepCopy())))],
+        ILeveledNpcGetter => [new("Entries", true, LeveledEntries, (r, e) => ((LeveledNpc)r).Entries = new(e.Cast<ILeveledNpcEntryGetter>().Select(x => x.DeepCopy())))],
+        ILeveledSpellGetter => [new("Entries", true, LeveledEntries, (r, e) => ((LeveledSpell)r).Entries = new(e.Cast<ILeveledSpellEntryGetter>().Select(x => x.DeepCopy())))],
+        IContainerGetter => [new("Items", false, r => [.. (((IContainerGetter)r).Items ?? []).Select(Item)], (r, e) => ((Container)r).Items = Items(e))],
+        INpcGetter =>
+        [
+            new("Items", false, r => [.. (((INpcGetter)r).Items ?? []).Select(Item)], (r, e) => ((Npc)r).Items = Items(e)),
+            new("Factions", false, r => [.. ((INpcGetter)r).Factions.Select(f => (new EntryKey(f.Faction.FormKey, f.Rank, 1), (object)f))],
+                (r, e) => Replace(((Npc)r).Factions, e.Cast<IRankPlacementGetter>().Select(f => f.DeepCopy()))),
+            new("Perks", false, r => [.. (((INpcGetter)r).Perks ?? []).Select(p => (new EntryKey(p.Perk.FormKey, p.Rank, 1), (object)p))],
+                (r, e) => ((Npc)r).Perks = new(e.Cast<IPerkPlacementGetter>().Select(p => p.DeepCopy()))),
+            new("Spells", false, r => [.. (((INpcGetter)r).ActorEffect ?? []).Select(Link)], (r, e) => ((Npc)r).ActorEffect = Links<ISpellRecordGetter>(e)),
+            new("Packages", false, r => [.. ((INpcGetter)r).Packages.Select(Link)], (r, e) => Replace(((Npc)r).Packages, Links<IPackageGetter>(e))),
+            new("Keywords", false, r => [.. (((INpcGetter)r).Keywords ?? []).Select(Link)], (r, e) => ((Npc)r).Keywords = Links<IKeywordGetter>(e)),
+        ],
+        IOutfitGetter => [new("Items", false, r => [.. (((IOutfitGetter)r).Items ?? []).Select(Link)], (r, e) => ((Outfit)r).Items = Links<IOutfitTargetGetter>(e))],
+        IFormListGetter => [new("Items", false, r => [.. ((IFormListGetter)r).Items.Select(Link)], (r, e) => Replace(((FormList)r).Items, Links<ISkyrimMajorRecordGetter>(e)))],
+        _ => [],
+    };
+
+    private static List<(EntryKey Key, object Entry)> LeveledEntries(IMajorRecordGetter record) => record switch
     {
         ILeveledItemGetter l => (l.Entries ?? []).Where(e => e.Data is not null).Select(e => (new EntryKey(e.Data!.Reference.FormKey, e.Data.Level, e.Data.Count), (object)e)).ToList(),
         ILeveledNpcGetter l => (l.Entries ?? []).Where(e => e.Data is not null).Select(e => (new EntryKey(e.Data!.Reference.FormKey, e.Data.Level, e.Data.Count), (object)e)).ToList(),
@@ -69,62 +115,58 @@ public static class LeveledMerge
         _ => [],
     };
 
+    /// <summary>Every list's entries together (the plan's adds / removes against the winner).</summary>
+    private static List<(EntryKey Key, object Entry)> Entries(IMajorRecordGetter record) => Specs(record).SelectMany(spec => spec.Read(record)).ToList();
+
     /// <summary>
-    /// The merged list (a copy of the winner with merged entries), or null when it would equal the winner. Entries are
-    /// grouped by what they spawn: for each item (NPC, spell, sub-list) the entries of the last plugin that changed them
-    /// against the original win — so a plugin's addition or removal survives a later plugin that did not touch that
-    /// item, and two plugins re-levelling the same item do not double it.
+    /// The merged record (a copy of the winner with each list merged), or null when it would equal the winner. A list's
+    /// entries are grouped by what they name: for each item (NPC, spell, faction, package, sub-list…) the entries of the last
+    /// plugin that changed them against the original win — so a plugin's addition or removal survives a later plugin that
+    /// did not touch that item, and two plugins changing the same item do not double it.
     /// </summary>
     public static IMajorRecord? Merge(IReadOnlyList<IMajorRecordGetter> versions)
     {
-        var lists = versions.Select(Entries).ToList();
+        var specs = Specs(versions[^1]);
+        if (specs.Count == 0) return null;
+        IMajorRecord? copy = null;
+        foreach (var spec in specs)
+        {
+            var lists = versions.Select(spec.Read).ToList();
+            if (MergeList(lists, spec.ByLevel) is not { } merged) continue;
+            if (spec.ByLevel && merged.Count > 255) continue; // the format's limit: such a list needs sub-lists, left alone
+            copy ??= (IMajorRecord)versions[^1].DeepCopy();
+            spec.Write(copy, merged);
+        }
+        return copy;
+    }
+
+    /// <summary>One list merged item by item; null when the result is the winner's list.</summary>
+    private static List<object>? MergeList(List<List<(EntryKey Key, object Entry)>> lists, bool byLevel)
+    {
         List<(EntryKey Key, object Entry)> Of(int version, FormKey item) => lists[version].Where(e => e.Key.Reference == item).ToList();
         static bool Same(List<(EntryKey Key, object Entry)> a, List<(EntryKey Key, object Entry)> b) =>
             a.Count == b.Count && a.Select(e => e.Key).OrderBy(k => k.Level).ThenBy(k => k.Count).SequenceEqual(b.Select(e => e.Key).OrderBy(k => k.Level).ThenBy(k => k.Count));
 
-        var items = lists.SelectMany(l => l.Select(e => e.Key.Reference)).Distinct().ToList();
+        // Items in the winner's order first (package priority, list order), then the ones only other versions have.
+        var items = lists[^1].Select(e => e.Key.Reference).Concat(lists.SelectMany(l => l.Select(e => e.Key.Reference))).Distinct().ToList();
         var merged = new List<(EntryKey Key, object Entry, int Order)>();
         var order = 0;
         foreach (var item in items)
         {
             var original = Of(0, item);
             var chosen = original;
-            for (var v = 1; v < versions.Count; v++)
+            for (var v = 1; v < lists.Count; v++)
             {
                 var mine = Of(v, item);
                 if (!Same(mine, original)) chosen = mine;
             }
             foreach (var (key, entry) in chosen) merged.Add((key, entry, order++));
         }
-        // Lists are kept by level, as the CK sorts them; equal levels keep their first-seen order.
-        merged = merged.OrderBy(m => m.Key.Level).ThenBy(m => m.Order).ToList();
+        // Leveled lists are kept by level, as the CK sorts them; equal levels keep their first-seen order.
+        if (byLevel) merged = merged.OrderBy(m => m.Key.Level).ThenBy(m => m.Order).ToList();
 
         var winner = lists[^1].GroupBy(e => e.Key).ToDictionary(g => g.Key, g => g.Count());
         if (winner.Values.Sum() == merged.Count && merged.GroupBy(m => m.Key).All(g => winner.GetValueOrDefault(g.Key) == g.Count())) return null;
-        if (merged.Count > 255) return null; // the format's limit: such a list needs sub-lists, left alone
-
-        switch (versions[^1])
-        {
-            case ILeveledItemGetter li:
-            {
-                var copy = li.DeepCopy();
-                copy.Entries = new ExtendedList<LeveledItemEntry>(merged.Select(m => ((ILeveledItemEntryGetter)m.Entry).DeepCopy()));
-                return copy;
-            }
-            case ILeveledNpcGetter ln:
-            {
-                var copy = ln.DeepCopy();
-                copy.Entries = new ExtendedList<LeveledNpcEntry>(merged.Select(m => ((ILeveledNpcEntryGetter)m.Entry).DeepCopy()));
-                return copy;
-            }
-            case ILeveledSpellGetter ls:
-            {
-                var copy = ls.DeepCopy();
-                copy.Entries = new ExtendedList<LeveledSpellEntry>(merged.Select(m => ((ILeveledSpellEntryGetter)m.Entry).DeepCopy()));
-                return copy;
-            }
-            default:
-                return null;
-        }
+        return merged.Select(m => m.Entry).ToList();
     }
 }

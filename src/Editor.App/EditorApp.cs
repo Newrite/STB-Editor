@@ -1595,6 +1595,7 @@ internal sealed class EditorApp : IDisposable
             case 1 when !LeveledMergeWindow.IsBusy && ++_mergeFrames > 2:
             {
                 var found = LeveledMergeWindow.Result?.Count ?? -1;
+                Log.Info($"autotest-levelmerge: by type {string.Join(", ", (LeveledMergeWindow.Result ?? []).GroupBy(r => r.Signature).Select(g => $"{g.Key} {g.Count()}"))}; e.g. {string.Join("; ", (LeveledMergeWindow.Result ?? []).Where(r => r.Signature is "NPC_" or "CONT" or "FLST" or "OTFT").Take(3).Select(r => $"{r.EditorId} [{string.Join(" > ", r.Plugins)}] +{r.Added} -{r.Removed}"))}");
                 var put = LeveledMergeWindow.Apply(this);
                 Log.Info($"autotest-levelmerge: {found} list(s) found, {put} put into the active file; pending {Document.PendingCount}, undo '{Document.History.UndoName}'");
                 Document.Undo();
@@ -3626,7 +3627,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("ModGroups..."), (string?)null, false, Session is not null)) ModGroupsWindow.Show();
             if (ImGui.MenuItem(T("Plugin assets..."), (string?)null, false, Session is not null)) PluginAssetsWindow.Show(this);
             if (ImGui.MenuItem(T("Compare with another file..."), (string?)null, false, Session is not null)) CompareFile.Show(this);
-            if (ImGui.MenuItem(T("Merge leveled lists..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
+            if (ImGui.MenuItem(T("Merged patch..."), (string?)null, false, Session is not null)) LeveledMergeWindow.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Renumber the active file's records into 0x800-0xFFF and mark it light (xEdit: Compact FormIDs for ESL)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Meshes, textures, scripts and sounds next to the active file into its archives (CK: Create Archive)"));
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Errors, ITM and deleted references of a plugin (xEdit: Check for Errors, Quick Auto Clean)"));

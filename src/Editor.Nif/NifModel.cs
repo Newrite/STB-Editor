@@ -157,6 +157,8 @@ public sealed class NifModel
     public List<NifShape> Shapes { get; } = [];
     public List<NifParticleSystem> Particles { get; } = [];
     public List<string> Warnings { get; } = [];
+    /// <summary>Named nodes and their model-space transforms (the first node of each name).</summary>
+    public Dictionary<string, NifTransform> Nodes { get; } = new(StringComparer.OrdinalIgnoreCase);
     public uint Version { get; init; }
     public uint BsVersion { get; init; }
 

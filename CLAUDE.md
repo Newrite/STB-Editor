@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.64.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.65.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -139,6 +139,11 @@ a node linking to it is taken or it hangs from the root, rank perks = Next Perk 
 v0.64.0: SKSE framework configs (`Core/FrameworkIndex.cs` reads _DISTR / _KID / _SWAP / _FLM / _DESC / _SRD / OAR json / DAR txt
 through `AssetFileSystem` loose files, `EditorSession.Frameworks`; `Core/SpidMatch.cs`, `Core/KidMatch.cs` evaluate filters;
 `Panels/FrameworksView.cs`: Use Info tab, World → Framework configs, form header chip).
+v0.65.0: perk tree «As in the game» = the game's menu (`Panels/PerkSky.cs`: INTPerkSkydome.nif node PointNN per skill slot,
+star = ((width / 2 − column) × fStatsStarXIncrement, row × Y, ZInitialOffset − row × ZIncrement) in that node, width = max column
+of perk nodes — from SkyrimSE.exe 1.5.97 StatsMenu; slot order Enchanting, Smithing, Heavy Armor, Block, Two-Handed, One-Handed,
+Archery, Light Armor, Sneak, Lockpicking, Pickpocket, Speech, Alchemy, Illusion, Conjuration, Destruction, Restoration, Alteration;
+camera at the dome's centre; `PerkTreeEditor.DrawSky` renders it through `ObjectPreview`, star drags = ray ∩ the tree's slope).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

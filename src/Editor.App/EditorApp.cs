@@ -2309,10 +2309,12 @@ internal sealed class EditorApp : IDisposable
                 Log.Info($"autotest-perktree: after three Ctrl+Z pending {Document.PendingCount}");
                 // The game's view: a few perks taken at skill 40, shot (%TEMP%\stbeditor_perktree_game.bmp).
                 Log.Info($"autotest-perktree: game view {Panels.PerkTreeEditor.GameViewForTest(6, 40)}");
+                Log.Info($"autotest-perktree: sky {Panels.PerkTreeEditor.SkyForTest(session)}");
                 _perkStage = 5;
                 _perkFrames = 0;
                 break;
-            case 5 when ++_perkFrames > 10:
+            case 5 when ++_perkFrames > 90:
+                // The sky's meshes and textures stream in first.
                 ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_perktree_game.bmp");
                 _perkStage = 6;
                 _perkFrames = 0;

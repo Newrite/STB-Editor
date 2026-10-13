@@ -196,6 +196,9 @@ switch (command)
         var model = NifFile.Load(vfs.ReadAllBytes(args[2])!, args[2]);
         Console.WriteLine($"{args[2]}: bsver {model.BsVersion}, {model.Shapes.Count} shapes, bounds {model.BoundsMin} .. {model.BoundsMax}");
         foreach (var w in model.Warnings) Console.WriteLine("  warn " + w);
+        if (args.Contains("--nodes"))
+            foreach (var (name, t) in model.Nodes)
+                Console.WriteLine($"  node {name}: at {t.Translation} scale {t.Scale} rows {t.Rotation.Row0} {t.Rotation.Row1} {t.Rotation.Row2}");
         foreach (var sh in model.Shapes)
         {
             var m = sh.Material;
@@ -204,6 +207,8 @@ switch (command)
             for (var i = 0; i < m.Textures.Length; i++) if (m.Textures[i].Length > 0) Console.WriteLine($"     tex{i}: {m.Textures[i]}");
             if (sh.Colors is not null) Console.WriteLine($"     colors: {string.Join(" ", sh.Colors.Take(6).Select(c => c.ToString("X8")))}");
             if (sh.UVs is not null) Console.WriteLine($"     uv: {string.Join(" ", sh.UVs.Take(3))}  pos: {string.Join(" ", sh.Positions.Take(2))}  n: {sh.Normals?[0]}");
+            if (sh.UVs is { Length: > 0 } uvs && args.Contains("--uvbounds"))
+                Console.WriteLine($"     uv bounds: {uvs.Aggregate(System.Numerics.Vector2.Min)} .. {uvs.Aggregate(System.Numerics.Vector2.Max)}");
             if (sh.Billboard is not null) Console.WriteLine($"     billboard {sh.Billboard} at {sh.BillboardOrigin}");
             if (m.GreyscaleTexture is not null) Console.WriteLine($"     palette: {m.GreyscaleTexture}");
             foreach (var a in m.Animations) Console.WriteLine($"     anim {a.Target}: {a.Keys.Times.Length} keys type {a.Keys.Type} {a.Timing} first {a.Keys.Values[0]} last {a.Keys.Values[^1]}");
@@ -1053,6 +1058,14 @@ switch (command)
         foreach (var t in new[] { type }.Concat(type.GetInterfaces()))
             foreach (var prop in t.GetProperties())
                 Console.WriteLine($"  {t.Name}.{prop.Name}: {prop.PropertyType.ToString().Replace("Mutagen.Bethesda.Skyrim.", "").Replace("Mutagen.Bethesda.Plugins.", "")}");
+        break;
+    }
+    case "ls":
+    {
+        // ls <game> <prefix> [extension]: asset paths under a folder, with where each comes from.
+        var vfs = AssetFileSystem.Build(ws);
+        foreach (var path in vfs.Enumerate(args[2], args.Length > 3 ? args[3] : "").Order())
+            Console.WriteLine($"{path}  <- {vfs.Find(path)?.Container}");
         break;
     }
     case "bsaextract":

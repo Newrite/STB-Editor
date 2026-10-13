@@ -1738,7 +1738,6 @@ internal static class LangRu
         ["skill %d"] = "навык %d",
         ["Reset perks"] = "Сбросить перки",
         ["perks taken: {0}"] = "взято перков: {0}",
-        ["Click: take a rank, Shift+click: give one back."] = "Клик — взять ранг, Shift+клик — вернуть.",
         ["   rank {0}/{1}"] = "   ранг {0}/{1}",
         ["Requires {0}: {1:0}"] = "Требуется {0}: {1:0}",
         ["  (now {0})"] = "  (сейчас {0})",
@@ -1785,6 +1784,16 @@ internal static class LangRu
         ["Frameworks: {0} ({1})"] = "Фреймворки: {0} ({1})",
         ["Frameworks ({0})"] = "Фреймворки ({0})",
         ["Frameworks (…)"] = "Фреймворки (…)",
+
+        // ---- Perk tree
+        ["Game zoom"] = "Масштаб игры",
+        ["The view angle the menu has (fStatsCameraFOV); Fit zooms to the tree and its picture"] = "Угол обзора, как в меню игры (fStatsCameraFOV); «Вписать» приближает к дереву и его картинке",
+        ["Click: take a rank, Shift+click: give one back. Drag a star: move it. RMB drag: look around, wheel: zoom."] = "Клик: взять ранг, Shift+клик: вернуть. Перетащить звезду: сдвинуть перк. ПКМ: осмотреться, колесо: масштаб.",
+        ["no {0} in the build"] = "в сборке нет {0}",
+        ["slot {0}: Point{1:00} / cImage{2:00}"] = "место {0}: Point{1:00} / cImage{2:00}",
+        ["not one of the menu's 18 skills: shown in slot {0}"] = "не из 18 навыков меню: показан на месте {0}",
+        ["width {0}"] = "ширина {0}",
+        ["column + offset {0:0.###}, row + offset {1:0.###}"] = "столбец + смещение {0:0.###}, строка + смещение {1:0.###}",
 
         // ---- main menu
         ["File"] = "Файл",

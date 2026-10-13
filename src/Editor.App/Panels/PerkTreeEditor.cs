@@ -2,8 +2,10 @@ using System.Numerics;
 using Hexa.NET.ImGui;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Skyrim;
+using StbEditor.App.Services;
 using StbEditor.App.Ui;
 using StbEditor.Data;
+using StbEditor.Render;
 using static StbEditor.App.Ui.Loc;
 
 namespace StbEditor.App.Panels;
@@ -71,6 +73,7 @@ internal static class PerkTreeEditor
             _selected = -1;
             _drag = -1;
             _fit = true;
+            _skyFit = true;
         }
         var nodes = avif.PerkTree;
         if (_selected >= nodes.Count) _selected = -1;
@@ -88,7 +91,7 @@ internal static class PerkTreeEditor
         ImGui.EndDisabled();
         ImGui.EndDisabled();
         ImGui.SameLine();
-        if (ImGui.Button(T("Fit"))) _fit = true;
+        if (ImGui.Button(T("Fit"))) { _fit = true; _skyFit = true; }
         ImGui.SameLine();
         ImGui.Checkbox(T("Snap to grid"), ref _snap);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Dragged nodes land on whole columns and rows (offsets 0)"));
@@ -106,7 +109,10 @@ internal static class PerkTreeEditor
             ImGui.SameLine();
             if (ImGui.SmallButton(T("Reset perks"))) TakenOf(avif.FormKey).Clear();
             ImGui.SameLine();
-            ImGui.TextColored(Theme.TextDim, TF($"perks taken: {TakenOf(avif.FormKey).Values.Sum()}") + "   " + T("Click: take a rank, Shift+click: give one back."));
+            if (ImGui.SmallButton(T("Game zoom"))) _skyZoom = 1f;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The view angle the menu has (fStatsCameraFOV); Fit zooms to the tree and its picture"));
+            ImGui.SameLine();
+            ImGui.TextColored(Theme.TextDim, TF($"perks taken: {TakenOf(avif.FormKey).Values.Sum()}") + "   " + T("Click: take a rank, Shift+click: give one back. Drag a star: move it. RMB drag: look around, wheel: zoom."));
         }
         else
         {
@@ -146,6 +152,11 @@ internal static class PerkTreeEditor
         var origin = ImGui.GetCursorScreenPos();
         var size = ImGui.GetContentRegionAvail();
         if (size.X < 10 || size.Y < 10) return;
+        if (_game)
+        {
+            DrawSky(app, avif, nodes, lookup, target, origin, size);
+            return;
+        }
         ImGui.InvisibleButton("##canvas", size, ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
         var hovered = ImGui.IsItemHovered();
         var draw = ImGui.GetWindowDrawList();
@@ -176,17 +187,9 @@ internal static class PerkTreeEditor
         for (var i = 0; i < nodes.Count; i++) if (nodes[i].Index is { } index) byIndex.TryAdd(index, i);
         var perks = Enumerable.Range(0, nodes.Count).Select(i => nodes[i].Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(nodes[i].Perk.FormKey)).ToArray();
         draw.PushClipRect(origin, origin + size, true);
-        int? hit;
-        if (_game) hit = DrawGame(draw, origin, size, nodes, perks, byIndex, lookup, Screen, avif);
-        else hit = DrawEditor(draw, origin, size, nodes, perks, byIndex, Screen, World);
+        var hit = DrawEditor(draw, origin, size, nodes, perks, byIndex, Screen, World);
         draw.PopClipRect();
 
-        if (_game)
-        {
-            // The game's rules: click takes the next rank of an available perk; Shift+click gives one back.
-            if (hovered && hit is { } clicked && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) TakeRank(nodes, perks, byIndex, lookup, clicked, io.KeyShift);
-        }
-        else
         {
             if (hovered && hit is { } over && _drag < 0)
             {
@@ -368,61 +371,53 @@ internal static class PerkTreeEditor
     }
 
     /// <summary>
-    /// The perk tree as the game's skill menu shows it: a night sky, stars for perks (bright when taken, blue when they can be
-    /// taken, dim otherwise), lines between, and the hovered perk's name, ranks, description and what it needs at the bottom.
+    /// What the menu draws over its sky: lines between the stars (bright between taken ones), a glow on taken stars and a
+    /// ring on those that can be taken now, ranks, and the hovered perk's name, ranks, description and what it needs at the
+    /// bottom. <paramref name="at"/> are the stars on screen (NaN: behind the camera), <paramref name="radius"/> their size.
     /// </summary>
     private static int? DrawGame(ImDrawListPtr draw, Vector2 origin, Vector2 size, IReadOnlyList<IActorValuePerkNodeGetter> nodes, IPerkGetter?[] perks,
-        Dictionary<uint, int> byIndex, RecordLookup lookup, Func<Vector2, Vector2> screen, IActorValueInformationGetter avif)
+        Dictionary<uint, int> byIndex, RecordLookup lookup, Vector2[] at, float[] radius, IActorValueInformationGetter avif)
     {
         var taken = TakenOf(avif.FormKey);
-        draw.AddRectFilledMultiColor(origin, origin + size, 0xFF2A1A0E, 0xFF2A1A0E, 0xFF0A0604, 0xFF0A0604);
-        // A fixed scatter of faint stars.
-        var random = new Random(avif.FormKey.ID.GetHashCode());
-        for (var s = 0; s < 220; s++)
-        {
-            var p = origin + new Vector2((float)random.NextDouble() * size.X, (float)random.NextDouble() * size.Y);
-            var a = (uint)(40 + random.Next(110));
-            draw.AddCircleFilled(p, random.Next(3) == 0 ? 1.4f : 0.8f, (a << 24) | 0x00F0E6DCu);
-        }
-        var at = new Vector2[nodes.Count];
-        for (var i = 0; i < nodes.Count; i++) at[i] = screen(IsRoot(nodes, i) ? RootPlace(nodes) : Position(nodes[i]));
+        bool Shown(int i) => !IsRoot(nodes, i) && !float.IsNaN(at[i].X);
 
         for (var i = 0; i < nodes.Count; i++)
         {
-            if (IsRoot(nodes, i)) continue;
+            if (!Shown(i)) continue;
             foreach (var to in nodes[i].ConnectionLineToIndices)
             {
-                if (!byIndex.TryGetValue(to, out var j) || j == i || IsRoot(nodes, j)) continue;
+                if (!byIndex.TryGetValue(to, out var j) || j == i || !Shown(j)) continue;
                 var lit = taken.GetValueOrDefault(i) > 0 && taken.GetValueOrDefault(j) > 0;
-                draw.AddLine(at[i], at[j], lit ? 0xD0FFF2E0u : 0x60E0C8A0u, lit ? 2f : 1.2f);
+                // A soft beam: a wide faint stroke under a thin bright one, as the menu's glowing lines.
+                draw.AddLine(at[i], at[j], lit ? 0x50FFE8D0u : 0x24FFD8B0u, lit ? 5f : 3.5f);
+                draw.AddLine(at[i], at[j], lit ? 0xE0FFF6EEu : 0x80F0DCC0u, lit ? 1.8f : 1.1f);
             }
         }
 
         int? hit = null;
         var mouse = ImGui.GetIO().MousePos;
+        var best = float.MaxValue;
         for (var i = 0; i < nodes.Count; i++)
         {
-            if (IsRoot(nodes, i)) continue;
+            if (!Shown(i)) continue;
             var p = at[i];
-            if (Vector2.Distance(mouse, p) < 12) hit = i;
+            var r = Math.Max(radius[i], 3f);
+            var distance = Vector2.Distance(mouse, p);
+            if (distance < Math.Max(10f, r * 1.6f) && distance < best) { hit = i; best = distance; }
             var rank = taken.GetValueOrDefault(i);
             var chain = Chain(perks[i], lookup);
             var next = rank < chain.Count ? chain[rank] : null;
             var can = next is not null && Reachable(nodes, byIndex, taken, i) && (RequiredLevel(next) ?? 0) <= _skill;
             if (rank > 0)
             {
-                // Taken: a white star with a soft glow.
-                for (var g = 4; g >= 1; g--) draw.AddCircleFilled(p, 3 + g * 3.2f, ((uint)(18 * (5 - g)) << 24) | 0x00FFF4E8u);
-                draw.AddCircleFilled(p, 4.5f, 0xFFFFFFFFu);
+                // Taken: the star lit up with a white glow.
+                for (var g = 4; g >= 1; g--) draw.AddCircleFilled(p, r * (0.6f + g * 0.55f), ((uint)(16 * (5 - g)) << 24) | 0x00FFF4E8u);
+                draw.AddCircleFilled(p, r * 0.45f, 0xFFFFFFFFu);
             }
-            else if (can)
-            {
-                draw.AddCircleFilled(p, 7f, 0x40FFC890u);
-                draw.AddCircleFilled(p, 3.5f, 0xFFFFD8B0u);
-            }
-            else draw.AddCircleFilled(p, 3f, 0x90A09080u);
-            if (hit == i) draw.AddCircle(p, 11, 0xC0FFFFFFu, 0, 1.2f);
-            if (chain.Count > 1 && rank > 0) draw.AddText(p + new Vector2(8, -8), 0xC0FFFFFFu, $"{rank}/{chain.Count}");
+            else if (can) draw.AddCircle(p, r * 1.25f, 0x90FFD0A0u, 0, 1.2f);
+            else draw.AddCircleFilled(p, r * 0.9f, 0x70000000u);
+            if (hit == i) draw.AddCircle(p, r * 1.7f + 2, 0xC0FFFFFFu, 0, 1.2f);
+            if (chain.Count > 1 && rank > 0) draw.AddText(p + new Vector2(r + 4, -r - 6), 0xC0FFFFFFu, $"{rank}/{chain.Count}");
         }
 
         // The panel under the sky, as the menu has it.
@@ -453,6 +448,167 @@ internal static class PerkTreeEditor
             }
         }
         return hit;
+    }
+
+    private static ViewportTarget? _skyTarget;
+    private static readonly Camera SkyCamera = new() { Position = Vector3.Zero, Near = 0.05f };
+    private static bool _skyFit = true;
+    private static float _skyZoom = 1f;
+    private static int _press = -1;
+    private static Vector2 _pressAt;
+    private static string _skyNote = "";
+
+    /// <summary>
+    /// The game's own perk menu, rebuilt: its skydome NIF (nebulae, star fields, the skill's constellation picture) drawn from the
+    /// middle of the dome as the menu's camera sees it (fStatsCameraFOV across), the perk stars (INTPerkStars01.nif) where the
+    /// menu puts them, lines and states on top. Click takes a rank (Shift+click gives one back); in the active file a star can
+    /// be dragged along the tree's slope to fit the picture. RMB drag looks around, wheel zooms, Fit goes back.
+    /// </summary>
+    private static void DrawSky(EditorApp app, IActorValueInformationGetter avif, IReadOnlyList<IActorValuePerkNodeGetter> nodes, RecordLookup lookup,
+        EditTarget? target, Vector2 origin, Vector2 size)
+    {
+        var session = app.Session!;
+        var io = ImGui.GetIO();
+        ImGui.InvisibleButton("##sky", size, ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight);
+        var hovered = ImGui.IsItemHovered();
+        var draw = ImGui.GetWindowDrawList();
+        if (app.Preview is not { } preview || PerkSky.Dome(session) is not { } dome)
+        {
+            draw.AddText(origin + new Vector2(8, 8), ImGui.GetColorU32(Theme.Warning), TF($"no {PerkSky.Skydome} in the build"));
+            return;
+        }
+        var settings = PerkSky.Read(session, lookup);
+        var (point, slot, known) = PerkSky.Place(dome, avif);
+        var width = PerkSky.Width(nodes);
+        Vector3 World(int i) => point.Apply(PerkSky.Local(i == _drag ? _dragAt : Position(nodes[i]), width, settings));
+
+        // The menu's camera: in the middle of the dome, turned to the tree and its picture; the game's view angle across.
+        var aspect = size.X / size.Y;
+        var across = settings.Fov * MathF.PI / 180f;
+        SkyCamera.Position = Vector3.Zero;
+        SkyCamera.FieldOfView = Math.Clamp(2 * MathF.Atan(MathF.Tan(across / 2) / aspect) * _skyZoom, 0.05f, 2.6f);
+        if (_skyFit)
+        {
+            var points = Enumerable.Range(0, nodes.Count).Where(i => !IsRoot(nodes, i)).Select(World).ToList();
+            if (PerkSky.Picture(dome, slot) is { } picture) { points.Add(picture.Min); points.Add(picture.Max); }
+            if (points.Count == 0) points.Add(point.Apply(new Vector3(0, 0, settings.ZInitialOffset)));
+            SkyCamera.LookAt(points.Aggregate(Vector3.Zero, (a, b) => a + Vector3.Normalize(b)) / points.Count);
+            // Zoomed (the view angle only: the camera stays where the game's is, so stars sit on the picture as in the game)
+            // until the tree and its picture fill the view.
+            var reach = 0f;
+            foreach (var p in points)
+            {
+                var forward = Vector3.Dot(p, SkyCamera.Forward);
+                if (forward <= 1e-3f) continue;
+                reach = Math.Max(reach, Math.Max(MathF.Abs(Vector3.Dot(p, SkyCamera.Up)), MathF.Abs(Vector3.Dot(p, SkyCamera.Right)) / aspect) / forward);
+            }
+            var gameAngle = 2 * MathF.Atan(MathF.Tan(across / 2) / aspect);
+            _skyZoom = reach > 0 ? Math.Clamp(2 * MathF.Atan(reach * 1.15f) / gameAngle, 0.15f, 2.2f) : 1f;
+            SkyCamera.FieldOfView = Math.Clamp(gameAngle * _skyZoom, 0.05f, 2.6f);
+            _skyFit = false;
+        }
+
+        // The dome and a star per perk, as the menu builds them.
+        var scene = new StbEditor.Render.Scene { Title = "perks", IsInterior = true, Lighting = ObjectPreview.Studio };
+        scene.Objects.Add(PerkSky.Object(PerkSky.Skydome, Vector3.Zero, 1f));
+        for (var i = 0; i < nodes.Count; i++)
+            if (!IsRoot(nodes, i)) scene.Objects.Add(PerkSky.Object(PerkSky.Star, World(i), settings.StarScale));
+        foreach (var obj in scene.Objects)
+        {
+            var model = preview.Renderer.Meshes.Get(obj.ModelPath!, out var state);
+            if (state == LoadState.Ready && model is not null) { obj.Model = model; obj.UpdateBounds(); }
+        }
+        _skyTarget ??= new ViewportTarget(app.Graphics.Device);
+        _skyTarget.EnsureSize((int)size.X, (int)size.Y);
+        preview.Render(scene, SkyCamera, _skyTarget.ColorView!, _skyTarget.DepthView!, _skyTarget.Width, _skyTarget.Height, new Vector4(0, 0, 0, 1));
+        unsafe
+        {
+            draw.AddImage(new ImTextureRef(null, new ImTextureID((ulong)_skyTarget.ShaderView!.NativePointer)), origin, origin + size);
+        }
+
+        // Stars on screen, with their drawn size.
+        var viewProjection = SkyCamera.View * SkyCamera.Projection(aspect);
+        Vector2 Screen(Vector3 p)
+        {
+            var c = Vector4.Transform(new Vector4(p, 1), viewProjection);
+            if (c.W <= 1e-4f) return new Vector2(float.NaN);
+            return origin + new Vector2((c.X / c.W + 1) * 0.5f * size.X, (1 - c.Y / c.W) * 0.5f * size.Y);
+        }
+        var at = new Vector2[nodes.Count];
+        var radius = new float[nodes.Count];
+        // The star's bright core is about a third of its plane.
+        var starRadius = 8.69f * settings.StarScale * 0.35f;
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            if (IsRoot(nodes, i)) { at[i] = new Vector2(float.NaN); continue; }
+            var p = World(i);
+            at[i] = Screen(p);
+            radius[i] = float.IsNaN(at[i].X) ? 0 : Vector2.Distance(at[i], Screen(p + SkyCamera.Up * starRadius));
+        }
+        var byIndex = new Dictionary<uint, int>();
+        for (var i = 0; i < nodes.Count; i++) if (nodes[i].Index is { } index) byIndex.TryAdd(index, i);
+        var perks = Enumerable.Range(0, nodes.Count).Select(i => nodes[i].Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(nodes[i].Perk.FormKey)).ToArray();
+        draw.PushClipRect(origin, origin + size, true);
+        var hit = DrawGame(draw, origin, size, nodes, perks, byIndex, lookup, at, radius, avif);
+        _skyNote = (known ? TF($"slot {slot}: Point{slot:00} / cImage{slot:00}") : TF($"not one of the menu's 18 skills: shown in slot {slot}"))
+            + "   " + TF($"width {width}");
+        draw.AddText(origin + new Vector2(8, 8), ImGui.GetColorU32(known ? Theme.TextDim : Theme.Warning), _skyNote);
+        draw.PopClipRect();
+
+        // Click: take a rank (Shift: give back). Drag (active file): move the star along the slope.
+        Vector3 Ray(Vector2 mouse)
+        {
+            var ndc = new Vector2((mouse.X - origin.X) / size.X * 2 - 1, 1 - (mouse.Y - origin.Y) / size.Y * 2);
+            var tanY = MathF.Tan(SkyCamera.FieldOfView / 2);
+            return Vector3.Normalize(SkyCamera.Forward + SkyCamera.Right * ndc.X * tanY * aspect + SkyCamera.Up * ndc.Y * tanY);
+        }
+        if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            _press = hit ?? -1;
+            _pressAt = io.MousePos;
+            if (hit is { } pressed) _selected = pressed;
+        }
+        if (_press >= 0 && _press < nodes.Count)
+        {
+            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                if (_drag < 0 && target is not null && Vector2.Distance(io.MousePos, _pressAt) > 3) { _drag = _press; _dragAt = Position(nodes[_press]); }
+                if (_drag >= 0 && PerkSky.GridAt(Vector3.Zero, Ray(io.MousePos), point, width, settings) is { } grid)
+                    _dragAt = _snap ? new Vector2(MathF.Round(grid.X), MathF.Round(grid.Y)) : grid;
+            }
+            else
+            {
+                if (_drag >= 0 && target is not null) MoveNode(target, _drag, _dragAt);
+                else if (hovered && hit == _press) TakeRank(nodes, perks, byIndex, lookup, _press, io.KeyShift);
+                _drag = -1;
+                _press = -1;
+            }
+        }
+        else _press = -1;
+        if (hovered && hit is { } over && _drag < 0)
+        {
+            var node = nodes[over];
+            string column = $"{node.PerkGridX ?? 0}", acrossText = $"{node.HorizontalPosition ?? 0:0.###}", row = $"{node.PerkGridY ?? 0}", upText = $"{node.VerticalPosition ?? 0:0.###}";
+            ImGui.SetTooltip($"#{node.Index} {Name(perks[over], node)}\n{TF($"column {column} + {acrossText}, row {row} + {upText}")}");
+        }
+        if (_drag >= 0) ImGui.SetTooltip(TF($"column + offset {_dragAt.X:0.###}, row + offset {_dragAt.Y:0.###}"));
+        if (hovered && ImGui.IsMouseDragging(ImGuiMouseButton.Right, 1)) SkyCamera.Rotate(io.MouseDelta.X * 0.003f * _skyZoom, -io.MouseDelta.Y * 0.003f * _skyZoom);
+        if (hovered && io.MouseWheel != 0) _skyZoom = Math.Clamp(_skyZoom * (io.MouseWheel > 0 ? 1 / 1.12f : 1.12f), 0.15f, 2.2f);
+    }
+
+    /// <summary>Autotests: the game's view framed afresh; the note it shows (slot, width) and where node 1's star is, in world space.</summary>
+    public static string SkyForTest(EditorSession session)
+    {
+        _skyFit = true;
+        if (_lastRecord is not { } avif || _lookup is not { } lookup || PerkSky.Dome(session) is not { } dome) return "no tree / dome";
+        var settings = PerkSky.Read(session, lookup);
+        var (point, slot, known) = PerkSky.Place(dome, avif);
+        var nodes = avif.PerkTree;
+        var width = PerkSky.Width(nodes);
+        var first = Enumerable.Range(0, nodes.Count).FirstOrDefault(i => !IsRoot(nodes, i), -1);
+        var star = first < 0 ? Vector3.Zero : point.Apply(PerkSky.Local(Position(nodes[first]), width, settings));
+        var back = first < 0 ? null : PerkSky.GridAt(Vector3.Zero, Vector3.Normalize(star), point, width, settings);
+        return $"slot {slot} known {known} width {width} settings {settings} node {first} star {star} back {back} (grid {(first < 0 ? Vector2.Zero : Position(nodes[first]))})";
     }
 
     /// <summary>A description as the menu shows it: markup tags (&lt;font&gt;, &lt;span&gt;…) taken out.</summary>

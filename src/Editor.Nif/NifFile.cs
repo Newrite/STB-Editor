@@ -239,6 +239,7 @@ public static partial class NifFile
             var world = parent.Then(av.Transform);
             var name = av.Name ?? string.Empty;
             ctx.NodeWorld[index] = ModelSpace(world, billboard);
+            if (name.Length > 0) ctx.Model.Nodes.TryAdd(name, ctx.NodeWorld[index]);
 
             // The node's Havok collision as convex pieces (physics). The game places bodies by the reference without the root
             // node's own transform (a root turned 180° with children turned back: the collision is not turned).

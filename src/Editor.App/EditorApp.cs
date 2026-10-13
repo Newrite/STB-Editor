@@ -2260,6 +2260,17 @@ internal sealed class EditorApp : IDisposable
             case 4 when ++_perkFrames > 2:
                 for (var i = 0; i < 3; i++) Document.Undo();
                 Log.Info($"autotest-perktree: after three Ctrl+Z pending {Document.PendingCount}");
+                // The game's view: a few perks taken at skill 40, shot (%TEMP%\stbeditor_perktree_game.bmp).
+                Log.Info($"autotest-perktree: game view {Panels.PerkTreeEditor.GameViewForTest(6, 40)}");
+                _perkStage = 5;
+                _perkFrames = 0;
+                break;
+            case 5 when ++_perkFrames > 10:
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_perktree_game.bmp");
+                _perkStage = 6;
+                _perkFrames = 0;
+                break;
+            case 6 when ++_perkFrames > 2:
                 _perkStage = 9;
                 break;
         }

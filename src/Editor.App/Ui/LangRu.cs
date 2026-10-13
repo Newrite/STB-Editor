@@ -1731,6 +1731,19 @@ internal static class LangRu
         ["Collision"] = "Коллизия",
         ["Havok collision of the objects near the camera (CK: F4)"] = "Коллизия Havok объектов рядом с камерой (CK: F4)",
 
+        // ---- perk game view
+        ["Editor"] = "Редактор",
+        ["As in the game"] = "Как в игре",
+        ["The tree as the skill menu shows it: take perks by clicking, see which branches open at which skill level"] = "Дерево как в меню навыков: перки берутся кликом, видно, какие ветки открываются на каком уровне навыка",
+        ["skill %d"] = "навык %d",
+        ["Reset perks"] = "Сбросить перки",
+        ["perks taken: {0}"] = "взято перков: {0}",
+        ["Click: take a rank, Shift+click: give one back."] = "Клик — взять ранг, Shift+клик — вернуть.",
+        ["   rank {0}/{1}"] = "   ранг {0}/{1}",
+        ["Requires {0}: {1:0}"] = "Требуется {0}: {1:0}",
+        ["  (now {0})"] = "  (сейчас {0})",
+        ["Take a perk that leads here first"] = "Сначала возьмите перк, который сюда ведёт",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

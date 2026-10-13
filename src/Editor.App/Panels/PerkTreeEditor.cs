@@ -28,6 +28,7 @@ internal static class PerkTreeEditor
     private static float _zoom = 1f;
     private static bool _fit = true;
     private static bool _snap;
+    private static float _aspect = 1.6f;
     private static RecordLookup? _lookup;
     private static object? _lookupFor;
     private static EditTarget? _lastTarget;
@@ -93,15 +94,33 @@ internal static class PerkTreeEditor
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Dragged nodes land on whole columns and rows (offsets 0)"));
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim, TF($"{nodes.Count} node(s)"));
-        if (target is null) ImGui.TextColored(Theme.TextDim, T("Read only here: this record is not edited in the active file."));
-        ImGui.TextColored(Theme.TextDim, T("Drag: move a node. Ctrl+click another node: link / unlink. Double-click: open the perk. RMB / MMB drag: pan, wheel: zoom."));
+        ImGui.SameLine();
+        if (ImGui.RadioButton(T("Editor"), !_game)) _game = false;
+        ImGui.SameLine();
+        if (ImGui.RadioButton(T("As in the game"), _game)) _game = true;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The tree as the skill menu shows it: take perks by clicking, see which branches open at which skill level"));
+        if (_game)
+        {
+            ImGui.SetNextItemWidth(ImGui.GetFontSize() * 10);
+            ImGui.SliderInt("##skill", ref _skill, 0, 100, T("skill %d"));
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Reset perks"))) TakenOf(avif.FormKey).Clear();
+            ImGui.SameLine();
+            ImGui.TextColored(Theme.TextDim, TF($"perks taken: {TakenOf(avif.FormKey).Values.Sum()}") + "   " + T("Click: take a rank, Shift+click: give one back."));
+        }
+        else
+        {
+            if (target is null) ImGui.TextColored(Theme.TextDim, T("Read only here: this record is not edited in the active file."));
+            ImGui.TextColored(Theme.TextDim, T("Drag: move a node. Ctrl+click another node: link / unlink. Double-click: open the perk. RMB / MMB drag: pan, wheel: zoom."));
+        }
 
         var avail = ImGui.GetContentRegionAvail();
-        var height = Math.Max(260f, avail.Y * 0.62f);
+        var height = _game ? Math.Max(260f, avail.Y - 4) : Math.Max(260f, avail.Y * 0.62f);
         ImGui.BeginChild("##perktree", new Vector2(avail.X, height), ImGuiChildFlags.Borders, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         DrawCanvas(app, avif, nodes, lookup, target);
         ImGui.EndChild();
 
+        if (_game) return;
         if (_selected >= 0 && _selected < nodes.Count)
         {
             var node = nodes[_selected];
@@ -111,7 +130,7 @@ internal static class PerkTreeEditor
             {
                 ImGui.SameLine();
                 if (ImGui.SmallButton(T("Open perk"))) app.FormWindows.Open(perk.FormKey);
-                if (perk.Description?.String is { Length: > 0 } text) ImGui.TextWrapped(text);
+                if (perk.Description?.String is { Length: > 0 } text) ImGui.TextWrapped(CleanText(text));
                 var ranks = Ranks(perk, lookup);
                 if (ranks > 1) ImGui.TextColored(Theme.TextDim, TF($"{ranks} ranks (Next Perk chain)"));
             }
@@ -136,126 +155,309 @@ internal static class PerkTreeEditor
         Vector2 At(int i) => i == _drag ? _dragAt : IsRoot(nodes, i) ? rootAt : Position(nodes[i]);
         if (_fit && nodes.Count > 0)
         {
+            // The tree fills the view: across and up are scaled apart (trees are narrow and tall in grid units).
             var points = Enumerable.Range(0, nodes.Count).Select(At).ToList();
-            var low = points.Aggregate(new Vector2(float.MaxValue), Vector2.Min) - new Vector2(0.7f);
-            var high = points.Aggregate(new Vector2(float.MinValue), Vector2.Max) + new Vector2(0.7f);
+            var low = points.Aggregate(new Vector2(float.MaxValue), Vector2.Min) - new Vector2(0.6f, 0.4f);
+            var high = points.Aggregate(new Vector2(float.MinValue), Vector2.Max) + new Vector2(0.6f, 0.6f);
             var span = Vector2.Max(high - low, new Vector2(1));
-            _zoom = Math.Clamp(Math.Min(size.X / span.X, size.Y / span.Y) / Unit, 0.2f, 3f);
+            var across = size.X / span.X;
+            var up = size.Y / span.Y;
+            _aspect = Math.Clamp(across / up, 1f, 3.5f);
+            _zoom = Math.Clamp(Math.Min(across / _aspect, up) / Unit, 0.15f, 3f);
             var mid = (low + high) / 2;
-            _pan = size / 2 - new Vector2(mid.X, -mid.Y) * Unit * _zoom;
+            _pan = size / 2 - new Vector2(mid.X * _aspect, -mid.Y) * Unit * _zoom;
             _fit = false;
         }
         var scale = Unit * _zoom;
-        Vector2 Screen(Vector2 p) => origin + _pan + new Vector2(p.X, -p.Y) * scale;
-        Vector2 World(Vector2 s) { var v = (s - origin - _pan) / scale; return new Vector2(v.X, -v.Y); }
+        Vector2 Screen(Vector2 p) => origin + _pan + new Vector2(p.X * _aspect, -p.Y) * scale;
+        Vector2 World(Vector2 s) { var v = (s - origin - _pan) / scale; return new Vector2(v.X / _aspect, -v.Y); }
 
-        // Grid: whole columns and rows.
-        draw.PushClipRect(origin, origin + size, true);
-        var gridColour = ImGui.GetColorU32(Theme.Alpha(Theme.TextDim, 0.18f));
-        var lo = World(origin + new Vector2(0, size.Y));
-        var hi = World(origin + new Vector2(size.X, 0));
-        for (var x = (int)MathF.Floor(lo.X); x <= hi.X; x++) draw.AddLine(Screen(new(x, lo.Y)), Screen(new(x, hi.Y)), gridColour);
-        for (var y = (int)MathF.Floor(lo.Y); y <= hi.Y; y++) draw.AddLine(Screen(new(lo.X, y)), Screen(new(hi.X, y)), gridColour);
-
-        // Links: a line from a node to each node it leads to, with an arrow head at the far end.
         var byIndex = new Dictionary<uint, int>();
         for (var i = 0; i < nodes.Count; i++) if (nodes[i].Index is { } index) byIndex.TryAdd(index, i);
-        var radius = Math.Clamp(11f * _zoom, 5f, 16f);
-        var lineColour = ImGui.GetColorU32(Theme.Alpha(Theme.Text, 0.55f));
+        var perks = Enumerable.Range(0, nodes.Count).Select(i => nodes[i].Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(nodes[i].Perk.FormKey)).ToArray();
+        draw.PushClipRect(origin, origin + size, true);
+        int? hit;
+        if (_game) hit = DrawGame(draw, origin, size, nodes, perks, byIndex, lookup, Screen, avif);
+        else hit = DrawEditor(draw, origin, size, nodes, perks, byIndex, Screen, World);
+        draw.PopClipRect();
+
+        if (_game)
+        {
+            // The game's rules: click takes the next rank of an available perk; Shift+click gives one back.
+            if (hovered && hit is { } clicked && ImGui.IsMouseClicked(ImGuiMouseButton.Left)) TakeRank(nodes, perks, byIndex, lookup, clicked, io.KeyShift);
+        }
+        else
+        {
+            if (hovered && hit is { } over && _drag < 0)
+            {
+                var node = nodes[over];
+                string column = $"{node.PerkGridX ?? 0}", acrossText = $"{node.HorizontalPosition ?? 0:0.###}", row = $"{node.PerkGridY ?? 0}", upText = $"{node.VerticalPosition ?? 0:0.###}";
+                ImGui.SetTooltip($"#{node.Index} {Name(perks[over], node)}\n{TF($"column {column} + {acrossText}, row {row} + {upText}")}"
+                    + (perks[over] is { } p && RequiredLevel(p) is { } level ? "\n" + TF($"skill {level:0}") : ""));
+            }
+
+            // Mouse: select, link, drag, open.
+            if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            {
+                if (hit is { } clicked)
+                {
+                    if (io.KeyCtrl && _selected >= 0 && _selected != clicked && target is not null) ToggleLink(target, nodes, _selected, clicked);
+                    else
+                    {
+                        _selected = clicked;
+                        _drag = target is null || IsRoot(nodes, clicked) ? -1 : clicked;
+                        _dragAt = Position(nodes[clicked]);
+                        _dragGrab = World(io.MousePos) - _dragAt;
+                        _dragMoved = false;
+                    }
+                }
+                else _selected = -1;
+            }
+            if (hovered && hit is { } opened && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !nodes[opened].Perk.IsNull)
+            {
+                app.FormWindows.Open(nodes[opened].Perk.FormKey);
+                _drag = -1;
+            }
+            if (_drag >= 0 && _drag < nodes.Count)
+            {
+                if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                {
+                    var at = World(io.MousePos) - _dragGrab;
+                    if (!_dragMoved && Vector2.Distance(at, Position(nodes[_drag])) * scale > 3) _dragMoved = true;
+                    if (_dragMoved) _dragAt = _snap ? new Vector2(MathF.Round(at.X), MathF.Round(at.Y)) : at;
+                }
+                else
+                {
+                    if (_dragMoved && target is not null) MoveNode(target, _drag, _dragAt);
+                    _drag = -1;
+                }
+            }
+        }
+
+        // Pan and zoom in both views.
+        if (hovered && (ImGui.IsMouseDragging(ImGuiMouseButton.Right, 1) || ImGui.IsMouseDragging(ImGuiMouseButton.Middle, 1))) _pan += io.MouseDelta;
+        if (hovered && io.MouseWheel != 0)
+        {
+            var before = World(io.MousePos);
+            _zoom = Math.Clamp(_zoom * (io.MouseWheel > 0 ? 1.15f : 1 / 1.15f), 0.15f, 3f);
+            scale = Unit * _zoom;
+            // Keep the point under the cursor in place.
+            _pan = io.MousePos - origin - new Vector2(before.X * _aspect, -before.Y) * scale;
+        }
+    }
+
+    /// <summary>The editor's look: a grid, arrows to the nodes each leads to, a plate per node with its name and skill level.</summary>
+    private static int? DrawEditor(ImDrawListPtr draw, Vector2 origin, Vector2 size, IReadOnlyList<IActorValuePerkNodeGetter> nodes, IPerkGetter?[] perks,
+        Dictionary<uint, int> byIndex, Func<Vector2, Vector2> screen, Func<Vector2, Vector2> world)
+    {
+        var gridColour = ImGui.GetColorU32(Theme.Alpha(Theme.TextDim, 0.14f));
+        var lo = world(origin + new Vector2(0, size.Y));
+        var hi = world(origin + new Vector2(size.X, 0));
+        for (var x = (int)MathF.Floor(lo.X); x <= hi.X; x++) draw.AddLine(screen(new(x, lo.Y)), screen(new(x, hi.Y)), gridColour);
+        for (var y = (int)MathF.Floor(lo.Y); y <= hi.Y; y++) draw.AddLine(screen(new(lo.X, y)), screen(new(hi.X, y)), gridColour);
+
+        // Plates: name on the first line, the skill level it asks for and its ranks on the second.
+        var line = ImGui.GetTextLineHeight();
+        var plates = new (Vector2 Min, Vector2 Max)[nodes.Count];
+        var maxWidth = Math.Clamp(170f * MathF.Sqrt(_zoom), 70f, 220f);
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var p = screen(i == _drag ? _dragAt : IsRoot(nodes, i) ? RootPlace(nodes) : Position(nodes[i]));
+            var name = IsRoot(nodes, i) ? T("(root)") : Name(perks[i], nodes[i]);
+            var width = Math.Clamp(ImGui.CalcTextSize(name).X + 12, 46f, maxWidth);
+            var half = new Vector2(width / 2, line + 3);
+            plates[i] = (p - half, p + half);
+        }
+
+        // Links between plate edges, an arrow head at the far one.
+        var lineColour = ImGui.GetColorU32(Theme.Alpha(Theme.Text, 0.45f));
         for (var i = 0; i < nodes.Count; i++)
             foreach (var to in nodes[i].ConnectionLineToIndices)
             {
                 if (!byIndex.TryGetValue(to, out var j) || j == i) continue;
-                Vector2 a = Screen(At(i)), b = Screen(At(j));
-                var d = b - a;
-                if (d.Length() < radius * 2) continue;
+                var a = (plates[i].Min + plates[i].Max) / 2;
+                var b = (plates[j].Min + plates[j].Max) / 2;
+                var start = Edge(plates[i], b);
+                var end = Edge(plates[j], a);
+                var d = end - start;
+                if (d.LengthSquared() < 4) continue;
                 d = Vector2.Normalize(d);
-                var tip = b - d * radius;
                 var side = new Vector2(-d.Y, d.X);
                 var colour = i == _selected || j == _selected ? ImGui.GetColorU32(Theme.Accent) : lineColour;
-                draw.AddLine(a + d * radius, tip, colour, 1.5f);
-                draw.AddTriangleFilled(tip, tip - d * 8 + side * 4, tip - d * 8 - side * 4, colour);
+                draw.AddLine(start, end, colour, 1.4f);
+                draw.AddTriangleFilled(end, end - d * 8 + side * 4, end - d * 8 - side * 4, colour);
             }
 
-        // Nodes and names.
         int? hit = null;
-        var mouse = io.MousePos;
+        var mouse = ImGui.GetIO().MousePos;
+        for (var i = 0; i < nodes.Count; i++)
+            if (mouse.X >= plates[i].Min.X && mouse.X <= plates[i].Max.X && mouse.Y >= plates[i].Min.Y && mouse.Y <= plates[i].Max.Y) hit = i;
+        // The hovered and selected plates on top.
+        foreach (var i in Enumerable.Range(0, nodes.Count).OrderBy(i => i == _selected ? 2 : i == hit ? 1 : 0))
+        {
+            var (min, max) = plates[i];
+            var selected = i == _selected;
+            var root = IsRoot(nodes, i);
+            var fill = selected ? Theme.Alpha(Theme.Accent, 0.32f) : i == hit ? Theme.Alpha(Theme.Text, 0.16f) : Theme.Alpha(Theme.Text, 0.07f);
+            // An opaque backdrop first: links under a plate do not show through.
+            draw.AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.WindowBg) | 0xFF000000u, 4);
+            draw.AddRectFilled(min, max, ImGui.GetColorU32(fill), 4);
+            var border = selected ? Theme.Accent : perks[i] is null && !root ? Theme.Warning : Theme.Alpha(Theme.Text, 0.45f);
+            draw.AddRect(min, max, ImGui.GetColorU32(border), 4);
+            var name = root ? T("(root)") : Name(perks[i], nodes[i]);
+            draw.PushClipRect(min, max, true);
+            draw.AddText(min + new Vector2(6, 2), ImGui.GetColorU32(selected ? Theme.Accent : Theme.Text), name);
+            var sub = perks[i] is { } perk ? (RequiredLevel(perk) is { } level ? TF($"skill {level:0}") : "") : "";
+            draw.AddText(min + new Vector2(6, 2 + line), ImGui.GetColorU32(Theme.TextDim), sub);
+            draw.PopClipRect();
+        }
+        return hit;
+    }
+
+    /// <summary>Where the line from a plate's middle toward <paramref name="toward"/> leaves the plate.</summary>
+    private static Vector2 Edge((Vector2 Min, Vector2 Max) plate, Vector2 toward)
+    {
+        var centre = (plate.Min + plate.Max) / 2;
+        var half = (plate.Max - plate.Min) / 2;
+        var d = toward - centre;
+        if (d.LengthSquared() < 1e-6f) return centre;
+        var t = MathF.Min(half.X / MathF.Max(MathF.Abs(d.X), 1e-6f), half.Y / MathF.Max(MathF.Abs(d.Y), 1e-6f));
+        return centre + d * MathF.Min(t, 1);
+    }
+
+    // ------------------------------------------------------------------ the game's view
+
+    private static bool _game;
+    private static int _skill = 100;
+    private static readonly Dictionary<FormKey, Dictionary<int, int>> Taken = new();
+
+    private static Dictionary<int, int> TakenOf(FormKey avif) => Taken.TryGetValue(avif, out var t) ? t : Taken[avif] = [];
+
+    /// <summary>The perks of a node's rank chain: the node's perk, then its Next Perk links.</summary>
+    private static List<IPerkGetter> Chain(IPerkGetter? perk, RecordLookup lookup)
+    {
+        var chain = new List<IPerkGetter>();
+        var seen = new HashSet<FormKey>();
+        for (var p = perk; p is not null && seen.Add(p.FormKey) && chain.Count < 20; p = p.NextPerk.IsNull ? null : lookup.Resolve<IPerkGetter>(p.NextPerk.FormKey)) chain.Add(p);
+        return chain;
+    }
+
+    /// <summary>A node can be taken when a node leading to it is taken (or it hangs from the root) — the game's rule.</summary>
+    private static bool Reachable(IReadOnlyList<IActorValuePerkNodeGetter> nodes, Dictionary<uint, int> byIndex, Dictionary<int, int> taken, int i)
+    {
+        if (nodes[i].Index is not { } index) return false;
+        for (var j = 0; j < nodes.Count; j++)
+            if (nodes[j].ConnectionLineToIndices.Contains(index) && (IsRoot(nodes, j) || taken.GetValueOrDefault(j) > 0)) return true;
+        return false;
+    }
+
+    private static void TakeRank(IReadOnlyList<IActorValuePerkNodeGetter> nodes, IPerkGetter?[] perks, Dictionary<uint, int> byIndex, RecordLookup lookup, int i, bool giveBack)
+    {
+        if (IsRoot(nodes, i) || perks[i] is null || _lastRecord is not { } avif) return;
+        var taken = TakenOf(avif.FormKey);
+        var rank = taken.GetValueOrDefault(i);
+        var chain = Chain(perks[i], lookup);
+        if (giveBack)
+        {
+            if (rank > 0) taken[i] = rank - 1;
+            return;
+        }
+        if (rank >= chain.Count || !Reachable(nodes, byIndex, taken, i)) return;
+        if ((RequiredLevel(chain[rank]) ?? 0) > _skill) return;
+        taken[i] = rank + 1;
+    }
+
+    /// <summary>
+    /// The perk tree as the game's skill menu shows it: a night sky, stars for perks (bright when taken, blue when they can be
+    /// taken, dim otherwise), lines between, and the hovered perk's name, ranks, description and what it needs at the bottom.
+    /// </summary>
+    private static int? DrawGame(ImDrawListPtr draw, Vector2 origin, Vector2 size, IReadOnlyList<IActorValuePerkNodeGetter> nodes, IPerkGetter?[] perks,
+        Dictionary<uint, int> byIndex, RecordLookup lookup, Func<Vector2, Vector2> screen, IActorValueInformationGetter avif)
+    {
+        var taken = TakenOf(avif.FormKey);
+        draw.AddRectFilledMultiColor(origin, origin + size, 0xFF2A1A0E, 0xFF2A1A0E, 0xFF0A0604, 0xFF0A0604);
+        // A fixed scatter of faint stars.
+        var random = new Random(avif.FormKey.ID.GetHashCode());
+        for (var s = 0; s < 220; s++)
+        {
+            var p = origin + new Vector2((float)random.NextDouble() * size.X, (float)random.NextDouble() * size.Y);
+            var a = (uint)(40 + random.Next(110));
+            draw.AddCircleFilled(p, random.Next(3) == 0 ? 1.4f : 0.8f, (a << 24) | 0x00F0E6DCu);
+        }
+        var at = new Vector2[nodes.Count];
+        for (var i = 0; i < nodes.Count; i++) at[i] = screen(IsRoot(nodes, i) ? RootPlace(nodes) : Position(nodes[i]));
+
         for (var i = 0; i < nodes.Count; i++)
         {
-            var node = nodes[i];
-            var p = Screen(At(i));
-            var root = IsRoot(nodes, i);
-            if (Vector2.Distance(mouse, p) <= radius + 3) hit = i;
-            var perk = node.Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(node.Perk.FormKey);
-            var fill = ImGui.GetColorU32(i == _selected ? Theme.Accent : root ? Theme.Alpha(Theme.TextDim, 0.5f) : perk is null && !root ? Theme.Warning : Theme.Alpha(Theme.Text, 0.85f));
-            if (root) draw.AddRectFilled(p - new Vector2(radius * 0.8f), p + new Vector2(radius * 0.8f), fill);
-            else draw.AddCircleFilled(p, radius, fill);
-            draw.AddCircle(p, radius + 1, ImGui.GetColorU32(Theme.Alpha(Theme.Text, 0.9f)), 0, 1f);
-            if (_zoom > 0.3f || i == _selected || hit == i)
+            if (IsRoot(nodes, i)) continue;
+            foreach (var to in nodes[i].ConnectionLineToIndices)
             {
-                var label = root ? T("(root)") : Name(perk, node);
-                if (perk is not null && RequiredLevel(perk) is { } level) label += $"  {level:0}";
-                var width = ImGui.CalcTextSize(label).X;
-                draw.AddText(p + new Vector2(-width / 2, radius + 2), ImGui.GetColorU32(i == _selected ? Theme.Accent : Theme.Text), label);
+                if (!byIndex.TryGetValue(to, out var j) || j == i || IsRoot(nodes, j)) continue;
+                var lit = taken.GetValueOrDefault(i) > 0 && taken.GetValueOrDefault(j) > 0;
+                draw.AddLine(at[i], at[j], lit ? 0xD0FFF2E0u : 0x60E0C8A0u, lit ? 2f : 1.2f);
             }
-        }
-        draw.PopClipRect();
-
-        if (hovered && hit is { } over && _drag < 0)
-        {
-            var node = nodes[over];
-            var perk = node.Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(node.Perk.FormKey);
-            string column = $"{node.PerkGridX ?? 0}", across = $"{node.HorizontalPosition ?? 0:0.###}", row = $"{node.PerkGridY ?? 0}", up = $"{node.VerticalPosition ?? 0:0.###}";
-            ImGui.SetTooltip($"#{node.Index} {Name(perk, node)}\n{TF($"column {column} + {across}, row {row} + {up}")}"
-                + (perk is not null && RequiredLevel(perk) is { } level ? "\n" + TF($"skill {level:0}") : ""));
         }
 
-        // Mouse: select, link, drag, open; pan and zoom.
-        if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        int? hit = null;
+        var mouse = ImGui.GetIO().MousePos;
+        for (var i = 0; i < nodes.Count; i++)
         {
-            if (hit is { } clicked)
+            if (IsRoot(nodes, i)) continue;
+            var p = at[i];
+            if (Vector2.Distance(mouse, p) < 12) hit = i;
+            var rank = taken.GetValueOrDefault(i);
+            var chain = Chain(perks[i], lookup);
+            var next = rank < chain.Count ? chain[rank] : null;
+            var can = next is not null && Reachable(nodes, byIndex, taken, i) && (RequiredLevel(next) ?? 0) <= _skill;
+            if (rank > 0)
             {
-                if (io.KeyCtrl && _selected >= 0 && _selected != clicked && target is not null) ToggleLink(target, nodes, _selected, clicked);
-                else
-                {
-                    _selected = clicked;
-                    _drag = target is null || IsRoot(nodes, clicked) ? -1 : clicked;
-                    _dragAt = Position(nodes[clicked]);
-                    _dragGrab = World(mouse) - _dragAt;
-                    _dragMoved = false;
-                }
+                // Taken: a white star with a soft glow.
+                for (var g = 4; g >= 1; g--) draw.AddCircleFilled(p, 3 + g * 3.2f, ((uint)(18 * (5 - g)) << 24) | 0x00FFF4E8u);
+                draw.AddCircleFilled(p, 4.5f, 0xFFFFFFFFu);
             }
-            else _selected = -1;
-        }
-        if (hovered && hit is { } opened && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && !nodes[opened].Perk.IsNull)
-        {
-            app.FormWindows.Open(nodes[opened].Perk.FormKey);
-            _drag = -1;
-        }
-        if (_drag >= 0 && _drag < nodes.Count)
-        {
-            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            else if (can)
             {
-                var at = World(mouse) - _dragGrab;
-                if (!_dragMoved && Vector2.Distance(at, Position(nodes[_drag])) * scale > 3) _dragMoved = true;
-                if (_dragMoved) _dragAt = _snap ? new Vector2(MathF.Round(at.X), MathF.Round(at.Y)) : at;
+                draw.AddCircleFilled(p, 7f, 0x40FFC890u);
+                draw.AddCircleFilled(p, 3.5f, 0xFFFFD8B0u);
             }
-            else
-            {
-                if (_dragMoved && target is not null) MoveNode(target, _drag, _dragAt);
-                _drag = -1;
-            }
+            else draw.AddCircleFilled(p, 3f, 0x90A09080u);
+            if (hit == i) draw.AddCircle(p, 11, 0xC0FFFFFFu, 0, 1.2f);
+            if (chain.Count > 1 && rank > 0) draw.AddText(p + new Vector2(8, -8), 0xC0FFFFFFu, $"{rank}/{chain.Count}");
         }
-        if (hovered && (ImGui.IsMouseDragging(ImGuiMouseButton.Right, 1) || ImGui.IsMouseDragging(ImGuiMouseButton.Middle, 1))) _pan += io.MouseDelta;
-        if (hovered && io.MouseWheel != 0)
+
+        // The panel under the sky, as the menu has it.
+        var show = hit ?? (_selected >= 0 && _selected < nodes.Count && !IsRoot(nodes, _selected) ? _selected : null);
+        var title = avif.Name?.String ?? avif.EditorID ?? "";
+        draw.AddText(origin + new Vector2(size.X / 2 - ImGui.CalcTextSize(title).X / 2, 8), 0xFFFFFFFFu, title);
+        if (show is { } shown && perks[shown] is not null)
         {
-            var before = World(mouse);
-            _zoom = Math.Clamp(_zoom * (io.MouseWheel > 0 ? 1.15f : 1 / 1.15f), 0.2f, 3f);
-            scale = Unit * _zoom;
-            // Keep the point under the cursor in place.
-            _pan = mouse - origin - new Vector2(before.X, -before.Y) * scale;
+            var rank = taken.GetValueOrDefault(shown);
+            var chain = Chain(perks[shown], lookup);
+            var current = chain[Math.Clamp(rank == 0 ? 0 : rank - 1, 0, chain.Count - 1)];
+            var next = rank < chain.Count ? chain[rank] : null;
+            var lines = new List<(string Text, uint Colour)>
+            {
+                ((current.Name?.String ?? current.EditorID ?? "") + (chain.Count > 1 ? TF($"   rank {rank}/{chain.Count}") : ""), 0xFFFFFFFFu),
+                (CleanText(current.Description?.String ?? ""), 0xFFD8D8D8u),
+            };
+            if (next is not null && RequiredLevel(next) is { } need)
+                lines.Add((TF($"Requires {title}: {need:0}") + (need > _skill ? TF($"  (now {_skill})") : ""), need > _skill ? 0xFF6060E0u : 0xFFA0A0A0u));
+            if (next is not null && !Reachable(nodes, byIndex, taken, shown)) lines.Add((T("Take a perk that leads here first"), 0xFF6060E0u));
+            var y = origin.Y + size.Y - 8 - lines.Count * ImGui.GetTextLineHeightWithSpacing();
+            draw.AddRectFilled(new Vector2(origin.X, y - 6), origin + size, 0xB0000000u);
+            foreach (var (text, colour) in lines)
+            {
+                var w = ImGui.CalcTextSize(text).X;
+                draw.AddText(new Vector2(origin.X + MathF.Max(8, size.X / 2 - w / 2), y), colour, text);
+                y += ImGui.GetTextLineHeightWithSpacing();
+            }
         }
+        return hit;
     }
+
+    /// <summary>A description as the menu shows it: markup tags (&lt;font&gt;, &lt;span&gt;…) taken out.</summary>
+    public static string CleanText(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(text, "<(Global|Mag|Dur)=?([^>]*)>", "$2"), "<[^>]+>", "").Trim();
 
     /// <summary>Where the root is drawn: a row under the perks it leads to (all perks when it leads nowhere).</summary>
     private static Vector2 RootPlace(IReadOnlyList<IActorValuePerkNodeGetter> nodes)
@@ -370,5 +572,26 @@ internal static class PerkTreeEditor
         _selected = 1;
         AddNode(avif, target);
         return true;
+    }
+
+    /// <summary>Autotests: the game's view with the first <paramref name="count"/> perks that can be taken taken, at a skill level.</summary>
+    public static string GameViewForTest(int count, int skill)
+    {
+        _game = true;
+        _skill = skill;
+        if (_lastRecord is not { } avif || _lookup is not { } lookup) return "no tree";
+        var nodes = avif.PerkTree;
+        var byIndex = new Dictionary<uint, int>();
+        for (var i = 0; i < nodes.Count; i++) if (nodes[i].Index is { } index) byIndex.TryAdd(index, i);
+        var perks = Enumerable.Range(0, nodes.Count).Select(i => nodes[i].Perk.IsNull ? null : lookup.Resolve<IPerkGetter>(nodes[i].Perk.FormKey)).ToArray();
+        var taken = TakenOf(avif.FormKey);
+        taken.Clear();
+        for (var round = 0; round < count; round++)
+        {
+            var before = taken.Values.Sum();
+            for (var i = 0; i < nodes.Count && taken.Values.Sum() == before; i++) TakeRank(nodes, perks, byIndex, lookup, i, false);
+            if (taken.Values.Sum() == before) break;
+        }
+        return $"{taken.Values.Sum()} rank(s) taken at skill {skill}: {string.Join(", ", taken.Where(t => t.Value > 0).Select(t => $"{perks[t.Key]?.EditorID} {t.Value}"))}";
     }
 }

@@ -1706,6 +1706,11 @@ internal static class LangRu
         ["Filter text"] = "Фильтр текста",
         ["Conditions on the NPC's ID, voice, race, sex, class and factions are checked; the rest (quest stages, globals, places…) count as passing, as the CK does."] = "Проверяются условия на ID персонажа, голос, расу, пол, класс и фракции; остальные (стадии квестов, глобалы, места…) считаются выполненными, как в CK.",
 
+        // ---- tint presets
+        ["(own colour)"] = "(свой цвет)",
+        ["Tint preset"] = "Пресет тинта",
+        ["The race's colour presets for this tint (CK: tint presets)"] = "Цветовые пресеты расы для этого тинта (CK: tint presets)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

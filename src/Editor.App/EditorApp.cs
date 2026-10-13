@@ -1769,6 +1769,7 @@ internal sealed class EditorApp : IDisposable
             {
                 var a = Panels.FaceEditor.SetSliderForTest("NoseLongVsShort", 1f);
                 var b = Panels.FaceEditor.SetSliderForTest("JawNarrowVsWide", 1f);
+                Log.Info($"autotest-face: tint {Panels.FaceEditor.SetTintPresetForTest() ?? "no preset"}");
                 var morph = (StbEditor.Core.OverrideEditing.Override(Document, key)?.Record as Mutagen.Bethesda.Skyrim.INpcGetter)?.FaceMorph;
                 Log.Info($"autotest-face: sliders set {a}/{b}; record now nose {morph?.NoseLongVsShort}, jaw {morph?.JawNarrowVsWide}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
                 _faceStage = 3;
@@ -1781,9 +1782,8 @@ internal sealed class EditorApp : IDisposable
                 _faceFrames = 0;
                 break;
             case 4 when ++_faceFrames > 2:
-                Document.Undo();
-                Document.Undo();
-                Log.Info($"autotest-face: after two Ctrl+Z pending {Document.PendingCount}");
+                for (var i = 0; i < 3 && Document.PendingCount > 0; i++) Document.Undo();
+                Log.Info($"autotest-face: after Ctrl+Z pending {Document.PendingCount}");
                 _faceStage = 9;
                 break;
         }

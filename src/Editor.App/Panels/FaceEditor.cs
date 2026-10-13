@@ -53,6 +53,25 @@ internal static class FaceEditor
     private static EditTarget? _lastTarget;
 
     /// <summary>A slider set as a person would, let go at <paramref name="value"/> (autotests).</summary>
+    private static IHeadDataGetter? _lastHead;
+    private static RecordLookup? _lastLookup;
+
+    /// <summary>Autotests: the first tint mask with presets gets its second preset, as the preset list does; returns what was set.</summary>
+    public static string? SetTintPresetForTest()
+    {
+        if (_working is not { } working || _lastHead is not { } head || _lastLookup is not { } lookup) return null;
+        var mask = head.TintMasks.FirstOrDefault(m => m.Presets.Count > 1 && m.MaskType != TintAssets.TintMaskType.SkinTone && m.Index is not null);
+        if (mask is null || lookup.Resolve<IColorRecordGetter>(mask.Presets[1].Color.FormKey) is not { } colour) return null;
+        var index = mask.Index!.Value;
+        if (working.TintLayers.FirstOrDefault(l => l.Index == index) is not { } layer)
+            working.TintLayers.Add(layer = new TintLayer { Index = index, InterpolationValue = 0.5f, Preset = -1 });
+        layer.Preset = 1;
+        layer.Color = System.Drawing.Color.FromArgb(0, colour.Color.R, colour.Color.G, colour.Color.B);
+        Moved();
+        Apply(_lastTarget, T("Tint preset"));
+        return $"mask {index} {mask.MaskType}: preset 1 = {colour.EditorID} {colour.Color.R},{colour.Color.G},{colour.Color.B}";
+    }
+
     public static bool SetSliderForTest(string slider, float value)
     {
         if (_working?.FaceMorph is not { } morph || typeof(NpcFaceMorph).GetProperty(slider) is not { } property) return false;
@@ -79,6 +98,8 @@ internal static class FaceEditor
         var race = lookup.Resolve<IRaceGetter>(working.Race.FormKey);
         var female = working.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female);
         var head = female ? race?.HeadData?.Female : race?.HeadData?.Male;
+        _lastHead = head;
+        _lastLookup = lookup;
         var why = FaceGenExport.Unsupported(working, race);
 
         if (why is not null)
@@ -237,6 +258,38 @@ internal static class FaceEditor
                     Moved();
                 }
                 Commit(target, T("Tint layer"));
+                // The race's presets for this mask (CK: the tint's colour list): colour and preset index together.
+                if (mask.Presets.Count > 0)
+                {
+                    ImGui.SameLine();
+                    var current = layer.Preset is { } p && p >= 0 && p < mask.Presets.Count ? mask.Presets[p] : null;
+                    var currentName = current is null ? T("(own colour)") : lookup.Resolve<IColorRecordGetter>(current.Color.FormKey) is { } cr ? cr.Name?.String ?? cr.EditorID ?? "?" : "?";
+                    ImGui.SetNextItemWidth(ImGui.GetFontSize() * 9);
+                    if (ImGui.BeginCombo("##preset", currentName, ImGuiComboFlags.HeightLarge))
+                    {
+                        for (var k = 0; k < mask.Presets.Count; k++)
+                        {
+                            if (lookup.Resolve<IColorRecordGetter>(mask.Presets[k].Color.FormKey) is not { } colour) continue;
+                            var swatch = new Vector4(colour.Color.R / 255f, colour.Color.G / 255f, colour.Color.B / 255f, 1);
+                            ImGui.ColorButton($"##sw{k}", swatch, ImGuiColorEditFlags.NoTooltip, new Vector2(ImGui.GetTextLineHeight()));
+                            ImGui.SameLine();
+                            if (ImGui.Selectable($"{colour.Name?.String ?? colour.EditorID}##p{k}", layer.Preset == k))
+                            {
+                                var presetIndex = (short)k;
+                                var preset = mask.Presets[k];
+                                Change(target, T("Tint preset"), () =>
+                                {
+                                    if (working.TintLayers.FirstOrDefault(l => l.Index == index) is not { } edited) return;
+                                    edited.Preset = presetIndex;
+                                    edited.Color = System.Drawing.Color.FromArgb(0, colour.Color.R, colour.Color.G, colour.Color.B);
+                                    if (preset.DefaultValue is { } value && (edited.InterpolationValue ?? 0) <= 0) edited.InterpolationValue = value;
+                                });
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The race's colour presets for this tint (CK: tint presets)"));
+                }
                 ImGui.SameLine();
                 var amount = layer.InterpolationValue ?? 0;
                 ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);

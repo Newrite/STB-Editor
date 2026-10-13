@@ -54,7 +54,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.13.0 **Свойства существующей ячейки**: освещение, вода, акустика, музыка, encounter zone, локация, регионы, владелец, флаги | CK: Cell | ★★★ | M |
 | ✅ 0.7.0 **Копировать / вырезать / вставить рефы** (в т.ч. в другую ячейку), Paste in Place | CK: Ctrl+C / X / V, Ctrl+Shift+V | ★★★ | S |
 | ✅ 0.13.0 Свойства мира: родитель, климат, вода, карта, LOD, флаги | CK: World Spaces | ★★ | M |
-| ✅ 0.21.0 (показ с маркерами; правка размера и вида — «Ещё свойства» рефа; Validate room/portal — нет) Примитивы: триггер-боксы, активаторы-зоны, room bounds и порталы, multibound, occlusion planes | CK: Primitives, Validate room/portal | ★★ | M |
+| ✅ 0.21.0 (показ с маркерами; правка размера и вида — «Ещё свойства» рефа; 0.57.0 — проверка комнат и порталов) Примитивы: триггер-боксы, активаторы-зоны, room bounds и порталы, multibound, occlusion planes | CK: Primitives, Validate room/portal | ★★ | M |
 | ✅ 0.8.0 Reference Batch Action: поменять что-то у всех выделенных рефов; замена базы | CK | ★★ | S |
 | ✅ 0.38.0 (BepuPhysics, тела — выпуклые оболочки мешей, опора — меши и ландшафт; коллизия Havok из NIF — нет) Run Havok Sim — «уронить» clutter физикой, а не только F (на землю) | CK: Alt+H | ★★ | M |
 | ✅ 0.9.0 Остальные свойства рефа: activate parents, emittance, уровень лвл-актёра, map marker, location ref type, persist location, encounter zone рефа | CK: Reference | ★★ | M |

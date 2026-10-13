@@ -1391,6 +1391,20 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "roomcheck":
+    {
+        // roomcheck <game> [plugin]: room / portal problems in the interiors of a plugin (default Skyrim.esm), counted by kind.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var plugin = ws.Active.First(p => p.Name.Equals(args.Length > 2 ? args[2] : "Skyrim.esm", StringComparison.OrdinalIgnoreCase));
+        var cells = catalog.BySignature["CELL"].Where(c => c.Plugins.Contains(plugin) && c.Winner.Cell?.IsInterior == true).ToList();
+        var issues = cells.SelectMany(c => StbEditor.Core.PluginChecks.RoomIssues(lookup, c.FormKey).Select(i => (Cell: c.EditorId, Issue: i))).ToList();
+        Console.WriteLine($"{cells.Count} interiors, {issues.Count} room / portal issue(s)");
+        foreach (var g in issues.GroupBy(i => System.Text.RegularExpressions.Regex.Replace(i.Issue.Message, @"[0-9A-F]{6}:\S+|\S+ and \S+|room \S+", "X")))
+            Console.WriteLine($"  {g.Count()} x {g.Key}  (e.g. {g.First().Cell})");
+        break;
+    }
     case "filtereddialogue":
     {
         // filtereddialogue <game> <NPC EditorID>: lines the NPC can say (CK: Filtered Dialogue), how many name it.

@@ -199,6 +199,55 @@ public static class PluginChecks
             if (LeveledCycle(lookup, list.FormKey) is { } cycle)
                 issues.Add(new CheckIssue(true, list.FormKey, list.Signature, list.EditorId, $"contains itself: {string.Join(" > ", cycle.Select(k => catalog.Get(k)?.EditorId ?? k.ToString()))}"));
         }
+
+        // Rooms and portals of the interiors the plugin touches (CK: room / portal validation).
+        foreach (var cell in catalog.BySignature.GetValueOrDefault("CELL")?.Where(c => c.Plugins.Contains(plugin) && c.Winner.Cell?.IsInterior == true) ?? [])
+        {
+            cancel.ThrowIfCancellationRequested();
+            issues.AddRange(RoomIssues(lookup, cell.FormKey));
+        }
+        return issues;
+    }
+
+    /// <summary>The room marker and portal marker bases (Skyrim.esm).</summary>
+    public static readonly FormKey RoomMarker = FormKey.Factory("00001F:Skyrim.esm"), PortalMarker = FormKey.Factory("000020:Skyrim.esm");
+
+    /// <summary>
+    /// A cell's rooms and portals as the game wants them: every room has its bounds and the rooms it links to (XLRM) are rooms
+    /// of the cell; every portal has bounds and says which rooms it joins (XPOD), and those are rooms of the cell. (Rooms a
+    /// portal joins do not list each other, nor do linked rooms always link back — vanilla does neither.)
+    /// </summary>
+    public static List<CheckIssue> RoomIssues(RecordLookup lookup, FormKey cellKey)
+    {
+        var issues = new List<CheckIssue>();
+        // The references as the game sees them: every plugin's version of the cell, the last version of each reference.
+        var refs = new Dictionary<FormKey, IPlacedObjectGetter>();
+        foreach (var version in lookup.CellVersions(cellKey))
+            foreach (var placed in version.Persistent.Concat(version.Temporary).OfType<IPlacedObjectGetter>())
+                refs[placed.FormKey] = placed;
+        var rooms = refs.Values.Where(r => !r.IsDeleted && r.Base.FormKey == RoomMarker).ToDictionary(r => r.FormKey);
+        var portals = refs.Values.Where(r => !r.IsDeleted && r.Base.FormKey == PortalMarker).ToList();
+        if (rooms.Count == 0 && portals.Count == 0) return issues;
+        foreach (var room in rooms.Values)
+        {
+            if (room.Primitive is null) issues.Add(new CheckIssue(true, room.FormKey, "REFR", room.EditorID, "room marker without bounds (primitive)"));
+            foreach (var link in room.LinkedRooms ?? [])
+            {
+                if (link.IsNull) continue;
+                if (!rooms.TryGetValue(link.FormKey, out var other)) issues.Add(new CheckIssue(true, room.FormKey, "REFR", room.EditorID, $"links to {link.FormKey}, which is not a room of this cell"));
+            }
+        }
+        foreach (var portal in portals)
+        {
+            if (portal.Primitive is null) issues.Add(new CheckIssue(false, portal.FormKey, "REFR", portal.EditorID, "portal without bounds (primitive)"));
+            if ((portal.Portals?.Count ?? 0) == 0) { issues.Add(new CheckIssue(false, portal.FormKey, "REFR", portal.EditorID, "portal that joins no rooms (no portal data)")); continue; }
+            foreach (var joint in portal.Portals!)
+            {
+                var ends = new[] { joint.Origin, joint.Destination }.Where(l => !l.IsNull).ToList();
+                foreach (var end in ends)
+                    if (!rooms.ContainsKey(end.FormKey)) issues.Add(new CheckIssue(true, portal.FormKey, "REFR", portal.EditorID, $"joins {end.FormKey}, which is not a room of this cell"));
+            }
+        }
         return issues;
     }
 

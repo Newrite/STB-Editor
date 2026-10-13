@@ -326,6 +326,7 @@ internal sealed class EditorApp : IDisposable
         RunAssetsAutotest();
         RunLineOrderAutotest();
         RunFilteredDialogueAutotest();
+        RunDialogueGraphAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -632,6 +633,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-assets") || _assetsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-lineorder") || _lineStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-filtereddialogue") || _fdStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-dialoguegraph") || _graphStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1847,6 +1849,31 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _graphStage, _graphFrames;
+
+    /// <summary>--autotest-dialoguegraph [quest EditorID] (with --inspector-tab Dialogue; default MQ101): the quest's form on its dialogue as a graph, for the screenshot.</summary>
+    private void RunDialogueGraphAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-dialoguegraph");
+        if (arg < 0 || Session is not { } session || Loader is not null || _graphStage == 9) return;
+        switch (_graphStage)
+        {
+            case 0:
+            {
+                var name = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "MQ101";
+                var quest = session.Catalog.BySignature["QUST"].First(q => string.Equals(q.EditorId, name, StringComparison.OrdinalIgnoreCase));
+                Panels.DialogueEditor.ShowGraphForTest(true);
+                FormWindows.Open(quest.FormKey);
+                _graphStage = 1;
+                break;
+            }
+            case 1 when session.Dialogue.IsCompleted && ++_graphFrames > 40:
+                _graphStage = 9;
                 break;
         }
     }

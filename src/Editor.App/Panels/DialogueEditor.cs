@@ -148,6 +148,16 @@ internal static partial class DialogueEditor
         var branches = Branches(app, quest, task.Result);
         var selected = SelectedTopic.TryGetValue(quest.FormKey, out var s) && topics.Any(t => t.FormKey == s) ? s : topics.FirstOrDefault()?.FormKey;
 
+        // CK: Dialogue Views — the same topics as a graph of where lines lead.
+        if (ImGui.RadioButton(T("List"), !_graph)) _graph = false;
+        ImGui.SameLine();
+        if (ImGui.RadioButton(T("Graph"), _graph)) _graph = true;
+        if (_graph)
+        {
+            DrawGraph(app, quest, topics, branches);
+            return;
+        }
+
         var height = Math.Max(ImGui.GetContentRegionAvail().Y, ImGui.GetFontSize() * 14);
         if (!ImGui.BeginTable("##dialogue", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp)) return;
         ImGui.TableSetupColumn("tree", ImGuiTableColumnFlags.WidthStretch, 0.3f);

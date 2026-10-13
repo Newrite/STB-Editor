@@ -1722,6 +1722,11 @@ internal static class LangRu
         ["The records {0} adds or changes against the other file go into the active file as its overrides (xEdit: delta patch); the active file must load after {1}"] = "Записи, которые {0} добавляет или меняет относительно другого файла, переносятся в активный файл как его переопределения (xEdit: delta patch); активный файл должен грузиться после {1}",
         ["Choose another plugin than the compared one as the active file: the patch goes into it"] = "Выберите активным файлом другой плагин, не сравниваемый: патч пишется в него",
 
+        // ---- dialogue graph
+        ["Graph"] = "Граф",
+        ["{0} topic(s), {1} link(s). Columns: how many steps from where a conversation starts. Click: select, double-click: edit in the list."] = "Тем: {0}, связей: {1}. Столбцы — сколько шагов от начала разговора. Клик — выбрать, двойной клик — править в списке.",
+        ["{0} line(s)"] = "реплик: {0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

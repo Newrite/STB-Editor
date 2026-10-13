@@ -552,7 +552,7 @@ internal sealed partial class RenderWindow
     private unsafe void DrawGizmo(Vector2 origin, Vector2 size)
     {
         _gizmoOver = false;
-        if (_selection.Count == 0 || _tool is EditTool.Select or EditTool.Land or EditTool.Navmesh || _drag != DragKind.None || _scene is null) return;
+        if (_selection.Count == 0 || _tool is EditTool.Select or EditTool.Land or EditTool.Navmesh or EditTool.Palette || _drag != DragKind.None || _scene is null) return;
 
         ImGuizmo.SetOrthographic(false);
         ImGuizmo.SetDrawlist(ImGui.GetWindowDrawList());
@@ -581,7 +581,7 @@ internal sealed partial class RenderWindow
 
         var operation = _tool switch
         {
-            EditTool.Rotate => ImGuizmoOperation.Rotate,
+            EditTool.Rotate => _gizmoWasUsing ? _gizmoRings : _gizmoRings = Rings(pivot),
             EditTool.Scale => ImGuizmoOperation.Scaleu,
             _ => ImGuizmoOperation.Translate,
         };
@@ -646,6 +646,29 @@ internal sealed partial class RenderWindow
 
     private Matrix4x4 _gizmoStart;
     private Matrix4x4 _gizmoPivot;
+    private ImGuizmoOperation _gizmoRings = ImGuizmoOperation.Rotate;
+
+    /// <summary>
+    /// The rotation rings to offer: one seen almost edge-on (its axis nearly across the view, e.g. Z with the camera level
+    /// with the object) is left out. ImGuizmo still lets it be grabbed, but the mouse ray meets its plane nowhere useful and
+    /// the object does not turn. Turning about Z from a level view: left drag on the object (Rotate tool) or right drag.
+    /// </summary>
+    private ImGuizmoOperation Rings(Matrix4x4 pivot)
+    {
+        var toPivot = pivot.Translation - _camera.Position;
+        if (toPivot.LengthSquared() < 1e-6f) return ImGuizmoOperation.Rotate;
+        toPivot = Vector3.Normalize(toPivot);
+        var rings = ImGuizmoOperation.RotateScreen;
+        foreach (var (axis, ring) in new[] { (new Vector3(pivot.M11, pivot.M12, pivot.M13), ImGuizmoOperation.RotateX),
+                     (new Vector3(pivot.M21, pivot.M22, pivot.M23), ImGuizmoOperation.RotateY), (new Vector3(pivot.M31, pivot.M32, pivot.M33), ImGuizmoOperation.RotateZ) })
+        {
+            if (axis.LengthSquared() < 1e-6f || MathF.Abs(Vector3.Dot(Vector3.Normalize(axis), toPivot)) > 0.17f) rings |= ring;
+        }
+        return rings;
+    }
+
+    /// <summary>The rotation rings offered at the last frame (autotests).</summary>
+    public string GizmoRingsForTest => _gizmoRings.ToString();
     private bool _gizmoOver;
     private Vector2 _gizmoScreen;
     private int _gizmoTest;
@@ -740,7 +763,7 @@ internal sealed partial class RenderWindow
             case 2:
                 if (_gizmoOver && _gizmoTestFrame > 2)
                 {
-                    Log.Info($"autotest-gizmo: ring at {_gizmoTestRadius:0} px from the centre");
+                    Log.Info($"autotest-gizmo: ring at {_gizmoTestRadius:0} px from the centre (offered: {_gizmoRings})");
                     // From here the mouse moves from where the handle was grabbed, not after the moving gizmo.
                     _gizmoTestGrab = ImGuiLayerPosition();
                     _gizmoTestCentre = _gizmoScreen;

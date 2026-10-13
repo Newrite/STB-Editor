@@ -427,7 +427,9 @@ internal sealed partial class RenderWindow : Panel
         else
             ImGui.InvisibleButton("##viewport", size,
                 ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonRight | ImGuiButtonFlags.MouseButtonMiddle);
-        var hovered = !gizmoHot && ImGui.IsItemHovered();
+        // Over a handle the right and middle buttons and the wheel still belong to the view (ImGuizmo uses the left one;
+        // left presses wait for it through gizmoBusy in HandleInput).
+        var hovered = !_gizmoWasUsing && ImGui.IsItemHovered();
         var active = !gizmoHot && ImGui.IsItemActive();
 
         HandleInput(app, origin, size, hovered, active, delta);

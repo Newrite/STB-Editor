@@ -1610,6 +1610,12 @@ internal static class LangRu
         ["Story Manager: a node cannot go under itself"] = "Story Manager: узел нельзя поместить под самого себя",
         ["Move Story Manager node {0}"] = "Перемещение узла Story Manager {0}",
 
+        // ---- dialogue lines
+        ["Move dialogue line"] = "Перемещение реплики",
+        ["Lines of other plugins are not removed (the game would see them deleted): give the line a condition that never passes instead"] = "Реплики других плагинов не удаляются (игра увидела бы их удалёнными): лучше дайте реплике условие, которое никогда не выполняется",
+        ["Delete dialogue line"] = "Удаление реплики",
+        ["Delete line"] = "Удалить реплику",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

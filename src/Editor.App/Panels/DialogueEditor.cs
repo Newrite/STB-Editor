@@ -67,7 +67,60 @@ internal static partial class DialogueEditor
         foreach (var draft in app.Document.Drafts.Values.OfType<OverrideDraft>())
             if (draft.Place == RecordPlace.DialogInfo && draft.Cell == topic && lines.All(l => l.Item1.FormKey != draft.Key))
                 lines.Add(((IDialogResponsesGetter)draft.Record, app.ActivePlugin?.Name ?? "?"));
-        return lines;
+        // Removed lines go; the rest in the order of their «previous line» chain (as the game places them).
+        lines.RemoveAll(l => l.Item1 is null || app.Document.IsRemoved(l.Item1.FormKey));
+        return SiblingChains.Ordered(lines, l => l.Item1.FormKey, l => l.Item1?.PreviousDialog?.FormKeyNullable is { IsNull: false } p ? p : null);
+    }
+
+    /// <summary>
+    /// Puts a line right after <paramref name="after"/> (null: first) by its «previous line» (PNAM) and the neighbours': one
+    /// undo step; lines of other plugins become overrides in the active file.
+    /// </summary>
+    public static void MoveLine(EditorApp app, FormKey topic, List<(IDialogResponsesGetter Line, string Plugin)> lines, FormKey moved, FormKey? after)
+    {
+        var keys = lines.Select(l => l.Line.FormKey).ToList();
+        var edits = SiblingChains.Move(keys, moved, topic, keys, after, _ => topic);
+        CommitPrevious(app, topic, lines, edits.ToDictionary(e => e.Key, e => e.Value.Previous), T("Move dialogue line"));
+    }
+
+    private static void CommitPrevious(EditorApp app, FormKey topic, List<(IDialogResponsesGetter Line, string Plugin)> lines, Dictionary<FormKey, FormKey?> previous, string name,
+        params IEditCommand[] extra)
+    {
+        var steps = new List<IEditCommand>();
+        foreach (var (key, before) in previous)
+        {
+            if (lines.FirstOrDefault(l => l.Line.FormKey == key).Line is not { } line) continue;
+            if (line.PreviousDialog.FormKeyNullable is { IsNull: false } now ? now == before : before is null) continue;
+            var copy = (DialogResponses)app.Document.WorkingCopy(key, line);
+            if (before is { } p) copy.PreviousDialog.SetTo(p); else copy.PreviousDialog.Clear();
+            var old = app.Document.Override(key);
+            steps.Add(new RecordEditCommand(name, old?.With((Mutagen.Bethesda.Plugins.Records.IMajorRecord)old.Record.DeepCopy()), old?.With(copy) ?? new OverrideDraft(copy, RecordPlace.DialogInfo, null, topic)));
+        }
+        steps.AddRange(extra);
+        if (steps.Count > 0) app.Document.Record(steps.Count == 1 ? steps[0] : new CompositeCommand(name, steps));
+    }
+
+    /// <summary>
+    /// Removes a line of the active file (a new one, or one it has on disk); the line after it then follows the removed one's
+    /// previous. Lines of other plugins are not removed (the CK would mark them deleted): give them a condition instead.
+    /// </summary>
+    public static bool DeleteLine(EditorApp app, FormKey topic, List<(IDialogResponsesGetter Line, string Plugin)> lines, IDialogResponsesGetter line)
+    {
+        var onDisk = app.ActivePlugin is { } active && line.FormKey.ModKey.FileName.String.Equals(active.Name, StringComparison.OrdinalIgnoreCase) && !active.IsNew
+            && app.Session!.Workspace.Active.Any(p => p.Name.Equals(active.Name, StringComparison.OrdinalIgnoreCase));
+        var draft = app.Document.Draft(line.FormKey);
+        var isNew = draft is OverrideDraft && DialogueIndex.Lines(app.Session!.Workspace, topic).All(l => l.Line.FormKey != line.FormKey);
+        if (!onDisk && !isNew)
+        {
+            Log.Warn(T("Lines of other plugins are not removed (the game would see them deleted): give the line a condition that never passes instead"));
+            return false;
+        }
+        var at = lines.FindIndex(l => l.Line.FormKey == line.FormKey);
+        var previous = new Dictionary<FormKey, FormKey?>();
+        if (at >= 0 && at + 1 < lines.Count) previous[lines[at + 1].Line.FormKey] = at > 0 ? lines[at - 1].Line.FormKey : null;
+        var removal = new RemoveRecordCommand(T("Delete dialogue line"), draft, onDisk ? new RemovalDraft(line.FormKey, "INFO", line.EditorID, true) : null, line.FormKey);
+        CommitPrevious(app, topic, lines, previous, T("Delete dialogue line"), removal);
+        return true;
     }
 
     private static string FirstText(IDialogResponsesGetter line) =>
@@ -193,6 +246,7 @@ internal static partial class DialogueEditor
                 var changed = document.Override(line.FormKey) is not null;
                 if (ImGui.Selectable($"{Short(FirstText(line), 90)}{(changed ? " *" : "")}##{line.FormKey}", line.FormKey == selected, ImGuiSelectableFlags.SpanAllColumns))
                     SelectedLine[topic.FormKey] = line.FormKey;
+                if (editable) LineDragAndMenu(app, topic, lines, i);
                 ImGui.TableNextColumn();
                 ImGui.TextColored(Theme.TextDim, line.Conditions.Count == 0 ? "—" : line.Conditions.Count.ToString());
                 ImGui.TableNextColumn();
@@ -203,6 +257,38 @@ internal static partial class DialogueEditor
 
         if (selected is { } lineKey && lines.FirstOrDefault(l => l.Line.FormKey == lineKey).Line is { } current)
             DrawLine(app, topic, current, editable);
+    }
+
+    private static void LineDragAndMenu(EditorApp app, IDialogTopicGetter topic, List<(IDialogResponsesGetter Line, string Plugin)> lines, int i)
+    {
+        var line = lines[i].Line;
+        if (ImGui.BeginDragDropSource())
+        {
+            unsafe
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(line.FormKey.ToString());
+                fixed (byte* p = bytes) ImGui.SetDragDropPayload("STB_INFO", p, (nuint)bytes.Length);
+            }
+            ImGui.Text(Short(FirstText(line), 50));
+            ImGui.EndDragDropSource();
+        }
+        if (ImGui.BeginDragDropTarget())
+        {
+            unsafe
+            {
+                var payload = ImGui.AcceptDragDropPayload("STB_INFO");
+                if (payload.Handle != null && payload.Data != null && FormKey.TryFactory(System.Text.Encoding.UTF8.GetString((byte*)payload.Data, payload.DataSize), out var key)
+                    && key != line.FormKey && lines.Any(l => l.Line.FormKey == key))
+                    MoveLine(app, topic.FormKey, lines, key, line.FormKey);
+            }
+            ImGui.EndDragDropTarget();
+        }
+        if (!ImGui.BeginPopupContextItem($"##linectx{line.FormKey}")) return;
+        if (ImGui.MenuItem(T("Move up"), (string?)null, false, i > 0)) MoveLine(app, topic.FormKey, lines, line.FormKey, i > 1 ? lines[i - 2].Line.FormKey : null);
+        if (ImGui.MenuItem(T("Move down"), (string?)null, false, i + 1 < lines.Count)) MoveLine(app, topic.FormKey, lines, line.FormKey, lines[i + 1].Line.FormKey);
+        ImGui.Separator();
+        if (ImGui.MenuItem(T("Delete line"))) DeleteLine(app, topic.FormKey, lines, line);
+        ImGui.EndPopup();
     }
 
     private static void DrawLine(EditorApp app, IDialogTopicGetter topic, IDialogResponsesGetter line, bool editable)

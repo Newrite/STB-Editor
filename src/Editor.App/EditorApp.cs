@@ -324,6 +324,7 @@ internal sealed class EditorApp : IDisposable
         RunScriptAutotest();
         RunExportAutotest();
         RunAssetsAutotest();
+        RunLineOrderAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -626,6 +627,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-script") || _scriptStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-export") || _exportStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-assets") || _assetsStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-lineorder") || _lineStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1829,6 +1831,41 @@ internal sealed class EditorApp : IDisposable
                 _havokStage = 9;
                 break;
         }
+    }
+
+    private int _lineStage;
+
+    /// <summary>
+    /// --autotest-lineorder &lt;dir&gt; [quest EditorID] (default MQ101): a draft active file in &lt;dir&gt;; in the quest's first topic
+    /// with three or more lines the first line moved down one (as the context menu does), the order read back; two new lines
+    /// added and the last deleted again; then Ctrl+Z until nothing is pending. Restore settings.json afterwards.
+    /// </summary>
+    private void RunLineOrderAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-lineorder");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _lineStage == 9) return;
+        if (!session.Dialogue.IsCompleted) return;
+        var name = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "MQ101";
+        var questKey = session.Catalog.BySignature["QUST"].First(q => string.Equals(q.EditorId, name, StringComparison.OrdinalIgnoreCase)).FormKey;
+        var lookup = new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog);
+        SetActivePlugin(StbEditor.Core.ActivePlugin.ForNew(Path.Combine(cli[arg + 1], "STBEditorLineAutotest.esp"), false, false, session.Game, session.Workspace.DefaultEncoding));
+        var topicKey = session.Dialogue.Result.TopicsOf(questKey).First(t => Panels.DialogueEditor.Lines(this, t).Count >= 3);
+        var topic = lookup.Resolve<Mutagen.Bethesda.Skyrim.IDialogTopicGetter>(topicKey)!;
+        string Order() => string.Join(", ", Panels.DialogueEditor.Lines(this, topicKey).Select(l => session.Workspace.FormIdText(l.Line.FormKey)));
+        var lines = Panels.DialogueEditor.Lines(this, topicKey);
+        var before = Order();
+        Panels.DialogueEditor.MoveLine(this, topicKey, lines, lines[0].Line.FormKey, lines[1].Line.FormKey);
+        Log.Info($"autotest-lineorder: {topic.EditorID}: {before} -> {Order()}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+        Panels.DialogueEditor.NewLine(this, topic, Panels.DialogueEditor.Lines(this, topicKey));
+        Panels.DialogueEditor.NewLine(this, topic, Panels.DialogueEditor.Lines(this, topicKey));
+        var withNew = Panels.DialogueEditor.Lines(this, topicKey);
+        var deleted = Panels.DialogueEditor.DeleteLine(this, topicKey, withNew, withNew[^1].Line);
+        var other = Panels.DialogueEditor.DeleteLine(this, topicKey, withNew, withNew[0].Line);
+        Log.Info($"autotest-lineorder: {withNew.Count} lines with two new; delete the last new {deleted}, a vanilla one {other}; now {Panels.DialogueEditor.Lines(this, topicKey).Count}; pending {Document.PendingCount}");
+        for (var i = 0; i < 10 && Document.PendingCount > 0; i++) Document.Undo();
+        Log.Info($"autotest-lineorder: after Ctrl+Z {Order()} (was {before}), pending {Document.PendingCount}");
+        _lineStage = 9;
     }
 
     private int _assetsStage;

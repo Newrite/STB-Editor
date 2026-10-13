@@ -162,6 +162,15 @@ public sealed class PluginWriter(Workspace workspace, RecordCatalog catalog)
                     touched.Add(removal.Key);
                     continue;
                 }
+                // Dialogue lines: out of their topic's line list.
+                if (removal.Signature == "INFO")
+                {
+                    var owner = mod.DialogTopics.FirstOrDefault(t => t.Responses.Any(r => r.FormKey == removal.Key));
+                    if (owner is not null && owner.Responses.RemoveAll(r => r.FormKey == removal.Key) > 0) { removed++; touched.Add(owner.FormKey); }
+                    else warnings.Add($"{removal.EditorId}: not in {active.Name}, nothing to remove");
+                    touched.Add(removal.Key);
+                    continue;
+                }
                 var getter = RecordLookup.GetterType(removal.Signature);
                 var cls = getter is null ? null : NewRecords.RecordClasses(getter).FirstOrDefault();
                 if (cls is null || GroupFor(mod, cls) is not { } group)

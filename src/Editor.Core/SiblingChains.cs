@@ -35,4 +35,30 @@ public static class SiblingChains
         edits[moved] = (parent, index > 0 ? target[index - 1] : null);
         return edits;
     }
+
+    /// <summary>
+    /// Items along their previous-item chain (each first one — no previous, or a previous not among them — then whatever
+    /// follows it); items on no chain keep their order at the end.
+    /// </summary>
+    public static List<T> Ordered<T>(IReadOnlyList<T> items, Func<T, FormKey> key, Func<T, FormKey?> previous)
+    {
+        var keys = items.Select(key).ToHashSet();
+        var byPrevious = new Dictionary<FormKey, T>();
+        foreach (var item in items)
+            if (previous(item) is { } p && keys.Contains(p)) byPrevious.TryAdd(p, item);
+        var ordered = new List<T>();
+        var seen = new HashSet<FormKey>();
+        foreach (var first in items.Where(i => previous(i) is not { } p || !keys.Contains(p)))
+        {
+            // Items may be structs (tuples): walk with TryGetValue, never a default item.
+            var item = first;
+            while (seen.Add(key(item)))
+            {
+                ordered.Add(item);
+                if (!byPrevious.TryGetValue(key(item), out item!)) break;
+            }
+        }
+        ordered.AddRange(items.Where(i => !seen.Contains(key(i))));
+        return ordered;
+    }
 }

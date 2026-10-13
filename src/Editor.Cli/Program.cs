@@ -1391,6 +1391,35 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "dialremovetest":
+    {
+        // dialremovetest <game> <out folder> <plugin>: a copy of the plugin with one of its own dialogue lines removed (as Delete
+        // line does); the topic must lose exactly that line, everything else stay.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var outDir = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(outDir);
+        var plugin = ws.Active.First(p => p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase));
+        var copy = Path.Combine(outDir, plugin.Name);
+        File.Copy(plugin.Location.Path, copy, overwrite: true);
+        var active = ActivePlugin.ForExisting(plugin, game).RetargetedTo(copy);
+        var topic = plugin.Mod!.DialogTopics.First(t => t.Responses.Count(r => r.FormKey.ModKey == plugin.ModKey) >= 2);
+        var doomed = topic.Responses.Last(r => r.FormKey.ModKey == plugin.ModKey);
+        Console.WriteLine($"topic {topic.EditorID} {topic.FormKey}: {topic.Responses.Count} line(s) in {plugin.Name}; removing {doomed.FormKey}");
+        var doc = new EditDocument();
+        doc.Record(new RemoveRecordCommand("delete line", null, new RemovalDraft(doomed.FormKey, "INFO", doomed.EditorID, true), doomed.FormKey));
+        var writer = new PluginWriter(ws, catalog);
+        var result = writer.Prepare(active, doc);
+        Console.WriteLine($"prepare: success={result.Success} error={result.Error}; lossy {result.LossyRecords.Count}");
+        foreach (var w in result.Warnings.Take(5)) Console.WriteLine("  warn " + w);
+        if (!result.Success) break;
+        File.Move(result.TempPath!, active.Path, overwrite: true);
+        using var check = Mutagen.Bethesda.Skyrim.SkyrimMod.CreateFromBinaryOverlay(active.Path, game.Release);
+        var written = check.DialogTopics.FirstOrDefault(t => t.FormKey == topic.FormKey);
+        Console.WriteLine(written is null ? "topic missing!" : $"written topic: {written.Responses.Count} line(s) (was {topic.Responses.Count}); removed one still there: {written.Responses.Any(r => r.FormKey == doomed.FormKey)}");
+        Console.WriteLine($"records: {plugin.Mod.EnumerateMajorRecords().Count()} -> {check.EnumerateMajorRecords().Count()}");
+        break;
+    }
     case "savetest":
     {
         // savetest <game> <cell EditorID> <out folder> [existing plugin name]

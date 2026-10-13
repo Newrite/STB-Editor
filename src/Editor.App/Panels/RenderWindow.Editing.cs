@@ -38,6 +38,8 @@ internal sealed partial class RenderWindow
     private float _angleStep = 15f;
 
     private DragKind _drag;
+    /// <summary>The drag was started with the left button (it ends when that one is let go).</summary>
+    private bool _dragByLeft;
     private readonly Dictionary<SceneObject, RefState> _dragBefore = new();
     private Vector3 _dragAnchor;
     private Vector2 _dragMouseStart;
@@ -187,14 +189,18 @@ internal sealed partial class RenderWindow
         if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Right) && _drag == DragKind.None)
         {
             var hit = PickAt(mouse, size);
-            if (hit is { } h && _selection.Contains(h.Object)) BeginDrag(DragKind.Rotate, h.Point, io.MousePos);
+            if (hit is { } h && _selection.Contains(h.Object))
+            {
+                BeginDrag(DragKind.Rotate, h.Point, io.MousePos);
+                _dragByLeft = false;
+            }
             else _looking = true;
         }
 
         if (!ImGui.IsMouseDown(ImGuiMouseButton.Right))
         {
             _looking = false;
-            if (_drag == DragKind.Rotate) EndDrag("Rotate");
+            if (_drag == DragKind.Rotate && !_dragByLeft) EndDrag("Rotate");
         }
 
         if (_looking) Fly(io, delta);
@@ -285,14 +291,19 @@ internal sealed partial class RenderWindow
         if (_pressed && ImGui.IsMouseDown(ImGuiMouseButton.Left) && _drag == DragKind.None && _pressObject is not null
             && _selection.Contains(_pressObject) && Vector2.Distance(io.MousePos, _dragMouseStart) > 3)
         {
-            BeginDrag(ImGui.IsKeyDown(ImGuiKey.S) ? DragKind.Scale : DragKind.Move, _dragAnchor, _dragMouseStart);
+            // The tool says what dragging the selection does: Rotate turns it (as the right button), Scale sizes it.
+            var kind = ImGui.IsKeyDown(ImGuiKey.S) || _tool == EditTool.Scale ? DragKind.Scale
+                : _tool == EditTool.Rotate ? DragKind.Rotate
+                : DragKind.Move;
+            BeginDrag(kind, _dragAnchor, _dragMouseStart);
+            _dragByLeft = true;
         }
 
         if (_pressed && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
         {
-            if (_drag is DragKind.Move or DragKind.Scale)
+            if (_drag != DragKind.None && _dragByLeft)
             {
-                EndDrag(_drag == DragKind.Move ? "Move" : "Scale");
+                EndDrag(_drag switch { DragKind.Rotate => "Rotate", DragKind.Scale => "Scale", _ => "Move" });
             }
             else if (Vector2.Distance(io.MousePos, _dragMouseStart) < 4)
             {
@@ -445,6 +456,11 @@ internal sealed partial class RenderWindow
                     var point = origin + direction * t;
                     offset = point - _dragAnchor;
                     offset.Z = 0;
+                    // With the view almost level the ray meets the drag plane far away: a few pixels threw the object out
+                    // of sight. It follows the cursor, but never faster than four times the cursor's own speed at its distance.
+                    var distance = Vector3.Distance(origin, _dragAnchor);
+                    var reach = 4f * total.Length() * 2 * distance * MathF.Tan(_camera.FieldOfView / 2) / size.Y;
+                    if (offset.Length() > reach) offset *= reach / offset.Length();
                     if (ImGui.IsKeyDown(ImGuiKey.X)) offset.Y = 0;
                     if (ImGui.IsKeyDown(ImGuiKey.Y)) offset.X = 0;
                 }
@@ -635,16 +651,41 @@ internal sealed partial class RenderWindow
     private Vector3 _gizmoTestBefore;
     private Vector3 _gizmoTestBeforePosition;
     private bool _gizmoTestMove;
+    private Vector2 _gizmoTestGrab;
 
-    /// <summary>The object the gizmo test turns (else the one nearest the scene focus).</summary>
+    /// <summary>The object the gizmo test turns (else the one nearest the scene focus), and with the 15° angle snap.</summary>
     public SceneObject? GizmoTestTarget { get; set; }
+    public bool GizmoTestSnap { get; set; }
 
-    /// <summary>Camera <paramref name="distance"/> units south of and above the object, looking at its middle (autotests).</summary>
+    /// <summary>
+    /// Camera at most <paramref name="distance"/> units from the object's middle, back along the current view
+    /// (the way to it is clear: the object was dropped where the view looked), looking at it (autotests).
+    /// </summary>
     public void LookAtForTest(SceneObject obj, float distance)
     {
-        _camera.Position = obj.BoundsCenter + new Vector3(0, -distance, distance * 0.5f);
+        var back = Math.Min(distance, Vector3.Distance(_camera.Position, obj.BoundsCenter));
+        _camera.Position = obj.BoundsCenter - Vector3.Normalize(obj.BoundsCenter - _camera.Position) * back;
         _camera.LookAt(obj.BoundsCenter);
     }
+
+    /// <summary>Camera level with the object's middle, <paramref name="height"/> above it, looking at it (autotests).</summary>
+    public void LookFromSideForTest(SceneObject obj, float distance, float height)
+    {
+        var flat = obj.BoundsCenter - _camera.Position;
+        flat.Z = 0;
+        flat = flat.LengthSquared() < 1 ? Vector3.UnitY : Vector3.Normalize(flat);
+        _camera.Position = obj.BoundsCenter - flat * distance + new Vector3(0, 0, height);
+        _camera.LookAt(obj.BoundsCenter);
+    }
+
+    public EditTool ToolForTest
+    {
+        get => _tool;
+        set => _tool = value;
+    }
+
+    /// <summary>The CK-style drag going on and whether the right button looks around (autotests).</summary>
+    public string DragStateForTest => $"{_drag}{(_looking ? ", looking" : "")}";
 
     /// <summary>
     /// --autotest-gizmo (with --cell): select an object, rotate tool in world space, find a ring of the
@@ -666,7 +707,8 @@ internal sealed partial class RenderWindow
                 _tool = _gizmoTestMove ? EditTool.Move : EditTool.Rotate;
                 _localSpace = false;
                 _gridSnap = false;
-                _angleSnap = false;
+                _angleSnap = GizmoTestSnap;
+                _angleStep = 15f;
                 // From above, so the Z ring is a circle and a diagonal from the centre meets only it.
                 _camera.Position = _gizmoTestObject.Position + new Vector3(0, -120, 700);
                 _camera.LookAt(_gizmoTestObject.Position);
@@ -683,7 +725,9 @@ internal sealed partial class RenderWindow
                 if (_gizmoOver && _gizmoTestFrame > 2)
                 {
                     Log.Info($"autotest-gizmo: ring at {_gizmoTestRadius:0} px from the centre");
-                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition(), true);
+                    // From here the mouse moves from where the handle was grabbed, not after the moving gizmo.
+                    _gizmoTestGrab = ImGuiLayerPosition();
+                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (_gizmoTestGrab, true);
                     _gizmoTest = 3;
                     _gizmoTestFrame = 0;
                     break;
@@ -698,17 +742,19 @@ internal sealed partial class RenderWindow
                 break;
             case 3 when _gizmoTestFrame <= 40:
                 // Along the tangent of the ring (found down-right of the centre).
-                StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition() + Tangent() * (_gizmoTestFrame * 3f), true);
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_gizmoTestGrab + Tangent() * (_gizmoTestFrame * 3f), true);
                 break;
             case 3:
-                StbEditor.App.Ui.ImGuiLayer.TestMouse = (ImGuiLayerPosition() + Tangent() * 120f, false);
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_gizmoTestGrab + Tangent() * 120f, false);
                 _gizmoTest = 4;
                 _gizmoTestFrame = 0;
                 break;
             case 4 when _gizmoTestFrame > 5:
                 StbEditor.App.Ui.ImGuiLayer.TestMouse = null;
                 var after = _gizmoTestObject!.Rotation;
-                Log.Info($"autotest-gizmo: {_gizmoTestObject.BaseEditorId} rotation {Deg(_gizmoTestBefore)} -> {Deg(after)}, position {_gizmoTestBeforePosition} -> {_gizmoTestObject.Position}, undo: {_document?.History.UndoName}");
+                var cursorUnits = 120f * 2 * Vector3.Distance(_camera.Position, _gizmoTestBeforePosition) * MathF.Tan(_camera.FieldOfView / 2) / _viewSize.Y;
+                Log.Info($"autotest-gizmo: {_gizmoTestObject.BaseEditorId} rotation {Deg(_gizmoTestBefore)} -> {Deg(after)}, position {_gizmoTestBeforePosition} -> {_gizmoTestObject.Position} " +
+                    $"(moved {Vector3.Distance(_gizmoTestBeforePosition, _gizmoTestObject.Position):0}; the cursor's 120 px are {cursorUnits:0} units there), undo: {_document?.History.UndoName}");
                 return true;
         }
         return false;
@@ -948,6 +994,22 @@ internal sealed partial class RenderWindow
         return SingleSelection;
     }
 
+    /// <summary>Angle snap on or off, with its step (autotests).</summary>
+    public void SetAngleSnapForTest(bool on, float step)
+    {
+        _angleSnap = on;
+        _angleStep = step;
+    }
+
+    /// <summary>The object's bounds centre on screen, in window coordinates (autotests); null behind the camera.</summary>
+    public Vector2? ScreenPointForTest(SceneObject obj)
+    {
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(_camera.FieldOfView, _viewSize.X / _viewSize.Y, 10f, 1_000_000f);
+        var clip = Vector4.Transform(new Vector4(obj.BoundsCenter, 1f), _camera.View * projection);
+        if (clip.W <= 0) return null;
+        return _viewOrigin + new Vector2((clip.X / clip.W * 0.5f + 0.5f) * _viewSize.X, (0.5f - clip.Y / clip.W * 0.5f) * _viewSize.Y);
+    }
+
     /// <summary>What a click on the object's bounds centre on screen picks (autotests).</summary>
     public SceneObject? PickOnScreenForTest(SceneObject obj)
     {
@@ -1118,6 +1180,6 @@ internal sealed partial class RenderWindow
     private readonly Dictionary<SceneObject, RefState> _fieldEditBefore = new();
 
     private static string HelpLine =>
-        T("LMB select / drag move (Z height, X/Y lock) · RMB drag on selection rotate · S+drag scale · ") +
+        T("LMB select / drag move (Z height, X/Y lock; E tool turns, R sizes) · RMB drag on selection rotate · S+drag scale · ") +
         T("Shift+mouse orbit · Space+mouse pan · wheel zoom · RMB+WASD fly · W/E/R gizmo · F drop · C focus · T top · Del delete · Ctrl+Z undo · F1 help");
 }

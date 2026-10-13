@@ -1428,7 +1428,7 @@ internal static class LangRu
         ["LMB"] = "ЛКМ",
         ["Select; Ctrl adds to the selection; Esc clears it"] = "Выделить; Ctrl добавляет к выделению; Esc снимает",
         ["LMB drag on the selection"] = "ЛКМ + перетаскивание по выделенному",
-        ["Move along the ground; hold Z for height, X / Y to lock an axis"] = "Двигать по земле; с Z — по высоте, X / Y — только по одной оси",
+        ["Move along the ground; hold Z for height, X / Y to lock an axis. With the Rotate (E) or Scale (R) tool: turn or size it"] = "Двигать по земле; с Z — по высоте, X / Y — только по одной оси. В режиме «Поворот» (E) или «Масштаб» (R) — поворачивать или масштабировать",
         ["S + LMB drag"] = "S + ЛКМ + перетаскивание",
         ["Scale"] = "Масштаб",
         ["RMB drag on the selection"] = "ПКМ + перетаскивание по выделенному",
@@ -1763,8 +1763,8 @@ internal static class LangRu
         ["Drop to ground"] = "На землю",
         ["New objects need an active file for their FormIDs. Choose one, then drop again."] = "Новым объектам нужен активный файл для FormID. Выберите его и бросьте объект снова.",
         ["Duplicates need an active file for their FormIDs."] = "Дубликатам нужен активный файл для FormID.",
-        ["LMB select / drag move (Z height, X/Y lock) · RMB drag on selection rotate · S+drag scale · "] =
-            "ЛКМ выбор / перетаскивание (Z высота, X/Y одна ось) · ПКМ по выделенному — поворот · S+перетаскивание — масштаб · ",
+        ["LMB select / drag move (Z height, X/Y lock; E tool turns, R sizes) · RMB drag on selection rotate · S+drag scale · "] =
+            "ЛКМ выбор / перетаскивание (Z высота, X/Y одна ось; в режиме E — поворот, R — масштаб) · ПКМ по выделенному — поворот · S+перетаскивание — масштаб · ",
         ["Shift+mouse orbit · Space+mouse pan · wheel zoom · RMB+WASD fly · W/E/R gizmo · F drop · C focus · T top · Del delete · Ctrl+Z undo · F1 help"] =
             "Shift+мышь облёт · Пробел+мышь сдвиг · колесо приближение · ПКМ+WASD полёт · W/E/R гизмо · F на землю · C к объекту · T сверху · Del удалить · Ctrl+Z отмена · F1 справка",
 

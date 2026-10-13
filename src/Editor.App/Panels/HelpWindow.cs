@@ -32,7 +32,7 @@ internal sealed class HelpWindow
         ("Selecting and moving objects",
         [
             ("LMB", "Select; Ctrl adds to the selection; Esc clears it"),
-            ("LMB drag on the selection", "Move along the ground; hold Z for height, X / Y to lock an axis"),
+            ("LMB drag on the selection", "Move along the ground; hold Z for height, X / Y to lock an axis. With the Rotate (E) or Scale (R) tool: turn or size it"),
             ("S + LMB drag", "Scale"),
             ("RMB drag on the selection", "Rotate about Z; hold X or Y for those axes"),
             ("Q / W / E / R", "Tool: select / move / rotate / scale (gizmo with arrows and rings)"),

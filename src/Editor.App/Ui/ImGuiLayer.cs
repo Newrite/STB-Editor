@@ -73,6 +73,9 @@ internal sealed unsafe class ImGuiLayer : IDisposable
     /// <summary>Autotests: mouse position / left button to feed ImGui instead of the real mouse.</summary>
     public static (System.Numerics.Vector2 Position, bool Down)? TestMouse { get; set; }
 
+    /// <summary>Autotests: the button <see cref="TestMouse"/> presses (0 left, 1 right).</summary>
+    public static int TestMouseButton { get; set; }
+
     /// <summary>Autotests: text typed into the focused field this frame, and keys pressed (released the next frame).</summary>
     public static string? TestText { get; set; }
 
@@ -89,7 +92,7 @@ internal sealed unsafe class ImGuiLayer : IDisposable
         {
             var io = ImGui.GetIO();
             io.AddMousePosEvent(mouse.Position.X, mouse.Position.Y);
-            io.AddMouseButtonEvent(0, mouse.Down);
+            io.AddMouseButtonEvent(TestMouseButton, mouse.Down);
         }
         if (TestWheel != 0)
         {

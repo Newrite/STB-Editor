@@ -71,9 +71,11 @@ internal sealed class PreviewPanel : Panel
         ImGui.SameLine();
         ImGui.TextColored(Theme.TextDim, $"[{obj.BaseSignature}] {session.Workspace.FormIdText(key.Value)}");
         ImGui.SameLine(ImGui.GetContentRegionAvail().X + ImGui.GetCursorPosX() - ImGui.CalcTextSize(T("Spin")).X - ImGui.GetStyle().FramePadding.X * 2);
-        if (_spin) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
+        // Pop what was pushed: the click flips _spin in between (an unmatched Pop aborts the process).
+        var spinning = _spin;
+        if (spinning) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
         if (ImGui.SmallButton(T("Spin"))) _spin ^= true;
-        if (_spin) ImGui.PopStyleColor();
+        if (spinning) ImGui.PopStyleColor();
 
         var size = ImGui.GetContentRegionAvail() - new Vector2(0, ImGui.GetTextLineHeightWithSpacing() * 2);
         if (size.X < 16 || size.Y < 16) return;

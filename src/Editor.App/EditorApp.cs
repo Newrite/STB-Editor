@@ -1683,6 +1683,8 @@ internal sealed class EditorApp : IDisposable
 
     private int _placeStage, _placeFrames;
     private SceneObject? _placed;
+    private System.Numerics.Vector2 _placeMouse;
+    private (System.Numerics.Vector3 Position, float Z) _placeStart;
 
     /// <summary>
     /// --autotest-place &lt;dir&gt; [base FormID] (with --cell): a draft active file in &lt;dir&gt;; the base (default
@@ -1717,6 +1719,7 @@ internal sealed class EditorApp : IDisposable
                 RenderWindow.RotateSelectionForTest(90);
                 Log.Info($"autotest-place: right-drag turn {before * 180 / MathF.PI:0.#} -> {o.Rotation.Z * 180 / MathF.PI:0.#} deg, undo '{Document.History.UndoName}'");
                 RenderWindow.GizmoTestTarget = o;
+                RenderWindow.GizmoTestSnap = true;
                 _placeStage = 2;
                 _placeFrames = 0;
                 break;
@@ -1725,8 +1728,81 @@ internal sealed class EditorApp : IDisposable
                 // The rotate gizmo on the placed object (same steps as --autotest-gizmo).
                 if (!RenderWindow.GizmoTestStep()) break;
                 RenderWindow.GizmoTestTarget = null;
+                RenderWindow.GizmoTestSnap = false;
                 RenderWindow.LookAtForTest(_placed!, 260);
-                _placeStage = 3;
+                RenderWindow.SetAngleSnapForTest(true, 15f);
+                _placeStage = 10;
+                _placeFrames = 0;
+                break;
+            case 10 when ++_placeFrames > 15:
+            {
+                // Right button held on the object and moved to the right, angle snap 15° (as a person turns it).
+                if (RenderWindow.ScreenPointForTest(_placed!) is not { } point) { Log.Error("autotest-place: object not on screen"); _placeStage = 3; break; }
+                _placeMouse = point;
+                _placeStart = (_placed!.Position, _placed.Rotation.Z);
+                Log.Info($"autotest-place: right button on the object at {point}; a click there picks {RenderWindow.PickOnScreenForTest(_placed)?.BaseEditorId ?? "nothing"}");
+                StbEditor.App.Ui.ImGuiLayer.TestMouseButton = 1;
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (point, true);
+                _placeStage = 11;
+                _placeFrames = 0;
+                break;
+            }
+            case 11:
+                if (++_placeFrames <= 40)
+                {
+                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(_placeFrames * 3, 0), true);
+                    if (_placeFrames % 10 == 0)
+                        Log.Info($"autotest-place: right-drag +{_placeFrames * 3} px ({RenderWindow.DragStateForTest}): position {_placed!.Position}, rotation {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg");
+                    break;
+                }
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(120, 0), false);
+                _placeStage = 12;
+                _placeFrames = 0;
+                break;
+            case 12 when ++_placeFrames > 5:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = null;
+                StbEditor.App.Ui.ImGuiLayer.TestMouseButton = 0;
+                Log.Info($"autotest-place: right-drag with 15° snap: position {_placeStart.Position} -> {_placed!.Position}, rotation {_placeStart.Z * 180 / MathF.PI:0.#} -> {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg, undo '{Document.History.UndoName}'");
+                RenderWindow.SetAngleSnapForTest(false, 15f);
+                RenderWindow.LookFromSideForTest(_placed, 300, 12);
+                _placeStage = 13;
+                _placeFrames = 0;
+                break;
+            case 13 when ++_placeFrames > 10:
+            {
+                // Left button held on the object with the camera almost level (as in a mine), mouse moved up a little.
+                if (RenderWindow.ScreenPointForTest(_placed!) is not { } point) { Log.Error("autotest-place: object not on screen"); _placeStage = 3; break; }
+                _placeMouse = point;
+                _placeStart = (_placed!.Position, _placed.Rotation.Z);
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (point, true);
+                Log.Info($"autotest-place: left button on the object, tool {RenderWindow.ToolForTest}, camera level with it; a click there picks {RenderWindow.PickOnScreenForTest(_placed)?.BaseEditorId ?? "nothing"}");
+                _placeStage = 14;
+                _placeFrames = 0;
+                break;
+            }
+            case 14:
+                if (++_placeFrames <= 24)
+                {
+                    StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(_placeFrames * 2, -_placeFrames * 0.5f), true);
+                    if (_placeFrames % 4 == 0)
+                        Log.Info($"autotest-place: left-drag +{_placeFrames * 2},-{_placeFrames * 0.5f} px ({RenderWindow.DragStateForTest}): position {_placed!.Position}, rotation {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg");
+                    break;
+                }
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = (_placeMouse + new System.Numerics.Vector2(48, -12), false);
+                _placeStage = 15;
+                _placeFrames = 0;
+                break;
+            case 15 when ++_placeFrames > 5:
+                StbEditor.App.Ui.ImGuiLayer.TestMouse = null;
+                Log.Info($"autotest-place: left-drag in {RenderWindow.ToolForTest}: position {_placeStart.Position} -> {_placed!.Position} ({System.Numerics.Vector3.Distance(_placeStart.Position, _placed.Position):0} units), rotation {_placeStart.Z * 180 / MathF.PI:0.#} -> {_placed.Rotation.Z * 180 / MathF.PI:0.#} deg, undo '{Document.History.UndoName}'");
+                // The same drag with the Move tool: the object moves, but stays near the cursor.
+                if (RenderWindow.ToolForTest == EditTool.Rotate)
+                {
+                    RenderWindow.ToolForTest = EditTool.Move;
+                    RenderWindow.LookFromSideForTest(_placed, 300, 12);
+                    _placeStage = 13;
+                }
+                else _placeStage = 3;
                 _placeFrames = 0;
                 break;
             case 3 when ++_placeFrames > 20:

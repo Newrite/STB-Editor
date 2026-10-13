@@ -63,6 +63,9 @@ public sealed class GpuModel : IDisposable
     /// <summary>The Havok collision as convex pieces when all of it could be read (model space), else null.</summary>
     public List<Vector3[]>? CollisionPieces { get; set; }
 
+    /// <summary>Edges of the whole Havok collision (triangles and pieces), model space, as line pairs — for the collision view.</summary>
+    public Vector3[] CollisionLines { get; set; } = [];
+
     public required Vector3 BoundsMin { get; init; }
     public required Vector3 BoundsMax { get; init; }
 
@@ -347,7 +350,54 @@ public sealed class MeshCache(ID3D11Device device, AssetFileSystem assets)
         var created = GpuModel.Create(device, path, model.Shapes, model.Particles);
         created.HasCollision = model.HasCollision;
         if (model.CollisionComplete && model.CollisionPieces.Count > 0) created.CollisionPieces = model.CollisionPieces;
+        created.CollisionLines = CollisionLines(model);
         return created;
+    }
+
+    /// <summary>The collision's edges as line pairs: each triangle edge once, and the hull edges of each convex piece.</summary>
+    public static Vector3[] CollisionLines(NifModel model)
+    {
+        var lines = new List<Vector3>();
+        var seen = new HashSet<(int, int)>();
+        var p = model.CollisionPositions;
+        var idx = model.CollisionIndices;
+        for (var t = 0; t + 2 < idx.Count; t += 3)
+            for (var e = 0; e < 3; e++)
+            {
+                int a = idx[t + e], b = idx[t + (e + 1) % 3];
+                if (a >= p.Count || b >= p.Count || !seen.Add(a < b ? (a, b) : (b, a))) continue;
+                lines.Add(p[a]);
+                lines.Add(p[b]);
+            }
+        if (model.CollisionPieces.Count == 0) return [.. lines];
+        var pool = new BepuUtilities.Memory.BufferPool();
+        try
+        {
+            foreach (var piece in model.CollisionPieces)
+            {
+                if (piece.Length < 4) continue;
+                BepuPhysics.Collidables.ConvexHullHelper.ComputeHull(piece.AsSpan(), pool, out var hull);
+                try
+                {
+                    var edges = new HashSet<(int, int)>();
+                    for (var f = 0; f < hull.FaceStartIndices.Length; f++)
+                    {
+                        var first = hull.FaceStartIndices[f];
+                        var end = f + 1 < hull.FaceStartIndices.Length ? hull.FaceStartIndices[f + 1] : hull.FaceVertexIndices.Length;
+                        for (var k = first; k < end; k++)
+                        {
+                            int a = hull.OriginalVertexMapping[hull.FaceVertexIndices[k]], b = hull.OriginalVertexMapping[hull.FaceVertexIndices[k + 1 < end ? k + 1 : first]];
+                            if (!edges.Add(a < b ? (a, b) : (b, a))) continue;
+                            lines.Add(piece[a]);
+                            lines.Add(piece[b]);
+                        }
+                    }
+                }
+                finally { hull.Dispose(pool); }
+            }
+        }
+        finally { pool.Clear(); }
+        return [.. lines];
     }
 }
 

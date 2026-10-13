@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.60.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.62.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -130,6 +130,10 @@ v0.59.0: dialogue graph (`Panels/DialogueEditor.Graph.cs`: LinkTo edges, BFS col
 v0.60.0: Havok collision for falling objects (`Nif/NifFile.Collision.cs`: bhkCollisionObject → bhkRigidBody(T) → box / sphere /
 capsule / convex vertices (grown by the convex radius) / list / transform / MOPP as convex pieces × 69.99124; triangle meshes mark the
 model incomplete → render-mesh hull; `PhysicsDrop` builds a Bepu Compound with CompoundBuilder, mass 1).
+v0.62.0: collision view (`GpuModel.CollisionLines`, `RenderWindow.CollisionOverlay`, F4) incl. bhkCompressedMeshShapeData (chunks: origin +
+ushort × error, chunk transform; strips then a triangle list; big tris). Physics places bodies without the NIF root's own transform.
+`NifFile.SafePiece`: Bepu's hull builder crashes the process (no exception) on nearly flat point sets — keep pieces through it.
+(0.61.0 was tagged on the 0.60.0 commit by mistake and the tag removed; the release script now refuses to tag without a commit.)
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

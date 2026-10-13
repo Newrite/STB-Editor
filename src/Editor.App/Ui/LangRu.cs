@@ -1727,6 +1727,10 @@ internal static class LangRu
         ["{0} topic(s), {1} link(s). Columns: how many steps from where a conversation starts. Click: select, double-click: edit in the list."] = "Тем: {0}, связей: {1}. Столбцы — сколько шагов от начала разговора. Клик — выбрать, двойной клик — править в списке.",
         ["{0} line(s)"] = "реплик: {0}",
 
+        // ---- collision view
+        ["Collision"] = "Коллизия",
+        ["Havok collision of the objects near the camera (CK: F4)"] = "Коллизия Havok объектов рядом с камерой (CK: F4)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

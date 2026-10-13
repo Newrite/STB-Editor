@@ -1391,6 +1391,32 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "hulltest":
+    {
+        // hulltest <game> <interior EditorID>: Bepu hulls of every collision piece of the cell's meshes, one by one (finds a piece that breaks it).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var vfs = AssetFileSystem.Build(ws);
+        var cell = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var scene = new SceneBuilder(ws, catalog).BuildInterior(cell.FormKey);
+        var pool = new BepuUtilities.Memory.BufferPool();
+        foreach (var path in scene.Objects.Select(o => o.ModelPath).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (vfs.ReadAllBytes(path) is not { } bytes) continue;
+            NifModel model;
+            try { model = NifFile.Load(bytes, path); } catch { continue; }
+            for (var i = 0; i < model.CollisionPieces.Count; i++)
+            {
+                var piece = model.CollisionPieces[i];
+                Console.Out.WriteLine($"{path} piece {i}: {piece.Length} points, finite {piece.All(p => float.IsFinite(p.X + p.Y + p.Z))}");
+                Console.Out.Flush();
+                BepuPhysics.Collidables.ConvexHullHelper.ComputeHull(piece.Where(p => float.IsFinite(p.X + p.Y + p.Z)).Distinct().ToArray().AsSpan(), pool, out var hull);
+                hull.Dispose(pool);
+            }
+        }
+        Console.WriteLine("all hulls built");
+        break;
+    }
     case "nifcollision":
     {
         // nifcollision <game> <mesh…>: the Havok collision read as convex pieces (count, complete, bounds against the render mesh).
@@ -1411,6 +1437,12 @@ switch (command)
             var high = points.Count > 0 ? points.Aggregate(new System.Numerics.Vector3(float.MinValue), System.Numerics.Vector3.Max) : default;
             var types = NifFile.Blocks(bytes).Blocks.Select(b => b.Type).Where(t => t.StartsWith("bhk")).Distinct();
             Console.WriteLine($"{mesh}: {model.CollisionPieces.Count} piece(s), complete {model.CollisionComplete}; collision {low} .. {high}; render {model.BoundsMin} .. {model.BoundsMax}; [{string.Join(", ", types)}]");
+            if (model.CollisionIndices.Count > 0)
+            {
+                var tl = model.CollisionPositions.Aggregate(new System.Numerics.Vector3(float.MaxValue), System.Numerics.Vector3.Min);
+                var th = model.CollisionPositions.Aggregate(new System.Numerics.Vector3(float.MinValue), System.Numerics.Vector3.Max);
+                Console.WriteLine($"  triangle collision: {model.CollisionIndices.Count / 3} triangles, {model.CollisionPositions.Count} vertices, {tl} .. {th}");
+            }
         }
         break;
     }

@@ -71,14 +71,14 @@ internal sealed partial class RenderWindow
         _navGenWater = scene.Water.ToList();
         _navGen = Task.Run(() =>
         {
-            var models = new Dictionary<string, (IReadOnlyList<NifShape>, bool)?>(StringComparer.OrdinalIgnoreCase);
-            (IReadOnlyList<NifShape>, bool)? Shapes(SceneObject o)
+            // The NIF's collision is not kept on the GPU model: read each mesh once here.
+            var models = new Dictionary<string, NavmeshGeometry.Source?>(StringComparer.OrdinalIgnoreCase);
+            NavmeshGeometry.Source? Shapes(SceneObject o)
             {
                 if (o.ModelPath is not { } path) return null;
-                if (o.Model is { IsDisposed: false } loaded) return (loaded.Shapes.Select(s => s.Source).ToList(), loaded.HasCollision);
                 if (!models.TryGetValue(path, out var found))
                 {
-                    try { found = assets.ReadAllBytes(path) is { } bytes && NifFile.Load(bytes, path) is var m ? (m.Shapes, m.HasCollision) : null; }
+                    try { found = assets.ReadAllBytes(path) is { } bytes ? NavmeshGeometry.Source.Of(NifFile.Load(bytes, path)) : null; }
                     catch { found = null; }
                     models[path] = found;
                 }

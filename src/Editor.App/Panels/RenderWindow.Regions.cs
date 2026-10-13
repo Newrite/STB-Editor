@@ -303,4 +303,27 @@ internal sealed partial class RenderWindow
         _camera.Pitch = -1.5533f;
         _camera.Position = new Vector3(at.X, at.Y - height * 0.0175f, (_scene is { } s ? TerrainHeight(s, at.X, at.Y) ?? 0 : 0) + height);
     }
+
+    /// <summary>The Havok collision of loaded objects near the camera as lines (nearest first, up to a few hundred thousand).</summary>
+    private void CollisionOverlay()
+    {
+        if (_renderer is not { Options.ShowCollision: true } renderer || _scene is null) return;
+        var lines = renderer.OverlayLines;
+        const int budget = 400_000;
+        const uint colour = 0xFFFF50E0u;
+        var near = _scene.Objects
+            .Where(o => o.Model is { CollisionLines.Length: > 0 } && !renderer.Options.Hides(o) && !o.IsDeleted)
+            .Select(o => (Object: o, Distance: Vector3.DistanceSquared(o.Position, _camera.Position)))
+            .Where(x => x.Distance < 6000f * 6000f)
+            .OrderBy(x => x.Distance);
+        var used = 0;
+        foreach (var (obj, _) in near)
+        {
+            var edges = obj.Model!.CollisionLines;
+            if (used + edges.Length > budget) break;
+            var world = obj.World;
+            foreach (var p in edges) lines.Add(new LineVertex(Vector3.Transform(p, world), colour));
+            used += edges.Length;
+        }
+    }
 }

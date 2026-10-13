@@ -132,6 +132,7 @@ internal sealed partial class RenderWindow : Panel
                 case "psys": o.ParticleFilter = kv[1]; break;
                 case "animate": o.Animate = on; break;
                 case "logblended": _renderer.DebugLog = Log.Info; break;
+                case "collision": o.ShowCollision = kv[1] != "0"; break;
             }
         }
     }
@@ -467,6 +468,7 @@ internal sealed partial class RenderWindow : Panel
 
         BrushOverlay();
         RegionOverlay(app);
+        CollisionOverlay();
         ApplySky(app);
         var background = _scene?.IsInterior == true ? new Vector4(0.05f, 0.05f, 0.06f, 1) : _skyColour ?? new Vector4(0.50f, 0.60f, 0.72f, 1);
         try
@@ -631,6 +633,7 @@ internal sealed partial class RenderWindow : Panel
         Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
         Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
+        Toggle(T("Collision"), () => options.ShowCollision, v => options.ShowCollision = v, T("Havok collision of the objects near the camera (CK: F4)"));
         DrawSky(app);
         Toggle(T("Borders"), () => options.CellBorders, v => options.CellBorders = v, T("Cell borders (CK: B)"));
         Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes (N edits them)"));

@@ -31,12 +31,22 @@ public static partial class NifFile
             var shape = b.Int();
             // The T variant places its shape: translation and rotation inside the body's construction info.
             var placement = Matrix4x4.Identity;
-            if (bodyType == "bhkRigidBodyT" && b.Remaining >= 80)
+            if (bodyType == "bhkRigidBodyT" && ctx.Header.BlockSizes[body] >= 96)
             {
-                b.Skip(4 + 20 + 20); // filter, world object cinfo, the start of the rigid body cinfo
-                var t = b.Vec4();
-                var q = new Quaternion(b.Float(), b.Float(), b.Float(), b.Float());
-                placement = Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(q)) * Matrix4x4.CreateTranslation(new Vector3(t.X, t.Y, t.Z) * HavokScale);
+                // Translation (Vector4) then rotation (quaternion) inside the construction info; where they start differs a
+                // little between versions, so the rotation is found as the first unit quaternion from there.
+                var start = ctx.Header.BlockOffsets[body];
+                var bytes = ctx.Data;
+                float F(int at) => BitConverter.ToSingle(bytes, start + at);
+                for (var at = 60; at <= 76; at += 4)
+                {
+                    var q = new Quaternion(F(at), F(at + 4), F(at + 8), F(at + 12));
+                    if (!float.IsFinite(q.Length()) || MathF.Abs(q.Length() - 1) > 1e-3f) continue;
+                    var t = new Vector3(F(at - 16), F(at - 12), F(at - 8));
+                    if (!float.IsFinite(t.X) || !float.IsFinite(t.Y) || !float.IsFinite(t.Z) || t.Length() > 1e5f) t = Vector3.Zero;
+                    placement = Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(q)) * Matrix4x4.CreateTranslation(t * HavokScale);
+                    break;
+                }
             }
             ReadShape(ctx, shape, placement, node, 0);
         }
@@ -55,8 +65,8 @@ public static partial class NifFile
         var r = new BlockReader(ctx.Block(index));
         void Piece(IEnumerable<Vector3> havokPoints)
         {
-            var points = havokPoints.Select(p => node.Apply(Vector3.Transform(p * HavokScale, local))).ToArray();
-            if (points.Length >= 4) ctx.Model.CollisionPieces.Add(points);
+            var points = havokPoints.Select(p => node.Apply(Vector3.Transform(p * HavokScale, local))).Where(p => float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z)).ToArray();
+            if (points.Length >= 4) ctx.Model.CollisionPieces.Add(SafePiece(points));
         }
         switch (type)
         {
@@ -67,20 +77,17 @@ public static partial class NifFile
                 r.Skip(12 + 12); // vertex and normal properties
                 var count = r.Int();
                 if (count is < 4 or > 65536) { ctx.Model.CollisionComplete = false; return; }
-                var points = new List<Vector3>(count * 7);
-                for (var i = 0; i < count; i++)
+                var points = new Vector3[count];
+                for (var i = 0; i < count; i++) { var v = r.Vec4(); points[i] = new Vector3(v.X, v.Y, v.Z); }
+                // The shape is the hull grown by its convex radius (about 2 game units): each corner pushed out from the middle.
+                if (radius > 0)
                 {
-                    var v = r.Vec4();
-                    var p = new Vector3(v.X, v.Y, v.Z);
-                    points.Add(p);
-                    // The shape is the hull grown by its convex radius (about 2 game units): the hull of each corner's
-                    // six neighbours along the axes comes close.
-                    if (radius > 0)
-                        foreach (var axis in new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ })
-                        {
-                            points.Add(p + axis * radius);
-                            points.Add(p - axis * radius);
-                        }
+                    var middle = points.Aggregate(Vector3.Zero, (a, b) => a + b) / count;
+                    for (var i = 0; i < count; i++)
+                    {
+                        var away = points[i] - middle;
+                        if (away.LengthSquared() > 1e-12f) points[i] += Vector3.Normalize(away) * radius;
+                    }
                 }
                 Piece(points);
                 break;
@@ -137,11 +144,133 @@ public static partial class NifFile
             case "bhkMoppBvTreeShape":
                 ReadShape(ctx, r.Int(), local, node, depth + 1);
                 break;
+            case "bhkCompressedMeshShape":
+            {
+                // A triangle mesh (statics, buildings): kept as triangles (collision view, navmesh); not a body that can fall.
+                ctx.Model.CollisionComplete = false;
+                r.Skip(4 + 4 + 4 + 4 + 16 + 4 + 16); // target, user data, radius, unknown, scale, radius copy, scale copy
+                var data = r.Int();
+                if (ctx.IsBlock(data) && ctx.Header.TypeOf(data) == "bhkCompressedMeshShapeData")
+                    ReadCompressedMesh(ctx, data, p => node.Apply(Vector3.Transform(p * HavokScale, local)));
+                break;
+            }
             default:
                 // Triangle meshes (compressed / packed strips) and anything else: the render mesh stands in.
                 ctx.Model.CollisionComplete = false;
                 break;
         }
+    }
+
+    /// <summary>
+    /// bhkCompressedMeshShapeData: chunks of quantized vertices (chunk translation + steps of the error, then the chunk's
+    /// transform) with strips and a triangle list, and the "big" triangles of full-precision vertices.
+    /// </summary>
+    private static void ReadCompressedMesh(Context ctx, int index, Func<Vector3, Vector3> place)
+    {
+        var r = new BlockReader(ctx.Block(index));
+        r.Skip(4 * 4); // bits per index / W index, masks
+        var error = r.Float();
+        if (error is <= 0 or > 0.1f) error = 0.001f;
+        r.Skip(16 + 16 + 2); // bounds, welding and material type
+        for (var i = 0; i < 3; i++) r.Skip(4 * r.Int()); // 32 / 16 / 8-bit materials
+        r.Skip(8 * r.Int()); // chunk materials
+        r.Int(); // named materials
+        var transformCount = r.Int();
+        var transforms = new (Vector3 Translation, Quaternion Rotation)[transformCount];
+        for (var i = 0; i < transformCount; i++)
+        {
+            var t = r.Vec4();
+            var q = new Quaternion(r.Float(), r.Float(), r.Float(), r.Float());
+            transforms[i] = (new Vector3(t.X, t.Y, t.Z), Quaternion.Normalize(q));
+        }
+        var bigCount = r.Int();
+        var big = new Vector3[bigCount];
+        for (var i = 0; i < bigCount; i++) { var v = r.Vec4(); big[i] = new Vector3(v.X, v.Y, v.Z); }
+        var positions = ctx.Model.CollisionPositions;
+        var indices = ctx.Model.CollisionIndices;
+        var bigTris = r.Int();
+        var bigStart = positions.Count;
+        foreach (var v in big) positions.Add(place(v));
+        for (var i = 0; i < bigTris; i++)
+        {
+            int a = r.UShort(), b = r.UShort(), c = r.UShort();
+            r.Skip(4 + 2);
+            if (a < bigCount && b < bigCount && c < bigCount) indices.AddRange([bigStart + a, bigStart + b, bigStart + c]);
+        }
+        var chunks = r.Int();
+        for (var k = 0; k < chunks; k++)
+        {
+            var origin = r.Vec4();
+            r.UInt(); // material
+            r.UShort(); // reference
+            var transform = r.UShort();
+            var count = r.Int();
+            var start = positions.Count;
+            for (var i = 0; i + 2 < count; i += 3)
+            {
+                var v = new Vector3(origin.X, origin.Y, origin.Z) + new Vector3(r.UShort(), r.UShort(), r.UShort()) * error;
+                if (transform < transforms.Length) v = Vector3.Transform(v, transforms[transform].Rotation) + transforms[transform].Translation;
+                positions.Add(place(v));
+            }
+            r.Skip(2 * (count % 3));
+            var vertexCount = positions.Count - start;
+            var indexCount = r.Int();
+            var chunkIndices = new int[indexCount];
+            for (var i = 0; i < indexCount; i++) chunkIndices[i] = r.UShort();
+            var stripCount = r.Int();
+            var at = 0;
+            for (var s = 0; s < stripCount; s++)
+            {
+                var length = r.UShort();
+                for (var i = 0; i + 2 < length && at + i + 2 < indexCount; i++)
+                {
+                    int a = chunkIndices[at + i], b = chunkIndices[at + i + 1], c = chunkIndices[at + i + 2];
+                    if (a == b || b == c || a == c || a >= vertexCount || b >= vertexCount || c >= vertexCount) continue;
+                    if (i % 2 == 0) indices.AddRange([start + a, start + b, start + c]);
+                    else indices.AddRange([start + a, start + c, start + b]);
+                }
+                at += length;
+            }
+            // What the strips leave is a plain triangle list.
+            for (var i = at; i + 2 < indexCount; i += 3)
+            {
+                int a = chunkIndices[i], b = chunkIndices[i + 1], c = chunkIndices[i + 2];
+                if (a < vertexCount && b < vertexCount && c < vertexCount) indices.AddRange([start + a, start + b, start + c]);
+            }
+            r.Skip(2 * r.Int()); // welding
+        }
+    }
+
+    /// <summary>
+    /// A piece hull builders take without trouble: points closer than a hundredth of a unit merged, and a piece with no real
+    /// thickness (a cloth sheet) made a thin box around its points — Bepu's hull builder crashes on nearly flat sets.
+    /// </summary>
+    public static Vector3[] SafePiece(Vector3[] points)
+    {
+        var merged = points.GroupBy(p => (MathF.Round(p.X * 100), MathF.Round(p.Y * 100), MathF.Round(p.Z * 100))).Select(g => g.First()).ToArray();
+        var low = merged.Aggregate(new Vector3(float.MaxValue), Vector3.Min);
+        var high = merged.Aggregate(new Vector3(float.MinValue), Vector3.Max);
+        var size = (high - low).Length();
+        if (merged.Length >= 4 && Thickness(merged) > MathF.Max(0.5f, size * 0.03f)) return merged;
+        var grow = new Vector3(0.5f);
+        (low, high) = (low - grow, high + grow);
+        return [new(low.X, low.Y, low.Z), new(high.X, low.Y, low.Z), new(low.X, high.Y, low.Z), new(high.X, high.Y, low.Z),
+            new(low.X, low.Y, high.Z), new(high.X, low.Y, high.Z), new(low.X, high.Y, high.Z), new(high.X, high.Y, high.Z)];
+    }
+
+    /// <summary>How far the points stand off the plane through three far-apart ones (the smallest is not sought: enough to spot flat sets).</summary>
+    private static float Thickness(Vector3[] points)
+    {
+        var a = points[0];
+        var b = points.MaxBy(p => Vector3.DistanceSquared(p, a));
+        var ab = b - a;
+        if (ab.LengthSquared() < 1e-8f) return 0;
+        var c = points.MaxBy(p => Vector3.Cross(ab, p - a).LengthSquared());
+        var normal = Vector3.Cross(ab, c - a);
+        if (normal.LengthSquared() < 1e-10f) return 0;
+        normal = Vector3.Normalize(normal);
+        var d = points.Select(p => Vector3.Dot(normal, p - a)).ToArray();
+        return d.Max() - d.Min();
     }
 
     /// <summary>Points on a sphere (enough for a convex hull).</summary>

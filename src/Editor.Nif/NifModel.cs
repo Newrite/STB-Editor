@@ -169,6 +169,10 @@ public sealed class NifModel
     /// <summary>Every collision shape was read into <see cref="CollisionPieces"/> (none was a triangle mesh or unknown).</summary>
     public bool CollisionComplete { get; internal set; } = true;
 
+    /// <summary>Triangle-mesh collision (compressed mesh shapes of statics), model space, game units.</summary>
+    public List<Vector3> CollisionPositions { get; } = [];
+    public List<int> CollisionIndices { get; } = [];
+
     public Vector3 BoundsMin { get; internal set; } = new(float.MaxValue);
     public Vector3 BoundsMax { get; internal set; } = new(float.MinValue);
 

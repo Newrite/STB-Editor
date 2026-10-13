@@ -36,6 +36,9 @@ public static partial class NifFile
         public readonly NifModel Model = model;
         public readonly HashSet<int> Visited = [];
 
+        /// <summary>The root node's own transform (physics leaves it out).</summary>
+        public NifTransform RootLocal = NifTransform.Identity;
+
         /// <summary>Model-space transform of every walked node (emitter / gravity objects).</summary>
         public readonly Dictionary<int, NifTransform> NodeWorld = new();
         public readonly Dictionary<int, NifShape> ShapeByBlock = new();
@@ -237,8 +240,10 @@ public static partial class NifFile
             var name = av.Name ?? string.Empty;
             ctx.NodeWorld[index] = ModelSpace(world, billboard);
 
-            // The node's Havok collision as convex pieces (physics).
-            if (av.Collision >= 0) ReadCollision(ctx, av.Collision, world);
+            // The node's Havok collision as convex pieces (physics). The game places bodies by the reference without the root
+            // node's own transform (a root turned 180° with children turned back: the collision is not turned).
+            if (depth == 0) ctx.RootLocal = av.Transform;
+            if (av.Collision >= 0) ReadCollision(ctx, av.Collision, ctx.RootLocal.Inverse().Then(world));
 
             // Collision-only node trees and LE "RootCollisionNode" are not visible geometry.
             if (type == "RootCollisionNode") return;

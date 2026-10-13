@@ -123,6 +123,14 @@ public readonly record struct NifTransform(Matrix3 Rotation, Vector3 Translation
         Translation + Rotation.Transform(child.Translation * Scale),
         Scale * child.Scale);
 
+    /// <summary>The transform that undoes this one (rotations are orthonormal).</summary>
+    public NifTransform Inverse()
+    {
+        var r = new Matrix3(new(Rotation.Row0.X, Rotation.Row1.X, Rotation.Row2.X), new(Rotation.Row0.Y, Rotation.Row1.Y, Rotation.Row2.Y), new(Rotation.Row0.Z, Rotation.Row1.Z, Rotation.Row2.Z));
+        var s = Scale == 0 ? 1 : 1 / Scale;
+        return new NifTransform(r, -r.Transform(Translation) * s, s);
+    }
+
     /// <summary>Row-vector matrix for System.Numerics / HLSL row_major (v' = v·M).</summary>
     public Matrix4x4 ToMatrix()
     {

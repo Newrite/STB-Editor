@@ -71,6 +71,9 @@ public sealed class RenderOptions
         || (CurrentCellOnly && CurrentCell is { } cell && obj.Cell != cell)
         || (HiddenReferences.Count > 0 && HiddenReferences.Contains(obj.Reference));
     public bool Fog { get; set; } = true;
+
+    /// <summary>Draw the Havok collision of objects near the camera as lines (CK: F4).</summary>
+    public bool ShowCollision { get; set; }
     public bool CellBorders { get; set; }
 
     /// <summary>Play shader animations (flames, water flow) and simulate particles.</summary>

@@ -262,13 +262,14 @@ internal static class FaceGenTests
         float Arg(string name, float fallback) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault() is { } t && float.TryParse(t, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
         var settings = new StbEditor.Core.NavmeshGenerationSettings { CellSize = Arg("--cs", 8), AgentRadius = Arg("--radius", 20), AgentClimb = Arg("--climb", 36), KeepUnreachedArea = Arg("--big", 40000) };
 
-        var models = new Dictionary<string, (IReadOnlyList<NifShape>, bool)?>(StringComparer.OrdinalIgnoreCase);
-        (IReadOnlyList<NifShape>, bool)? Shapes(SceneObject o)
+        var models = new Dictionary<string, NavmeshGeometry.Source?>(StringComparer.OrdinalIgnoreCase);
+        NavmeshGeometry.Source? Shapes(SceneObject o)
         {
             if (o.ModelPath is not { } path) return null;
             if (!models.TryGetValue(path, out var found))
             {
-                try { found = vfs.ReadAllBytes(path) is { } bytes && NifFile.Load(bytes, path) is var m ? (m.Shapes, m.HasCollision) : null; } catch { found = null; }
+                try { found = vfs.ReadAllBytes(path) is { } bytes ? NavmeshGeometry.Source.Of(NifFile.Load(bytes, path)) : null; } catch { found = null; }
+                if (found is not null && args.Contains("--no-pieces")) found = found with { Pieces = null };
                 models[path] = found;
             }
             return found;
@@ -279,17 +280,17 @@ internal static class FaceGenTests
             var p = near.Split(',').Select(t => float.Parse(t, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
             var at = new Vector3(p[0], p[1], p[2]);
             foreach (var o in scene.Objects.Where(o => o.Kind == SceneObjectKind.Mesh && Vector3.Distance(o.Position, at) < 1500).OrderBy(o => Vector3.Distance(o.Position, at)).Take(25))
-                Console.WriteLine($"  near: {o.BaseSignature} {o.BaseEditorId} {o.Position} r {o.BoundsRadius:0} {o.ModelPath} collision {(Shapes(o) is { Item2: true })}");
+                Console.WriteLine($"  near: {o.BaseSignature} {o.BaseEditorId} {o.Position} r {o.BoundsRadius:0} {o.ModelPath} collision {(Shapes(o) is { HasCollision: true })}");
             // Which object's triangles lie under the point.
             foreach (var o in scene.Objects.Where(o => o.Kind == SceneObjectKind.Mesh))
             {
                 if (Shapes(o) is not { } found) continue;
-                foreach (var shape in found.Item1)
+                foreach (var shape in found.Shapes)
                     for (var i = 0; i + 2 < shape.Indices.Length; i += 3)
                     {
                         var t = (Vector3.Transform(shape.Positions[(int)shape.Indices[i]], o.World), Vector3.Transform(shape.Positions[(int)shape.Indices[i + 1]], o.World), Vector3.Transform(shape.Positions[(int)shape.Indices[i + 2]], o.World));
                         if (!Inside(at, t, out var z) || MathF.Abs(z - at.Z) > 80) continue;
-                        Console.WriteLine($"  under: {o.BaseSignature} {o.BaseEditorId} {o.ModelPath} shape {shape.Name} z {z:0} collision {found.Item2} hidden {shape.IsHidden} kind {shape.Material.Kind} alpha {shape.Material.AlphaBlend}");
+                        Console.WriteLine($"  under: {o.BaseSignature} {o.BaseEditorId} {o.ModelPath} shape {shape.Name} z {z:0} collision {found.HasCollision} hidden {shape.IsHidden} kind {shape.Material.Kind} alpha {shape.Material.AlphaBlend}");
                         goto next;
                     }
                 next:;
@@ -304,7 +305,7 @@ internal static class FaceGenTests
             max = Vector3.Max(max, o.BoundsCenter + new Vector3(o.BoundsRadius));
         }
         // Bounds from the loaded meshes (UpdateBounds needs GPU models): use positions instead.
-        var (vertices, indices) = NavmeshGeometry.Collect(scene, new Vector3(-1e6f), new Vector3(1e6f), Shapes);
+        var (vertices, indices) = NavmeshGeometry.Collect(scene, new Vector3(-1e6f), new Vector3(1e6f), Shapes, useCollision: args.Contains("--collision"));
         if (vertices.Count > 0)
         {
             min = vertices.Aggregate(new Vector3(float.MaxValue), Vector3.Min);

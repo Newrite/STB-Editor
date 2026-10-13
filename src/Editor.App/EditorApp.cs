@@ -42,7 +42,7 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy || FilteredDialogueWindow.IsBusy;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
@@ -325,6 +325,7 @@ internal sealed class EditorApp : IDisposable
         RunExportAutotest();
         RunAssetsAutotest();
         RunLineOrderAutotest();
+        RunFilteredDialogueAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -389,6 +390,7 @@ internal sealed class EditorApp : IDisposable
         ModGroupsWindow.Draw(this);
         ExportDataWindow.Draw(this);
         PluginAssetsWindow.Draw(this);
+        FilteredDialogueWindow.Draw(this);
         FindText.Draw(this);
         FormWindows.Draw(this);
         Compare.Draw(this);
@@ -569,6 +571,7 @@ internal sealed class EditorApp : IDisposable
     public Panels.ModGroupsWindow ModGroupsWindow { get; } = new();
     public Panels.ExportDataWindow ExportDataWindow { get; } = new();
     public Panels.PluginAssetsWindow PluginAssetsWindow { get; } = new();
+    public Panels.FilteredDialogueWindow FilteredDialogueWindow { get; } = new();
 
     /// <summary>xEdit's ModGroups (Documents\STB Editor\modgroups.json), edited in File → ModGroups.</summary>
     public List<StbEditor.Core.ModGroup> ModGroupList { get; } = StbEditor.Core.ModGroups.Load(Panels.ModGroupsWindow.FilePath);
@@ -628,6 +631,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-export") || _exportStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-assets") || _assetsStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-lineorder") || _lineStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-filtereddialogue") || _fdStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1835,6 +1839,28 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _fdStage;
+
+    /// <summary>--autotest-filtereddialogue [NPC EditorID] (default Belethor): World → Filtered dialogue listed; counts and the first named lines logged.</summary>
+    private void RunFilteredDialogueAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-filtereddialogue");
+        if (arg < 0 || Session is null || Loader is not null || _fdStage == 9) return;
+        switch (_fdStage)
+        {
+            case 0:
+                FilteredDialogueWindow.Show(this);
+                FilteredDialogueWindow.Start(this, arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "Belethor");
+                _fdStage = 1;
+                break;
+            case 1 when !FilteredDialogueWindow.IsBusy:
+                Log.Info($"autotest-filtereddialogue: {FilteredDialogueWindow.Lines.Count} lines, {FilteredDialogueWindow.Lines.Count(l => l.Named)} named; first: {string.Join(" | ", FilteredDialogueWindow.Lines.Take(3).Select(l => $"{l.QuestEditorId}/{l.TopicEditorId}: {l.Text}"))}");
+                _fdStage = 9;
                 break;
         }
     }
@@ -3674,6 +3700,7 @@ internal sealed class EditorApp : IDisposable
             if (ImGui.MenuItem(T("Story Manager..."), (string?)null, false, ready)) StoryManagerWindow.Show(this);
             if (ImGui.MenuItem(T("Idle animations..."), (string?)null, false, ready)) IdleTreeWindow.Show();
             if (ImGui.MenuItem(T("Voice files..."), (string?)null, false, ready)) VoiceFilesWindow.Show(this);
+            if (ImGui.MenuItem(T("Filtered dialogue..."), (string?)null, false, ready)) FilteredDialogueWindow.Show(this);
             if (ImGui.MenuItem(T("Regions..."), (string?)null, false, ready)) RegionsWindow.Show(this);
             ImGui.Separator();
             ImGui.TextColored(Theme.TextDim, T("Placing an object where no exterior cell exists creates the cell."));

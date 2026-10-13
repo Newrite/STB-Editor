@@ -1691,6 +1691,21 @@ internal static class LangRu
         ["Delete branch"] = "Удаление ветки",
         ["The selected branch with its sub-branches"] = "Выбранная ветка вместе с подветками",
 
+        // ---- filtered dialogue
+        ["Filtered dialogue..."] = "Реплики персонажа…",
+        ["Export relationship data"] = "Экспорт отношений",
+        ["{0} relationship(s) written to {1}"] = "Отношений записано: {0} в {1}",
+        ["Every relationship (RELA) of the load order: parent, child, rank, association (CK: Export Relationship Data)"] = "Все отношения (RELA) набора: родитель, ребёнок, ранг, связь (CK: Export Relationship Data)",
+        ["No such NPC."] = "Такого NPC нет.",
+        ["{0} line(s), {1} tied to the NPC by a condition"] = "Реплик: {0}, привязаны к NPC условием: {1}",
+        ["Filtered dialogue"] = "Реплики персонажа",
+        ["NPC: EditorID or FormID"] = "NPC: EditorID или FormID",
+        ["selected"] = "выбранный",
+        ["The record selected in the Object Window"] = "Запись, выбранная в Object Window",
+        ["Only lines a condition ties to the NPC"] = "Только реплики, привязанные к NPC условием",
+        ["Filter text"] = "Фильтр текста",
+        ["Conditions on the NPC's ID, voice, race, sex, class and factions are checked; the rest (quest stages, globals, places…) count as passing, as the CK does."] = "Проверяются условия на ID персонажа, голос, расу, пол, класс и фракции; остальные (стадии квестов, глобалы, места…) считаются выполненными, как в CK.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

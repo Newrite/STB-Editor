@@ -1391,6 +1391,20 @@ switch (command)
             $"written topic: priority {written.Priority}, {written.Responses.Count} line(s): {string.Join(" | ", written.Responses.Select(r => $"{r.FormKey.ID:X6} '{r.Responses.FirstOrDefault()?.Text?.String}' {r.Responses.FirstOrDefault()?.Emotion}"))}");
         break;
     }
+    case "filtereddialogue":
+    {
+        // filtereddialogue <game> <NPC EditorID>: lines the NPC can say (CK: Filtered Dialogue), how many name it.
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var npc = lookup.Resolve<Mutagen.Bethesda.Skyrim.INpcGetter>(catalog.BySignature["NPC_"].First(r => string.Equals(r.EditorId, args[2], StringComparison.OrdinalIgnoreCase)).FormKey)!;
+        var actor = StbEditor.Core.FilteredDialogue.Actor.Of(npc, lookup);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var lines = StbEditor.Core.FilteredDialogue.Lines(ws, lookup, DialogueIndex.Build(ws, catalog), actor);
+        Console.WriteLine($"{npc.EditorID}: voice {actor.Voice}, {actor.Factions.Count} factions; {lines.Count} lines, {lines.Count(l => l.Named)} name it, in {clock.ElapsedMilliseconds} ms");
+        foreach (var l in lines.Where(l => l.Named).Take(10)) Console.WriteLine($"  {l.QuestEditorId}/{l.TopicEditorId} {l.Info.ID:X6}: {(l.Text.Length > 70 ? l.Text[..70] : l.Text)}");
+        break;
+    }
     case "mergeplan":
     {
         // mergeplan <game> <signature> [n]: what the merged patch would add / remove for records of that type.

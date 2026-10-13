@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.54.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.55.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -120,6 +120,8 @@ v0.53.0: merged patch for containers, NPCs, outfits, form lists (`LeveledMerge.S
 written back into the winner's copy; init-only Mutagen lists are cleared and refilled).
 v0.54.0: procedure tree editing (`Packages.Insert / Remove / Move / SubtreeEnd / ParentOf` on the flat depth-first list, Root.BranchCount
 kept in step; `PackageEditor.DrawTreeTools`, branch types gathered from the load order's packages).
+v0.55.0: Filtered Dialogue (`Core/FilteredDialogue.cs`: subject conditions on ID / voice / race / sex / class / faction against the NPC,
+OR groups, unknown = passing; ById only for «is this NPC») and Export Relationship Data.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

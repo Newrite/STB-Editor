@@ -76,6 +76,22 @@ internal sealed class ExportDataWindow
             ImGui.EndDisabled();
             if (_export is not null) { ImGui.SameLine(); ImGui.TextColored(Theme.Warning, _progress); }
             if (_result is not null) ImGui.TextWrapped(_result);
+            ImGui.Separator();
+            // CK: Export Relationship Data — not tied to one plugin.
+            if (ImGui.Button(T("Export relationship data")))
+            {
+                var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "STB Editor", "Export", "Relationships.txt");
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    var text = FilteredDialogue.Relationships(new StbEditor.Data.RecordLookup(session.Workspace, session.Catalog), session.Workspace.FormIdText);
+                    File.WriteAllText(path, text, new System.Text.UTF8Encoding(true));
+                    var rows = text.Split('\n').Length - 2;
+                    _result = TF($"{rows} relationship(s) written to {path}");
+                }
+                catch (Exception ex) { _result = TF($"Cannot write {path}: {ex.Message}"); }
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Every relationship (RELA) of the load order: parent, child, rank, association (CK: Export Relationship Data)"));
         }
         ImGui.End();
     }

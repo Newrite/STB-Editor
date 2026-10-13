@@ -45,7 +45,7 @@ xEdit (tes5edit.github.io/docs). Что уже есть — в `README.md`; зд
 | ✅ 0.39.0 (части головы, пресеты, 18 ползунков, цвета, слои тинта, живое превью головы; пресетов тинта (TIAS) в списке нет — цвет задаётся напрямую) Лицо: ползунки морфов, части головы, слои тинта с превью | CK: Actor → Character Gen Parts / Face | ★★ | L |
 | ✅ 0.41.0 Дерево перков (AVIF) графически | CK: Actor Values; xEdit-скрипт PerkTreeUI | ★ | M |
 | ✅ 0.42.0 (дерево, порядок, перемещение, новые idle; события из .hkx графа не подсказываются) Дерево idle-анимаций (IDLE) | CK: Animations | ★ | M |
-| ✅ 0.31.0 (тинт тела: проверка и исправление; Filtered Dialogue, Export Relationship Data — нет) Update NPC Body Tint Colors, Filtered Dialogue, Export Relationship Data | CK | ★ | S |
+| ✅ 0.31.0 / 0.55.0 (тинт тела; 0.55.0 — Filtered Dialogue, Export Relationship Data) Update NPC Body Tint Colors, Filtered Dialogue, Export Relationship Data | CK | ★ | S |
 
 ## 4. Мир
 

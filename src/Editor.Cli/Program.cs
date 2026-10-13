@@ -2291,6 +2291,22 @@ switch (command)
             Console.WriteLine($"{p.Name}: {p.PropertyType.Name}");
         break;
     }
+    case "perktree":
+    {
+        // perktree <game> <AVIF EditorID>: the nodes of a skill's perk tree (grid, offsets, perk, links).
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var lookup = new RecordLookup(ws, catalog);
+        var entry = catalog.BySignature["AVIF"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var avif = lookup.Resolve<Mutagen.Bethesda.Skyrim.IActorValueInformationGetter>(entry.FormKey)!;
+        Console.WriteLine($"{avif.EditorID} '{avif.Name}' skill {avif.Skill is not null} CNAM {(avif.CNAM is { } c ? Convert.ToHexString(c) : "-")}, {avif.PerkTree.Count} nodes");
+        foreach (var n in avif.PerkTree)
+        {
+            var perk = n.Perk.IsNull ? null : lookup.Resolve<Mutagen.Bethesda.Skyrim.IPerkGetter>(n.Perk.FormKey);
+            Console.WriteLine($"  #{n.Index} grid {n.PerkGridX},{n.PerkGridY} off {n.HorizontalPosition},{n.VerticalPosition} FNAM {(n.FNAM is { } f ? Convert.ToHexString(f) : "-")} skill {(n.AssociatedSkill.IsNull ? "-" : n.AssociatedSkill.FormKey.ToString())} perk {perk?.EditorID ?? n.Perk.FormKey.ToString()} -> [{string.Join(",", n.ConnectionLineToIndices)}]");
+        }
+        break;
+    }
     case "strtest":
     {
         // strtest <game> <EditorID>: the record's Name in every plugin that has it (localized string lookup).

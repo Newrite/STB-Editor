@@ -316,6 +316,7 @@ internal sealed class EditorApp : IDisposable
         RunFaceGenAutotest();
         RunHavokAutotest();
         RunNavGenAutotest();
+        RunPerkTreeAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -590,6 +591,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-facegen") || _faceGenStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || _havokStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-navgen") || _navGenStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-perktree") || _perkStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-face") || _faceStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
@@ -1791,6 +1793,58 @@ internal sealed class EditorApp : IDisposable
                 Document.Undo();
                 Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
                 _havokStage = 9;
+                break;
+        }
+    }
+
+    private int _perkStage, _perkFrames;
+    private Mutagen.Bethesda.Plugins.FormKey _perkKey;
+
+    /// <summary>
+    /// --autotest-perktree [AVIF EditorID] (with --inspector-tab "Perk tree"; default AVOneHanded): the skill's form on its perk
+    /// tree, a shot (%TEMP%\stbeditor_perktree_before.bmp); a node moved, a link toggled and a node added as the canvas does,
+    /// the record's tree logged, a second shot (_after.bmp); three Ctrl+Z. Nothing is saved.
+    /// </summary>
+    private void RunPerkTreeAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-perktree");
+        if (arg < 0 || Session is not { } session || Loader is not null || _perkStage == 9) return;
+        string Tree() => (StbEditor.Core.OverrideEditing.Override(Document, _perkKey)?.Record as Mutagen.Bethesda.Skyrim.IActorValueInformationGetter)?.PerkTree is { } tree
+            ? $"{tree.Count} nodes; #1 at {Panels.PerkTreeEditor.Position(tree[1])}, links {string.Join(",", tree[1].ConnectionLineToIndices)}; last #{tree[^1].Index} at {Panels.PerkTreeEditor.Position(tree[^1])}"
+            : "not edited";
+        switch (_perkStage)
+        {
+            case 0:
+            {
+                var name = arg + 1 < cli.Length && !cli[arg + 1].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 1] : "AVOneHanded";
+                var entry = session.Catalog.BySignature.GetValueOrDefault("AVIF")?.FirstOrDefault(r => string.Equals(r.EditorId, name, StringComparison.OrdinalIgnoreCase));
+                if (entry is null) { Log.Error($"autotest-perktree: no AVIF {name}"); _perkStage = 9; break; }
+                _perkKey = entry.FormKey;
+                FormWindows.Open(_perkKey);
+                _perkStage = 1;
+                break;
+            }
+            case 1 when ++_perkFrames > 30:
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_perktree_before.bmp");
+                _perkStage = 2;
+                _perkFrames = 0;
+                break;
+            case 2 when ++_perkFrames > 2:
+                if (!Panels.PerkTreeEditor.EditForTest()) { Log.Error("autotest-perktree: the tree is not drawn for editing"); _perkStage = 9; break; }
+                Log.Info($"autotest-perktree: {Tree()}; undo '{Document.History.UndoName}', pending {Document.PendingCount}");
+                _perkStage = 3;
+                _perkFrames = 0;
+                break;
+            case 3 when ++_perkFrames > 10:
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_perktree_after.bmp");
+                _perkStage = 4;
+                _perkFrames = 0;
+                break;
+            case 4 when ++_perkFrames > 2:
+                for (var i = 0; i < 3; i++) Document.Undo();
+                Log.Info($"autotest-perktree: after three Ctrl+Z pending {Document.PendingCount}");
+                _perkStage = 9;
                 break;
         }
     }

@@ -77,7 +77,7 @@ internal static class Theme
 
     private static Vector4 Rgb(int r, int g, int b, float a = 1f) => new(r / 255f, g / 255f, b / 255f, a);
     private static Vector4 White(float a) => new(1f, 1f, 1f, a);
-    private static Vector4 Alpha(Vector4 c, float a) => c with { W = a };
+    public static Vector4 Alpha(Vector4 c, float a) => c with { W = a };
     private static Vector4 Mix(Vector4 a, Vector4 b, float t) => Vector4.Lerp(a, b, t) with { W = 1f };
 
     /// <summary>A row background for a highlighted state colour (comparison rows).</summary>

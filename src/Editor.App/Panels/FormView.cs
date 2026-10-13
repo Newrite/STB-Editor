@@ -52,6 +52,11 @@ internal static class FormView
             ("Sounds", ["AttackSound", "AttackSound2D", "AttackLoopSound", "AttackFailSound", "IdleSound", "EquipSound", "UnequipSound",
                 "PickUpSound", "PutDownSound", "DetectionSoundLevel", "ImpactDataSet", "BlockBashImpact", "AlternateBlockMaterial"]),
         ],
+        ["AVIF"] =
+        [
+            ("Main", ["EditorID", "Name", "Description", "Abbreviation", "Skill", "CNAM"]),
+            ("Perk tree", ["PerkTree"]),
+        ],
         ["PERK"] =
         [
             ("Main", ["EditorID", "Name", "Description", "Trait", "Level", "NumRanks", "Playable", "Hidden", "NextPerk", "Icons"]),
@@ -238,6 +243,11 @@ internal static class FormView
                 else DrawMembers(app, record, tab.Members, [], target, 0);
             }
             finally { ConditionsEditor.Aliases = null; ConditionsEditor.PackageData = null; }
+            return;
+        }
+        if (record is Mutagen.Bethesda.Skyrim.IActorValueInformationGetter avif && PerkTreeEditor.Draws(tab))
+        {
+            PerkTreeEditor.Draw(app, avif, tab, target);
             return;
         }
         if (record is Mutagen.Bethesda.Skyrim.INpcGetter npc && FaceEditor.Draws(tab))

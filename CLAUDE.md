@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.40.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.41.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -89,6 +89,8 @@ v0.40.0: navmesh generation (`Core/NavmeshGenerator.cs`: DotRecast, Skyrim (x, y
 mesh, pieces kept by door seeds / cell edge; `Render/NavmeshGeometry.cs`: what counts as ground — STAT/MSTT/FURN/CONT/TREE/FLOR/SCOL
 meshes with collision, no doors/activators/effects/alpha; `Panels/RenderWindow.NavmeshGenerate.cs`: worker, then into the cell's biggest
 NAVM (neighbours' links into it dropped) + Finalize). Tuned against the game's navmeshes with `stbedit-cli navgen`.
+v0.41.0: perk tree (`Panels/PerkTreeEditor.cs`, AVIF «Perk tree» tab via `FormView.DrawTab`): place = grid column/row + offsets, links =
+ConnectionLineToIndices (node Index values, not list positions); the root's grid fields hold junk in vanilla — drawn under its children.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

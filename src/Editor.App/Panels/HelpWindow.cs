@@ -35,6 +35,7 @@ internal sealed class HelpWindow
             ("LMB drag on the selection", "Move along the ground; hold Z for height, X / Y to lock an axis. With the Rotate (E) or Scale (R) tool: turn or size it"),
             ("S + LMB drag", "Scale"),
             ("RMB drag on the selection", "Rotate about Z; hold X or Y for those axes"),
+            ("Alt+H", "Run Havok Sim: the selection falls with physics and comes to rest (one Ctrl+Z)"),
             ("Q / W / E / R", "Tool: select / move / rotate / scale (gizmo with arrows and rings)"),
             ("L", "Gizmo axes: world or the object's own"),
             ("G", "Snap to the grid (step next to it in the toolbar); Angle: snap rotation"),

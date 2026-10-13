@@ -161,7 +161,58 @@ internal sealed partial class RenderWindow
                 if (ImGui.Selectable($"{step:0.#}°", Math.Abs(step - _angleStep) < 0.01f)) _angleStep = step;
             ImGui.EndCombo();
         }
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_selection.Count == 0 || _havok is not null);
+        if (ImGui.Button(T("Havok"))) RunHavokSim();
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(T("Alt+H — Run Havok Sim: the selected objects fall with physics onto what is around them and come to rest (one Ctrl+Z)"));
     }
+
+    // ------------------------------------------------------------------ Havok sim
+
+    private Task<List<DropPose>>? _havok;
+    private Dictionary<SceneObject, RefState>? _havokBefore;
+    private DateTime _havokStarted;
+
+    /// <summary>Run Havok Sim (CK): the selection falls with physics on a worker; <see cref="FinishHavokSim"/> applies it.</summary>
+    public void RunHavokSim()
+    {
+        if (_havok is not null || _scene is not { } scene || _renderer is null || _selection.Count == 0) return;
+        var moving = _selection.Where(o => o.Kind == SceneObjectKind.Mesh && o.Model is { Shapes.Count: > 0 } && !o.IsDeleted).ToList();
+        if (moving.Count == 0) { Log.Warn(T("Havok sim: nothing selected has a mesh to simulate")); return; }
+        _havokBefore = moving.ToDictionary(o => o, o => o.State);
+        _havokStarted = DateTime.UtcNow;
+        var options = _renderer.Options;
+        _havok = Task.Run(() =>
+        {
+            var poses = PhysicsDrop.Simulate(scene, moving, options, out var stats);
+            Log.Info($"Havok sim: {stats.Statics} ground pieces, {stats.Triangles:N0} triangles built in {stats.BuildMilliseconds} ms; {stats.SimulatedSeconds:0.0} s simulated in {stats.RunMilliseconds} ms");
+            return poses;
+        });
+    }
+
+    /// <summary>Each frame: a finished simulation moves the objects, one undo step.</summary>
+    private void FinishHavokSim()
+    {
+        if (_havok is not { IsCompleted: true } task) return;
+        _havok = null;
+        var before = _havokBefore!;
+        _havokBefore = null;
+        if (!task.IsCompletedSuccessfully)
+        {
+            Log.Error($"Havok sim: {task.Exception?.GetBaseException().Message}");
+            return;
+        }
+        foreach (var pose in task.Result)
+            if (before.TryGetValue(pose.Object, out var state)) pose.Object.Apply(state with { Position = pose.Position, Rotation = pose.Rotation });
+        var unsettled = task.Result.Count(p => !p.Settled);
+        Commit(T("Havok Sim"), before);
+        Log.Info($"Havok sim: {task.Result.Count} object(s) in {(DateTime.UtcNow - _havokStarted).TotalSeconds:0.0} s" + (unsettled > 0 ? $", {unsettled} still moving at the time limit" : ""));
+    }
+
+    /// <summary>The Havok sim still running (autotests wait for it).</summary>
+    public bool HavokRunning => _havok is not null;
 
     private void ToolButton(string label, EditTool tool, string tooltip)
     {
@@ -344,7 +395,8 @@ internal sealed partial class RenderWindow
                 if (ImGui.IsKeyPressed(ImGuiKey.W, false)) _tool = EditTool.Move;
                 if (ImGui.IsKeyPressed(ImGuiKey.E, false)) _tool = EditTool.Rotate;
                 if (ImGui.IsKeyPressed(ImGuiKey.R, false)) _tool = EditTool.Scale;
-                if (ImGui.IsKeyPressed(ImGuiKey.H, false)) _tool = _tool == EditTool.Land ? EditTool.Select : EditTool.Land;
+                if (ImGui.IsKeyPressed(ImGuiKey.H, false) && !io.KeyAlt) _tool = _tool == EditTool.Land ? EditTool.Select : EditTool.Land;
+                if (ImGui.IsKeyPressed(ImGuiKey.H, false) && io.KeyAlt) RunHavokSim();
                 if (ImGui.IsKeyPressed(ImGuiKey.N, false)) SetNavmeshMode(_tool != EditTool.Navmesh);
                 if (ImGui.IsKeyPressed(ImGuiKey.L, false)) _localSpace ^= true;
                 if (ImGui.IsKeyPressed(ImGuiKey.G, false)) _gridSnap ^= true;

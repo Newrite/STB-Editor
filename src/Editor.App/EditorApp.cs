@@ -314,6 +314,7 @@ internal sealed class EditorApp : IDisposable
         RunPaletteAutotest();
         RunPlaceAutotest();
         RunFaceGenAutotest();
+        RunHavokAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
         RunFragmentsAutotest();
@@ -585,6 +586,7 @@ internal sealed class EditorApp : IDisposable
         && (!Environment.GetCommandLineArgs().Contains("--autotest-palette") || _paletteStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-place") || _placeStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-facegen") || _faceGenStage == 9)
+        && (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || _havokStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-layers") || _layersStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-storymanager") || _smStage == 9)
         && (!Environment.GetCommandLineArgs().Contains("--autotest-fragments") || _fragStage == 9)
@@ -1685,6 +1687,60 @@ internal sealed class EditorApp : IDisposable
 
     /// <summary>A frame to save as BMP once this frame is drawn (autotests: pictures before and after a change).</summary>
     public string? ShotRequest { get; set; }
+
+    private int _havokStage, _havokFrames;
+    private List<(SceneObject Object, StbEditor.Core.RefState Resting)> _havokItems = [];
+
+    /// <summary>
+    /// --autotest-havok (with --cell of an interior with clutter): six small items near the view lifted 10 units and tipped 20°, Run
+    /// Havok Sim; where they came to rest against where they lay (they should be back on their tables), then Ctrl+Z.
+    /// Nothing is saved.
+    /// </summary>
+    private void RunHavokAutotest()
+    {
+        if (!Environment.GetCommandLineArgs().Contains("--autotest-havok") || Session is null || Loader is not null || _havokStage == 9) return;
+        switch (_havokStage)
+        {
+            case 0 when RenderWindow.Scene is { } scene && RenderWindow.IsSettled && ++_havokFrames > 20:
+            {
+                var focus = scene.Focus;
+                _havokItems = scene.Objects
+                    .Where(o => o.BaseSignature == "MISC" && o.Model is { Shapes.Count: > 0 } && !o.IsDeleted && o.BoundsRadius < 40)
+                    .OrderBy(o => System.Numerics.Vector3.Distance(o.Position, focus)).Take(6)
+                    .Select(o => (o, o.State)).ToList();
+                if (_havokItems.Count == 0) { Log.Error("autotest-havok: no clutter"); _havokStage = 9; break; }
+                // A little above where they lay and tipped over (lifting far would put them into the shelves above).
+                foreach (var (o, rest) in _havokItems)
+                    o.Apply(rest with { Position = rest.Position + new System.Numerics.Vector3(0, 0, 10), Rotation = rest.Rotation + new System.Numerics.Vector3(0.35f, 0, 0) });
+                RenderWindow.SelectForTest([.. _havokItems.Select(i => i.Object)]);
+                RenderWindow.LookAtForTest(_havokItems[0].Object, 220);
+                Log.Info($"autotest-havok: lifted {_havokItems.Count}: {string.Join(", ", _havokItems.Select(i => $"{i.Object.BaseEditorId} z {i.Resting.Position.Z:0.#}"))}");
+                RenderWindow.RunHavokSim();
+                _havokStage = 1;
+                _havokFrames = 0;
+                break;
+            }
+            case 1 when !RenderWindow.HavokRunning && ++_havokFrames > 5:
+            {
+                var lines = _havokItems.Select(i =>
+                {
+                    var now = i.Object.State;
+                    var tilt = Math.Max(Math.Abs(Math.Sin(now.Rotation.X - i.Resting.Rotation.X)), Math.Abs(Math.Sin(now.Rotation.Y - i.Resting.Rotation.Y))) * 180 / Math.PI;
+                    return $"{i.Object.BaseEditorId}: z {i.Resting.Position.Z:0.#} -> {now.Position.Z:0.#} (dz {now.Position.Z - i.Resting.Position.Z:0.#}), moved {System.Numerics.Vector2.Distance(new(now.Position.X, now.Position.Y), new(i.Resting.Position.X, i.Resting.Position.Y)):0.#} sideways, tilt {tilt:0}°";
+                });
+                Log.Info("autotest-havok: " + string.Join("; ", lines) + $"; undo '{Document.History.UndoName}'");
+                ShotRequest = Path.Combine(Path.GetTempPath(), "stbeditor_havok_after.bmp");
+                _havokStage = 2;
+                _havokFrames = 0;
+                break;
+            }
+            case 2 when ++_havokFrames > 3:
+                Document.Undo();
+                Log.Info($"autotest-havok: after Ctrl+Z z {string.Join(", ", _havokItems.Select(i => $"{i.Object.Position.Z:0.#}"))} (lifted), pending {Document.PendingCount}");
+                _havokStage = 9;
+                break;
+        }
+    }
 
     private int _faceGenStage, _faceGenFrames;
     private SceneObject? _faceGenActor;

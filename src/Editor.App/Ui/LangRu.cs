@@ -1320,6 +1320,17 @@ internal static class LangRu
         ["Object Window: Ctrl+F4"] = "Object Window: Ctrl+F4",
         ["Export FaceGen of the selected NPCs: head mesh and tint texture next to the active file (CK: Ctrl+F4)"] = "Экспорт FaceGen выделенных NPC: меш головы и текстура тинта рядом с активным файлом (CK: Ctrl+F4)",
 
+        // ---- Havok sim
+        ["Havok"] = "Havok",
+        ["Alt+H — Run Havok Sim: the selected objects fall with physics onto what is around them and come to rest (one Ctrl+Z)"] = "Alt+H — Run Havok Sim: выделенные объекты падают с физикой на то, что вокруг, и останавливаются (один Ctrl+Z)",
+        ["Havok sim: nothing selected has a mesh to simulate"] = "Havok sim: у выделенного нет меша для симуляции",
+        ["Havok Sim"] = "Havok Sim",
+        ["Havok sim…"] = "Havok sim…",
+
+        // ---- Havok help
+        ["Alt+H"] = "Alt+H",
+        ["Run Havok Sim: the selection falls with physics and comes to rest (one Ctrl+Z)"] = "Run Havok Sim: выделенное падает с физикой и останавливается (один Ctrl+Z)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

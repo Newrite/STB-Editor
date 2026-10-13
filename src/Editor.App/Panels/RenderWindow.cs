@@ -38,7 +38,7 @@ internal sealed partial class RenderWindow : Panel
     protected override ImGuiWindowFlags WindowFlags => ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
 
     /// <summary>Keep frames coming while assets stream in or the camera moves.</summary>
-    public bool NeedsRedraw => _loading is not null
+    public bool NeedsRedraw => _loading is not null || _havok is not null
         || (_renderer is { } r && (r.Meshes.Pending > 0 || r.Textures.Pending > 0))
         || ImGui.IsMouseDown(ImGuiMouseButton.Right) || ImGui.IsMouseDown(ImGuiMouseButton.Middle)
         || _drag != DragKind.None || _gizmoWasUsing
@@ -442,6 +442,7 @@ internal sealed partial class RenderWindow : Panel
         var hovered = !_gizmoWasUsing && ImGui.IsItemHovered();
         var active = !gizmoHot && ImGui.IsItemActive();
 
+        FinishHavokSim();
         HandleInput(app, origin, size, hovered, active, delta);
 
         if (IsSettled && !_settledLogged)
@@ -716,6 +717,7 @@ internal sealed partial class RenderWindow : Panel
             lines.Add(TF($"camera {p.X:0} {p.Y:0} {p.Z:0}") + (_scene.IsInterior ? "" : TF($"  cell {(int)MathF.Floor(p.X / 4096)}, {(int)MathF.Floor(p.Y / 4096)}")));
         }
 
+        if (_havok is not null) lines.Add(T("Havok sim…"));
         if (_selection.Count == 1)
         {
             var o = _selection.First();

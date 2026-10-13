@@ -3,6 +3,7 @@
     <RootNamespace>StbEditor.Render</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="BepuPhysics" Version="2.4.0" />
     <ProjectReference Include="..\Editor.Data\Editor.Data.csproj" />
     <ProjectReference Include="..\Editor.Assets\Editor.Assets.csproj" />
     <ProjectReference Include="..\Editor.Nif\Editor.Nif.csproj" />

@@ -102,6 +102,7 @@ src\Editor.App\bin\Release\net10.0-windows\win-x64\STBEditor.exe
 | Слои | Мир → «Слои...»: группы рефов, скрыть или заморозить (видны, но не выбираются); хранятся вне плагина |
 | Story Manager | Мир → «Story Manager...»: дерево событий, веток и квестовых узлов, щелчок открывает форму |
 | Экспорт FaceGen | Object Window: Ctrl+F4 или правая кнопка → «Экспорт FaceGen» по NPC — голова и тинт как у CK, рядом с активным файлом |
+| Run Havok Sim | Окно рендера: Alt+H или «Havok» — выделенное падает с физикой и ложится (один Ctrl+Z) |
 | Копировать / вырезать / вставить | Ctrl+C / Ctrl+X / Ctrl+V — под курсор; Ctrl+Shift+V — на то же место (можно в другую ячейку). Копии сохраняют свойства рефа, кроме телепорта |
 
 Панель Render Window: режим (Lit / Unlit / Normals / Untextured), Wire, Markers, Disabled, Water, Land,
@@ -384,4 +385,4 @@ scripts (.pex), sound, music, interface, strings и т. д. — в `<плаги�
 
 ## Лицензия
 
-Будет GPL-3.0 (Mutagen — GPL-3.0).
+Будет GPL-3.0 (Mutagen — GPL-3.0). Физика Run Havok Sim — BepuPhysics 2 (Apache-2.0).

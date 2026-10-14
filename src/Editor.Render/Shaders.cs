@@ -84,6 +84,7 @@ internal static class Shaders
         #define F_PALCOLOR    1024
         #define F_PALALPHA    2048
         #define F_FACEGEN     4096
+        #define F_FADE        8192
 
         Texture2D DiffuseMap : register(t0);
         Texture2D NormalMap  : register(t1);
@@ -273,6 +274,7 @@ internal static class Shaders
                 }
                 albedo.a *= Params.y;
                 if (Params.x >= 0 && albedo.a < Params.x) discard;
+                if (flags & F_FADE) albedo.a = Params.y;
 
                 float4 nm = NormalMap.Sample(Sampler, i.UV);
                 float3 N = normalize(i.Normal);

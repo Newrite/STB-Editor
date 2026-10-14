@@ -40,8 +40,11 @@ public sealed class RenderOptions
     /// <summary>References of hidden layers: neither drawn nor picked.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenReferences { get; } = [];
 
-    /// <summary>References hidden by hand (key 1 on the selection): only in the view, never saved.</summary>
+    /// <summary>References hidden by hand (key 1 on the selection, second press): only in the view, never saved.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenByHand { get; } = [];
+
+    /// <summary>References faded by hand (key 1, first press): drawn at half opacity, still picked.</summary>
+    public HashSet<Mutagen.Bethesda.Plugins.FormKey> FadedByHand { get; } = [];
 
     /// <summary>References of frozen layers: drawn, but a click does not select them (they still catch placed objects).</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> FrozenReferences { get; } = [];
@@ -245,6 +248,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         PaletteColor = 1024,
         PaletteAlpha = 2048,
         FaceGen = 4096,
+        Fade = 8192,
     }
 
     private readonly ID3D11Device _device;
@@ -452,7 +456,8 @@ public sealed unsafe class SceneRenderer : IDisposable
     // ------------------------------------------------------------------ frame
 
     private readonly record struct Batch(GpuShape Shape, int FirstInstance, int Count);
-    private readonly record struct Blended(GpuShape? Shape, InstanceData Instance, float Distance, ParticleRuntime? Particles = null);
+    /// <param name="Fade">Below 1: an object faded by hand (key 1), drawn see-through at this opacity.</param>
+    private readonly record struct Blended(GpuShape? Shape, InstanceData Instance, float Distance, ParticleRuntime? Particles = null, float Fade = 1);
 
     private Camera? _camera;
     private readonly Dictionary<GpuShape, List<InstanceData>> _buckets = new();
@@ -597,6 +602,7 @@ public sealed unsafe class SceneRenderer : IDisposable
             Stats.Visible++;
 
             var selected = selection.Contains(obj);
+            var faded = Options.FadedByHand.Count > 0 && Options.FadedByHand.Contains(obj.Reference);
             var highlight = obj.IsModified ? new Vector4(1f, 0.85f, 0.35f, 0.12f)
                 : obj.InitiallyDisabled ? new Vector4(0.6f, 0.2f, 0.9f, 0.25f)
                 : obj.Kind == SceneObjectKind.Actor && Options.HighlightActors ? RenderOptions.ActorTint : Vector4.Zero;
@@ -624,10 +630,10 @@ public sealed unsafe class SceneRenderer : IDisposable
                     if (selected) _selectedShapes.Add((shape, instance));
 
                     // Effect shaders without an alpha property draw opaque in the game too.
-                    if (shape.Material.AlphaBlend)
+                    if (shape.Material.AlphaBlend || faded)
                     {
                         var distance = Vector3.DistanceSquared(camera.Position, obj.BoundsCenter);
-                        _blended.Add(new Blended(shape, instance, distance));
+                        _blended.Add(new Blended(shape, instance, distance, Fade: faded ? 0.5f : 1f));
                         continue;
                     }
 
@@ -768,9 +774,10 @@ public sealed unsafe class SceneRenderer : IDisposable
             }
 
             var shape = _blended[i].Shape!;
-            ctx.OMSetBlendState(BlendFor(shape.Material));
+            var fade = _blended[i].Fade;
+            ctx.OMSetBlendState(fade < 1 && !shape.Material.AlphaBlend ? _alphaBlend : BlendFor(shape.Material));
             ctx.RSSetState(Options.Wireframe ? _wireframe : _cullNone);
-            BindMaterial(shape.Material, flat: false, shape.Source);
+            BindMaterial(shape.Material, flat: false, shape.Source, fade: fade);
             DrawShape(shape, i, 1);
         }
 
@@ -877,7 +884,7 @@ public sealed unsafe class SceneRenderer : IDisposable
     /// <summary>Forget particle state of models that are gone (call when the scene changes).</summary>
     public void ResetParticles() => _particleRuntimes.Clear();
 
-    private void BindMaterial(NifMaterial m, bool flat, NifShape? shape = null, bool particles = false)
+    private void BindMaterial(NifMaterial m, bool flat, NifShape? shape = null, bool particles = false, float fade = 1)
     {
         var flags = flat ? MaterialFlags.Flat : 0;
         ID3D11ShaderResourceView diffuse = _textures.White, normal = _textures.FlatNormal, glow = _textures.Black, spec = _textures.Black;
@@ -955,10 +962,13 @@ public sealed unsafe class SceneRenderer : IDisposable
             }
         }
 
+        // Faded by hand: opacity scaled, the alpha test scaled with it (cut-outs keep their shape); materials without alpha
+        // take the fade alone.
+        if (fade < 1 && !m.AlphaBlend && !m.AlphaTest) flags |= MaterialFlags.Fade;
         var constants = new MaterialConstants
         {
             UvTransform = new Vector4(uvOffset, uvScale.X, uvScale.Y),
-            Params = new Vector4(m.AlphaTest ? m.AlphaThreshold / 255f : -1f, alpha, m.Glossiness, m.SpecularStrength),
+            Params = new Vector4(m.AlphaTest ? m.AlphaThreshold / 255f * fade : -1f, alpha * fade, m.Glossiness, m.SpecularStrength),
             // Effect shaders get the base colour raw and the multiple apart (the palette row comes from base red).
             SpecColor = new Vector4(m.SpecularColor, m.Kind == ShaderKind.Effect ? emissiveMultiple : 1),
             Emissive = m.Kind == ShaderKind.Effect

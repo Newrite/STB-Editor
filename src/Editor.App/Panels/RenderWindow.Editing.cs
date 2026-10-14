@@ -421,16 +421,29 @@ internal sealed partial class RenderWindow
         }
     }
 
-    /// <summary>Hides the selected objects in the view only (CK: 1); they cannot be picked until shown again.</summary>
+    /// <summary>
+    /// Key 1 on the selection, in turn: see-through at half opacity (what is under it shows; it can still be picked), then
+    /// hidden (cannot be picked), then shown again. Only in the view, never saved.
+    /// </summary>
     public void HideSelection()
     {
         if (_renderer is null || _selection.Count == 0) return;
-        foreach (var obj in _selection) _renderer.Options.HiddenByHand.Add(obj.Reference);
-        _selection.Clear();
+        var o = _renderer.Options;
+        var keys = _selection.Select(s => s.Reference).ToList();
+        if (keys.All(o.FadedByHand.Contains))
+        {
+            foreach (var key in keys) { o.FadedByHand.Remove(key); o.HiddenByHand.Add(key); }
+            _selection.Clear();
+        }
+        else foreach (var key in keys) o.FadedByHand.Add(key);
     }
 
-    /// <summary>Shows every object hidden by hand again.</summary>
-    public void ShowHidden() => _renderer?.Options.HiddenByHand.Clear();
+    /// <summary>Shows every object faded or hidden by hand again (Alt+1).</summary>
+    public void ShowHidden()
+    {
+        _renderer?.Options.HiddenByHand.Clear();
+        _renderer?.Options.FadedByHand.Clear();
+    }
 
     private void Fly(ImGuiIOPtr io, float delta)
     {

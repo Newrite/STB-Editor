@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.68.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.69.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -154,6 +154,9 @@ v0.68.0: view presets (`Panels/RenderWindow.Presets.cs` `ViewPreset`, Settings.V
 screenshots), Cell View camera cell + «Find placed objects» (UseIndex placed uses of matching bases, filtered by the cell's worldspace),
 toolbar button IDs `###tool…` / `###show…` (same labels clashed); Release builds set `ConfigDebugHighlightIdConflicts = false`.
 Translations can make two English labels the same Russian text — give buttons explicit `###` IDs where labels may repeat.
+v0.69.0: key 1 cycles see-through → hidden → shown (`RenderOptions.FadedByHand`: every shape of the object goes to the blended pass with
+`Blended.Fade` 0.5 — opacity and the alpha-test threshold scaled, shader flag F_FADE takes alpha from the fade alone for materials
+without alpha). `docs/ROADMAP.md` is the short what-is-there / what-is-planned page for testers — keep it current too.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

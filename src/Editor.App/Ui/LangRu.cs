@@ -1841,6 +1841,10 @@ internal static class LangRu
         ["Placing objects"] = "Расстановка объектов",
         ["Weak PC"] = "Слабый ПК",
 
+        // ---- Render window
+        ["On the selection, in turn: see-through (what is under it shows), hidden, shown again; Alt+1 shows all (only in the view, not saved)"] = "На выделенном по очереди: полупрозрачно (видно, что под ним), скрыто, снова видно; Alt+1 показывает всё (только в окне, не сохраняется)",
+        ["See-through, then hide the selection ({0})"] = "Полупрозрачно, затем скрыть выделенное ({0})",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

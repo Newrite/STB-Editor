@@ -472,6 +472,14 @@ internal sealed partial class RenderWindow : Panel
                 _selection.Clear();
                 _selection.Add(hit.Object);
                 Log.Info($"pick: {hit.Object.BaseEditorId} [{hit.Object.BaseSignature}] {hit.Object.ModelPath} at {hit.Point}");
+                // Checks of the 1 key: --fade-picked presses it once (see-through), twice with "2" (hidden).
+                var fade = Array.IndexOf(Environment.GetCommandLineArgs(), "--fade-picked");
+                if (fade >= 0)
+                {
+                    var times = fade + 1 < Environment.GetCommandLineArgs().Length && Environment.GetCommandLineArgs()[fade + 1] == "2" ? 2 : 1;
+                    for (var t = 0; t < times; t++) HideSelection();
+                    Log.Info($"fade-picked x{times}: faded {_renderer.Options.FadedByHand.Count}, hidden {_renderer.Options.HiddenByHand.Count}");
+                }
             }
             PendingPick = null;
         }
@@ -520,7 +528,7 @@ internal sealed partial class RenderWindow : Panel
     private void DrawShowHide(RenderOptions options)
     {
         ImGui.SameLine();
-        var hidden = options.HiddenGroups.Count + (options.CurrentCellOnly ? 1 : 0) + options.HiddenByHand.Count;
+        var hidden = options.HiddenGroups.Count + (options.CurrentCellOnly ? 1 : 0) + options.HiddenByHand.Count + options.FadedByHand.Count;
         if (hidden > 0) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
         if (ImGui.Button((hidden > 0 ? TF($"Show ({hidden} off)") : T("Show")) + "###showhide")) ImGui.OpenPopup("##showhidepopup");
         if (hidden > 0) ImGui.PopStyleColor();
@@ -541,16 +549,17 @@ internal sealed partial class RenderWindow : Panel
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Outdoors: only the objects of the cell in the middle of the loaded grid"));
         ImGui.Separator();
         ImGui.BeginDisabled(_selection.Count == 0);
-        if (ImGui.Selectable(TF($"Hide the selection ({_selection.Count})") + "  1")) HideSelection();
+        if (ImGui.Selectable(TF($"See-through, then hide the selection ({_selection.Count})") + "  1")) HideSelection();
         ImGui.EndDisabled();
-        ImGui.BeginDisabled(options.HiddenByHand.Count == 0);
-        if (ImGui.Selectable(TF($"Show hidden objects ({options.HiddenByHand.Count})") + "  Alt+1")) ShowHidden();
+        ImGui.BeginDisabled(options.HiddenByHand.Count + options.FadedByHand.Count == 0);
+        if (ImGui.Selectable(TF($"Show hidden objects ({options.HiddenByHand.Count + options.FadedByHand.Count})") + "  Alt+1")) ShowHidden();
         ImGui.EndDisabled();
         if (ImGui.SmallButton(T("Show all")))
         {
             options.HiddenGroups.Clear();
             options.CurrentCellOnly = false;
             options.HiddenByHand.Clear();
+            options.FadedByHand.Clear();
         }
         ImGui.EndPopup();
     }

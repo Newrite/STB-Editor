@@ -70,6 +70,9 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
             Worldspace = worldKey,
             CenterCell = (centerX, centerY),
             Lighting = SceneLighting.DefaultExterior,
+            Grasses = GrassOf,
+            GrassSpacing = GrassSetting("iMinGrassSize", 20),
+            GrassDistance = GrassSetting("fGrassStartFadeDistance", 7000) + GrassSetting("fGrassFadeRange", 1000),
         };
 
         var cells = catalog.BySignature.GetValueOrDefault("CELL") ?? [];
@@ -551,6 +554,36 @@ public sealed class SceneBuilder(Workspace workspace, RecordCatalog catalog)
         if (Document?.Draft(cell) is Core.CellDraft cellDraft)
             return cellDraft.Cell.Landscape is { } own ? BuildTerrain(own, x, y, cell) : null;
         return LandOf(CellVersions(cell)) is { } land ? BuildTerrain(land, x, y, cell) : null;
+    }
+
+    private readonly Dictionary<FormKey, IReadOnlyList<GrassKind>> _grasses = new();
+
+    /// <summary>The grass types of a landscape texture (LTEX GNAM → GRAS), cached.</summary>
+    public IReadOnlyList<GrassKind> GrassOf(FormKey texture)
+    {
+        lock (_grasses)
+        {
+            if (_grasses.TryGetValue(texture, out var cached)) return cached;
+            var kinds = new List<GrassKind>();
+            foreach (var link in Resolve<ILandscapeTextureGetter>(texture)?.Grasses ?? [])
+            {
+                if (link.IsNull || Resolve<IGrassGetter>(link.FormKey) is not { } grass || grass.Model?.File.GivenPath is not { Length: > 0 } file) continue;
+                kinds.Add(new GrassKind(AssetFileSystem.MeshPath(file), grass.Density, grass.MinSlope, grass.MaxSlope, grass.UnitsFromWater,
+                    grass.UnitsFromWaterType.ToString(), grass.PositionRange, grass.HeightRange,
+                    grass.Flags.HasFlag(Grass.Flag.UniformScaling), grass.Flags.HasFlag(Grass.Flag.FitToSlope)));
+            }
+            return _grasses[texture] = kinds;
+        }
+    }
+
+    /// <summary>A [Grass] INI setting: SkyrimPrefs.ini over Skyrim.ini, as the engine reads them.</summary>
+    private float GrassSetting(string key, float fallback)
+    {
+        foreach (var file in new[] { Path.Combine(workspace.Game.IniFolder, "SkyrimPrefs.ini"), workspace.Game.SkyrimIni })
+            if (File.Exists(file) && TextFiles.ReadIniValue(file, key) is { } text
+                && float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                return value;
+        return fallback;
     }
 
     private const string DefaultLandTexture = @"textures\landscape\dirt02.dds";

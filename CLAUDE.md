@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.66.0, 2026-10-13) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.67.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -146,6 +146,10 @@ Archery, Light Armor, Sneak, Lockpicking, Pickpocket, Speech, Alchemy, Illusion,
 camera at the dome's centre; `PerkTreeEditor.DrawSky` renders it through `ObjectPreview`, star drags = ray ∩ the tree's slope).
 v0.66.0: what SPID gives an NPC (`FrameworksView.GiftsOf` / `DrawNpc`, drawn by `FormView.DrawTab` under the NPC «Spells and perks» tab;
 each SPID line evaluated once per NPC with `SpidMatch`).
+v0.67.0: grass (`Render/Grass.cs` `GrassField.Generate`: iMinGrassSize grid, dominant LTEX → its GRAS, density / slope / water / ranges;
+`SceneBuilder.GrassOf` + INI [Grass] into `Scene.Grasses / GrassSpacing / GrassDistance`; `SceneRenderer.CollectGrass` two cells a frame,
+cached per TerrainCell; models through MeshCache "grass:" — vertex alpha off, it is the wind weight); hide selection 1 / Alt+1
+(`RenderOptions.HiddenByHand`); RecordForm no longer dereferences a missing catalog entry when a reference's cell unloads.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

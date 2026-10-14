@@ -290,6 +290,12 @@ public abstract class AsyncCache<T> : IDisposable where T : class, IDisposable
 public sealed class MeshCache(ID3D11Device device, AssetFileSystem assets)
     : AsyncCache<GpuModel>(Math.Max(2, Environment.ProcessorCount / 2))
 {
+    /// <summary>
+    /// "grass:path.nif": a grass model as the game's grass shader draws it — its vertex alpha is the wind's weight, not
+    /// transparency (read as transparency, only the tips of the blades would show).
+    /// </summary>
+    public const string GrassPrefix = "grass:";
+
     protected override GpuModel Create(string path, out long bytes)
     {
         var model = CreateModel(path);
@@ -345,8 +351,12 @@ public sealed class MeshCache(ID3D11Device device, AssetFileSystem assets)
             return composite;
         }
 
-        var bytes = assets.ReadAllBytes(path) ?? throw new FileNotFoundException(path);
-        var model = NifFile.Load(bytes, path);
+        var grass = path.StartsWith(GrassPrefix, StringComparison.Ordinal);
+        var file = grass ? path[GrassPrefix.Length..] : path;
+        var bytes = assets.ReadAllBytes(file) ?? throw new FileNotFoundException(file);
+        var model = NifFile.Load(bytes, file);
+        if (grass)
+            foreach (var shape in model.Shapes) shape.Material.Flags1 &= ~ShaderFlags1.VertexAlpha;
         var created = GpuModel.Create(device, path, model.Shapes, model.Particles);
         created.HasCollision = model.HasCollision;
         if (model.CollisionComplete && model.CollisionPieces.Count > 0) created.CollisionPieces = model.CollisionPieces;

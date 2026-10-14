@@ -110,6 +110,13 @@ internal sealed class RecordForm
             return;
         }
         if (_versions.Count == 0) return;
+        // A placed reference whose cell has just been unloaded (the camera flew on and the view streamed other cells in):
+        // nothing to show it with until it is loaded again.
+        if (catalog is null && placedObject is null)
+        {
+            ImGui.TextColored(Theme.TextDim, T("This reference's cell is no longer loaded in the Render Window."));
+            return;
+        }
 
         // What is shown and edited: the unsaved edit if there is one, else the winning version.
         var current = (IMajorRecordGetter?)app.Document.Override(key)?.Record ?? _versions[0].Record;

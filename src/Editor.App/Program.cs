@@ -102,6 +102,7 @@ internal static class Program
             {
                 Screenshot.SaveBmp(shot, graphics.Width, graphics.Height, graphics.ReadBackBuffer());
                 Log.Info($"screenshot saved to {shot}");
+                if (editor.RenderWindow.Stats is { } stats) Log.Info($"render stats: {stats.Visible}/{stats.Objects} objects, {stats.DrawCalls} draws, {stats.Triangles / 1000}k tris, {stats.Grass} grass tufts");
                 break;
             }
 

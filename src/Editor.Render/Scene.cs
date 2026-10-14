@@ -203,6 +203,13 @@ public sealed class Scene
     public List<TerrainCell> Terrain { get; } = [];
     public List<WaterPlane> Water { get; } = [];
     public List<NavmeshView> Navmeshes { get; } = [];
+
+    /// <summary>Outdoors: the grass types of a landscape texture (LTEX → GRAS), for drawing grass on the land.</summary>
+    public Func<FormKey, IReadOnlyList<GrassKind>>? Grasses { get; set; }
+
+    /// <summary>Grass grid step (INI [Grass] iMinGrassSize) and the distance it is drawn to (fGrassStartFadeDistance + fGrassFadeRange).</summary>
+    public float GrassSpacing { get; set; } = 20;
+    public float GrassDistance { get; set; } = 7000;
     /// <summary>Set again when the cell's lighting is edited.</summary>
     public required SceneLighting Lighting { get; set; }
     public List<string> Warnings { get; } = [];

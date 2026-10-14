@@ -1805,6 +1805,16 @@ internal static class LangRu
         ["a filter of the line could not be checked"] = "один из фильтров строки не проверить",
         ["(already in the record)"] = "(уже в записи)",
 
+        // ---- Render window
+        ["Hide the selected objects in the view (not saved, Show lists how many) / show them all again"] = "Скрыть выделенные объекты в окне (не сохраняется, «Показ» пишет, сколько скрыто) / показать все обратно",
+        ["Hide the selection ({0})"] = "Скрыть выделенное ({0})",
+        ["Show hidden objects ({0})"] = "Показать скрытые ({0})",
+
+        // ---- Render window
+        ["This reference's cell is no longer loaded in the Render Window."] = "Ячейка этой расстановки больше не загружена в окне рендера.",
+        ["Grass on the land: the grass types of its landscape textures, placed like the game does (step iMinGrassSize, distance fGrassStartFadeDistance from the INI)"] = "Трава на земле: виды травы её текстур ландшафта, расставленные как в игре (шаг iMinGrassSize, дальность fGrassStartFadeDistance из INI)",
+        ["{0:N0} grass tufts"] = "пучков травы: {0:N0}",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

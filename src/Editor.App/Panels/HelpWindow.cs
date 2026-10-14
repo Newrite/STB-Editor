@@ -41,6 +41,7 @@ internal sealed class HelpWindow
             ("G", "Snap to the grid (step next to it in the toolbar); Angle: snap rotation"),
             ("F", "Drop to the ground"),
             ("Del", "Delete the selection"),
+            ("1 / Alt+1", "Hide the selected objects in the view (not saved, Show lists how many) / show them all again"),
             ("Ctrl+D", "Duplicate the selection"),
             ("Ctrl+C / Ctrl+X", "Copy / cut the selected objects (with their properties)"),
             ("Ctrl+V / Ctrl+Shift+V", "Paste under the cursor / in place (same coordinates; works in another cell too)"),

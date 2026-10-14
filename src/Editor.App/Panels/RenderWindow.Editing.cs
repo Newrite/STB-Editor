@@ -407,6 +407,8 @@ internal sealed partial class RenderWindow
                 if (ImGui.IsKeyPressed(ImGuiKey.M, false)) _renderer!.Options.ShowMarkers ^= true;
                 if (ImGui.IsKeyPressed(ImGuiKey.F4, false) && !io.KeyCtrl) _renderer!.Options.ShowCollision ^= true;
                 if (ImGui.IsKeyPressed(ImGuiKey.B, false)) _renderer!.Options.CellBorders ^= true;
+                if (ImGui.IsKeyPressed(ImGuiKey.Key1, false) && !io.KeyAlt) HideSelection();
+                if (ImGui.IsKeyPressed(ImGuiKey.Key1, false) && io.KeyAlt) ShowHidden();
             }
             if (ImGui.IsKeyPressed(ImGuiKey.W, false) && io.KeyShift) _renderer!.Options.Wireframe ^= true;
             if (ImGui.IsKeyPressed(ImGuiKey.Delete, false) && _tool is not (EditTool.Navmesh or EditTool.Region)) DeleteSelection();
@@ -417,6 +419,17 @@ internal sealed partial class RenderWindow
             if (ImGui.IsKeyPressed(ImGuiKey.Escape, false)) _selection.Clear();
         }
     }
+
+    /// <summary>Hides the selected objects in the view only (CK: 1); they cannot be picked until shown again.</summary>
+    public void HideSelection()
+    {
+        if (_renderer is null || _selection.Count == 0) return;
+        foreach (var obj in _selection) _renderer.Options.HiddenByHand.Add(obj.Reference);
+        _selection.Clear();
+    }
+
+    /// <summary>Shows every object hidden by hand again.</summary>
+    public void ShowHidden() => _renderer?.Options.HiddenByHand.Clear();
 
     private void Fly(ImGuiIOPtr io, float delta)
     {
@@ -454,6 +467,7 @@ internal sealed partial class RenderWindow
 
     /// <summary>The view options (layers put their hidden and frozen references here); null before the first frame.</summary>
     public RenderOptions? Options => _renderer?.Options;
+    public RenderStats? Stats => _renderer?.Stats;
 
     /// <summary>Selects the loaded references among <paramref name="keys"/> (Layers → select).</summary>
     public void SelectReferences(EditorApp app, IEnumerable<FormKey> keys)

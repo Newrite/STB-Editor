@@ -510,7 +510,7 @@ internal sealed partial class RenderWindow : Panel
     private void DrawShowHide(RenderOptions options)
     {
         ImGui.SameLine();
-        var hidden = options.HiddenGroups.Count + (options.CurrentCellOnly ? 1 : 0);
+        var hidden = options.HiddenGroups.Count + (options.CurrentCellOnly ? 1 : 0) + options.HiddenByHand.Count;
         if (hidden > 0) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
         if (ImGui.Button((hidden > 0 ? TF($"Show ({hidden} off)") : T("Show")) + "###showhide")) ImGui.OpenPopup("##showhidepopup");
         if (hidden > 0) ImGui.PopStyleColor();
@@ -529,10 +529,18 @@ internal sealed partial class RenderWindow : Panel
         var only = options.CurrentCellOnly;
         if (ImGui.Checkbox(T("Current cell only"), ref only)) options.CurrentCellOnly = only;
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Outdoors: only the objects of the cell in the middle of the loaded grid"));
+        ImGui.Separator();
+        ImGui.BeginDisabled(_selection.Count == 0);
+        if (ImGui.Selectable(TF($"Hide the selection ({_selection.Count})") + "  1")) HideSelection();
+        ImGui.EndDisabled();
+        ImGui.BeginDisabled(options.HiddenByHand.Count == 0);
+        if (ImGui.Selectable(TF($"Show hidden objects ({options.HiddenByHand.Count})") + "  Alt+1")) ShowHidden();
+        ImGui.EndDisabled();
         if (ImGui.SmallButton(T("Show all")))
         {
             options.HiddenGroups.Clear();
             options.CurrentCellOnly = false;
+            options.HiddenByHand.Clear();
         }
         ImGui.EndPopup();
     }
@@ -632,6 +640,7 @@ internal sealed partial class RenderWindow : Panel
         DrawShowHide(options);
         Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
         Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
+        Toggle(T("Grass"), () => options.ShowGrass, v => options.ShowGrass = v, T("Grass on the land: the grass types of its landscape textures, placed like the game does (step iMinGrassSize, distance fGrassStartFadeDistance from the INI)"));
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
         Toggle(T("Collision"), () => options.ShowCollision, v => options.ShowCollision = v, T("Havok collision of the objects near the camera (CK: F4)"));
         DrawSky(app);
@@ -717,6 +726,7 @@ internal sealed partial class RenderWindow : Panel
         {
             lines.Add($"{_scene.Title}");
             lines.Add(TF($"{stats.Visible:N0}/{stats.Objects:N0} objects · {stats.DrawCalls:N0} draws · {stats.Triangles / 1000:N0}k tris · {stats.Lights} lights · {_fps:0} fps"));
+            if (stats.Grass > 0) lines.Add(TF($"{stats.Grass:N0} grass tufts"));
             var pendingMeshes = _renderer.Meshes.Pending;
             var pendingTextures = _renderer.Textures.Pending;
             if (pendingMeshes + pendingTextures > 0) lines.Add(TF($"streaming: {pendingMeshes} meshes, {pendingTextures} textures"));

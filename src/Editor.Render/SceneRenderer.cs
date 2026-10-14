@@ -28,6 +28,9 @@ public sealed class RenderOptions
     public bool ShowMarkers { get; set; } = true;
     public bool ShowTerrain { get; set; } = true;
     public bool ShowWater { get; set; } = true;
+
+    /// <summary>Grass on the land (LTEX grass types, placed like the game does).</summary>
+    public bool ShowGrass { get; set; } = true;
     public bool ShowInitiallyDisabled { get; set; } = true;
     public bool ShowLightRadius { get; set; } = true;
 
@@ -36,6 +39,9 @@ public sealed class RenderOptions
 
     /// <summary>References of hidden layers: neither drawn nor picked.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenReferences { get; } = [];
+
+    /// <summary>References hidden by hand (key 1 on the selection): only in the view, never saved.</summary>
+    public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenByHand { get; } = [];
 
     /// <summary>References of frozen layers: drawn, but a click does not select them (they still catch placed objects).</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> FrozenReferences { get; } = [];
@@ -69,7 +75,8 @@ public sealed class RenderOptions
         (obj.InitiallyDisabled && !ShowInitiallyDisabled)
         || (HiddenGroups.Count > 0 && HiddenGroups.Contains(Group(obj.BaseSignature)))
         || (CurrentCellOnly && CurrentCell is { } cell && obj.Cell != cell)
-        || (HiddenReferences.Count > 0 && HiddenReferences.Contains(obj.Reference));
+        || (HiddenReferences.Count > 0 && HiddenReferences.Contains(obj.Reference))
+        || (HiddenByHand.Count > 0 && HiddenByHand.Contains(obj.Reference));
     public bool Fog { get; set; } = true;
 
     /// <summary>Draw the Havok collision of objects near the camera as lines (CK: F4).</summary>
@@ -105,6 +112,7 @@ public sealed class RenderStats
     public int DrawCalls;
     public int Triangles;
     public int Lights;
+    public int Grass;
 }
 
 /// <summary>Colour + depth target the scene renders into; shown in ImGui as an image.</summary>
@@ -471,7 +479,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         var target = (Width: width, Height: height);
 
         var stats = Stats;
-        stats.Objects = stats.Visible = stats.DrawCalls = stats.Triangles = stats.Lights = 0;
+        stats.Objects = stats.Visible = stats.DrawCalls = stats.Triangles = stats.Lights = stats.Grass = 0;
 
         var tick = System.Diagnostics.Stopwatch.GetTimestamp();
         var elapsed = (tick - _lastTick) / (double)System.Diagnostics.Stopwatch.Frequency;
@@ -496,6 +504,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         if (Options.ShowTerrain) DrawTerrain(scene, frustum);
 
         CollectObjects(scene, camera, frustum, selection);
+        if (Options.ShowGrass && Options.ShowTerrain && scene.Grasses is { } grassOf) CollectGrass(scene, camera, frustum, grassOf);
         if (Options.DrawOpaquePass) DrawOpaque();
         if (Options.ShowWater) DrawWater(scene);
         if (Options.ShowNavmesh) DrawNavmeshes(scene);
@@ -1071,9 +1080,52 @@ public sealed unsafe class SceneRenderer : IDisposable
     }
 
     /// <summary>Drops GPU terrain of cells that are no longer in the scene.</summary>
+    private readonly Dictionary<TerrainCell, List<GrassPatch>> _grass = new();
+
+    /// <summary>
+    /// Grass of the land cells near the camera into the opaque buckets (alpha-tested tufts). Cells get their grass made
+    /// two a frame (a few milliseconds each) and keep it until their terrain is rebuilt.
+    /// </summary>
+    private void CollectGrass(Scene scene, Camera camera, Frustum frustum, Func<Mutagen.Bethesda.Plugins.FormKey, IReadOnlyList<GrassKind>> grassOf)
+    {
+        var made = 0;
+        var reach = scene.GrassDistance;
+        var eye = new Vector2(camera.Position.X, camera.Position.Y);
+        foreach (var terrain in scene.Terrain)
+        {
+            var centre = new Vector2(terrain.Origin.X + TerrainCell.CellSize / 2, terrain.Origin.Y + TerrainCell.CellSize / 2);
+            if (Vector2.Distance(eye, centre) > reach + TerrainCell.CellSize * 0.71f) continue;
+            if (!_grass.TryGetValue(terrain, out var patches))
+            {
+                if (made >= 2) { HasAnimation = true; continue; }
+                patches = GrassField.Generate(terrain, grassOf, scene.GrassSpacing, scene.Water);
+                _grass[terrain] = patches;
+                made++;
+            }
+            foreach (var patch in patches)
+            {
+                if (!frustum.Intersects((patch.Min + patch.Max) / 2, Vector3.Distance(patch.Min, patch.Max) / 2)) continue;
+                var model = _meshes.Get(MeshCache.GrassPrefix + patch.Model, out var state);
+                if (state != LoadState.Ready || model is null) { if (state != LoadState.Failed) HasAnimation = true; continue; }
+                foreach (var shape in model.Shapes)
+                {
+                    if (!IsShapeVisible(shape.Source, Options) || shape.Material.AlphaBlend) continue;
+                    if (!_buckets.TryGetValue(shape, out var bucket)) _buckets[shape] = bucket = [];
+                    foreach (var world in patch.Worlds)
+                    {
+                        if (Vector2.DistanceSquared(eye, new Vector2(world.M41, world.M42)) > reach * reach) continue;
+                        bucket.Add(new InstanceData { World = world, Highlight = Vector4.Zero });
+                        Stats.Grass++;
+                    }
+                }
+            }
+        }
+    }
+
     public void Forget(Scene? keep)
     {
         var alive = keep?.Terrain.ToHashSet() ?? [];
+        foreach (var cell in _grass.Keys.Where(c => !alive.Contains(c)).ToList()) _grass.Remove(cell);
         foreach (var cell in _terrain.Keys.Where(c => !alive.Contains(c)).ToList())
         {
             _terrain[cell].Dispose();

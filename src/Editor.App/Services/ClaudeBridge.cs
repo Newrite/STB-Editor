@@ -43,7 +43,7 @@ internal sealed class ClaudeBridge : IDisposable
     public bool Running => _listener is not null;
 
     /// <summary>Work for the UI thread (keeps the editor from idling).</summary>
-    public bool HasWork => !_queue.IsEmpty;
+    public bool HasWork => !_queue.IsEmpty || !UiWork.IsEmpty;
 
     /// <summary>The last calls (newest first), for the Claude window.</summary>
     public List<(DateTime At, string Tool, string Summary, bool Error)> History { get { lock (_historyLock) return [.. _history]; } }
@@ -265,9 +265,25 @@ internal sealed class ClaudeBridge : IDisposable
         return finished == call.Done.Task ? call.Done.Task.Result : ToolResult.Text("the editor did not answer in time (busy loading?)", true);
     }
 
+    private static readonly ConcurrentQueue<Action<EditorApp>> UiWork = new();
+
+    /// <summary>Runs something on the UI thread between frames (a tool that went to a worker and comes back to commit).</summary>
+    public static Task<T> OnUi<T>(EditorApp app, Func<EditorApp, T> work)
+    {
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        UiWork.Enqueue(editor =>
+        {
+            try { done.TrySetResult(work(editor)); }
+            catch (Exception e) { done.TrySetException(e); }
+        });
+        Platform.MainWindow.Wake();
+        return done.Task;
+    }
+
     /// <summary>Each frame, on the UI thread: runs the queued calls.</summary>
     public void Pump(EditorApp app)
     {
+        while (UiWork.TryDequeue(out var work)) work(app);
         while (_queue.TryDequeue(out var call))
         {
             if (call.Tool.Edits && !app.Settings.ClaudeBridgeEdits)

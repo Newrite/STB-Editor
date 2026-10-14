@@ -514,6 +514,7 @@ internal sealed partial class RenderWindow : Panel
         DrawDoorQuestion(app);
         DrawOverlay(app, drawList, origin, size);
         DrawClaudeOverlay(drawList, origin, size);
+        DrawProposalBanner(drawList, origin, size, hovered);
         AcceptDrop(app, origin, size);
     }
 

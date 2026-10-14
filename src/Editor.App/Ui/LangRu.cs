@@ -1893,6 +1893,25 @@ internal static class LangRu
         // ---- Claude
         ["With the Claude bridge on (View - Settings): mark the point under the cursor for Claude; notes in View - Claude"] = "С включённым мостом Claude (Вид - Настройки): метка для Claude в точке под курсором; заметки — Вид - Claude",
 
+        // ---- Claude
+        ["Claude proposes"] = "Claude предлагает",
+        ["{0}: {1} object(s), shown tinted in the Render Window"] = "{0}: объектов {1}, подсвечены в окне рендера",
+        ["Apply"] = "Применить",
+        ["Reject"] = "Отклонить",
+        ["(over the view: Enter / Backspace)"] = "(над окном рендера: Enter / Backspace)",
+        ["Earlier proposals ({0})"] = "Прошлые предложения ({0})",
+        ["Claude proposes: {0} ({1} object(s), shown tinted) — Enter applies, Backspace rejects (or the Claude window)"] = "Claude предлагает: {0} (объектов {1}, подсвечены) — Enter применяет, Backspace отклоняет (или окно Claude)",
+
+        // ---- Claude
+        ["Ask Claude"] = "Спросить Claude",
+        ["Turn the bridge on above first."] = "Сначала включите мост выше.",
+        ["Claude Code (claude) is not installed on this computer."] = "Claude Code (claude) не установлен на этом компьютере.",
+        ["Runs your Claude Code with this editor's tools only (uses your Claude account). Ctrl+Enter sends."] = "Запускает ваш Claude Code только с инструментами этого редактора (расходует ваш аккаунт Claude). Ctrl+Enter — отправить.",
+        ["You: "] = "Вы: ",
+        ["Claude is working…"] = "Claude работает…",
+        ["Send"] = "Отправить",
+        ["New conversation"] = "Новый разговор",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

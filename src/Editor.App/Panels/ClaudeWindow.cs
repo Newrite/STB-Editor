@@ -15,7 +15,8 @@ internal sealed class ClaudeWindow
 
     public void Show() => _open = true;
 
-    public static string ConnectCommand(int port) => $"claude mcp add --transport http stb-editor http://127.0.0.1:{port}/mcp";
+    /// <summary>For every folder Claude Code runs in (user scope), not only the one it was added from.</summary>
+    public static string ConnectCommand(int port) => $"claude mcp add --scope user --transport http stb-editor http://127.0.0.1:{port}/mcp";
 
     /// <summary>The bridge's switches (also in View → Settings).</summary>
     public static void DrawSwitches(EditorApp app)
@@ -44,15 +45,75 @@ internal sealed class ClaudeWindow
         }
     }
 
+    private readonly Services.ClaudeChat _chat = new();
+    private string _message = "";
+
+    public bool ChatRunning => _chat.Running;
+
+    /// <summary>«Ask Claude»: a message box, the conversation with the tools it used, stop and new conversation.</summary>
+    private void DrawChat(EditorApp app)
+    {
+        ImGui.SeparatorText(T("Ask Claude"));
+        if (!app.Settings.ClaudeBridge) { ImGui.TextColored(Theme.TextDim, T("Turn the bridge on above first.")); return; }
+        if (Services.ClaudeChat.FindCli() is null) { ImGui.TextColored(Theme.Warning, T("Claude Code (claude) is not installed on this computer.")); return; }
+        ImGui.TextColored(Theme.TextDim, T("Runs your Claude Code with this editor's tools only (uses your Claude account). Ctrl+Enter sends."));
+        var height = ImGui.GetTextLineHeightWithSpacing() * 10;
+        if (ImGui.BeginChild("##chat", new Vector2(0, height), ImGuiChildFlags.Borders))
+        {
+            foreach (var entry in _chat.Transcript)
+            {
+                var colour = entry.Kind switch { "user" => Theme.Accent, "tool" => Theme.TextDim, "error" => Theme.Error, _ => Theme.Text };
+                var prefix = entry.Kind switch { "user" => T("You: "), "tool" => "  → ", "error" => "! ", _ => "Claude: " };
+                ImGui.PushStyleColor(ImGuiCol.Text, colour);
+                ImGui.TextWrapped(prefix + entry.Text);
+                ImGui.PopStyleColor();
+            }
+            if (_chat.Running) ImGui.TextColored(Theme.Warning, T("Claude is working…"));
+            if (_chat.Error is { } error) ImGui.TextColored(Theme.Error, error);
+            if (_chat.Running || ImGui.GetScrollY() >= ImGui.GetScrollMaxY() - 4) ImGui.SetScrollHereY(1);
+        }
+        ImGui.EndChild();
+        ImGui.InputTextMultiline("##message", ref _message, 4000, new Vector2(-1, ImGui.GetTextLineHeight() * 3.5f));
+        var send = ImGui.IsItemFocused() && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Enter, false);
+        ImGui.BeginDisabled(_chat.Running || _message.Trim().Length == 0);
+        if (ImGui.Button(T("Send")) || (send && !_chat.Running))
+        {
+            _chat.Send(app, _message);
+            _message = "";
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!_chat.Running);
+        if (ImGui.Button(T("Stop"))) _chat.Stop();
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        if (ImGui.Button(T("New conversation"))) _chat.Reset();
+    }
+
     public void Draw(EditorApp app)
     {
+        _chat.Pump();
         if (!_open) return;
         ImGui.SetNextWindowSize(app.Scaled(620, 560), ImGuiCond.FirstUseEver);
         if (ImGui.Begin(Title("Claude") + "###claudewindow", ref _open, ImGuiWindowFlags.NoSavedSettings))
         {
             DrawSwitches(app);
+            DrawChat(app);
 
             var window = app.RenderWindow;
+            if (window.PendingProposal is { } proposal)
+            {
+                ImGui.SeparatorText(T("Claude proposes"));
+                ImGui.TextColored(Theme.Accent, TF($"{proposal.Title}: {proposal.Changes.Count} object(s), shown tinted in the Render Window"));
+                if (ImGui.Button(T("Apply") + "##proposal")) window.Decide(true);
+                ImGui.SameLine();
+                if (ImGui.Button(T("Reject") + "##proposal")) window.Decide(false);
+                ImGui.SameLine();
+                ImGui.TextColored(Theme.TextDim, T("(over the view: Enter / Backspace)"));
+            }
+            if (window.PastProposals.Count > 0 && ImGui.CollapsingHeader(TF($"Earlier proposals ({window.PastProposals.Count})")))
+                foreach (var p in window.PastProposals) ImGui.TextColored(Theme.TextDim, $"#{p.Id} {p.Title}: {p.Status}");
+
             ImGui.SeparatorText(TF($"Marks for Claude ({window.Marks.Count})"));
             ImGui.TextColored(Theme.TextDim, T("K over the Render Window marks the point under the cursor; write what you want there. Claude reads them with get_user_marks."));
             for (var i = 0; i < window.Marks.Count; i++)

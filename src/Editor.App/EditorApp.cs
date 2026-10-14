@@ -43,7 +43,7 @@ internal sealed class EditorApp : IDisposable
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
         || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy || FilteredDialogueWindow.IsBusy
-        || Bridge.HasWork || RenderWindow.HasCaptures;
+        || Bridge.HasWork || RenderWindow.HasCaptures || ClaudeWindow.ChatRunning;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();

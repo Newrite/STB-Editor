@@ -413,6 +413,92 @@ internal static class ClaudeTools
                     });
                 return Ok(list);
             }),
+
+        new("propose_changes", "Proposes moves / turns / scales / deletes WITHOUT making them: the objects show where they would go, tinted, and the user applies (one undo step) or rejects. Use for anything the user should check first. With wait_seconds, waits for the decision.",
+            Schema(("title", "string", "what the change is, for the user", true),
+                   ("changes", "any", "array of { ref_id, offset?, position?, rotation_deg?, add_rotation_deg?, scale?, delete? }", true),
+                   ("wait_seconds", "number", "wait this long for the user's decision (0 = return at once, at most 600)", false)),
+            // Not an edit by itself: nothing changes until the user applies it.
+            false, async (app, a) =>
+            {
+                if (!a.TryGetProperty("changes", out var changes) || changes.ValueKind != JsonValueKind.Array) return ToolResult.Text("changes must be an array", true);
+                var list = new List<(SceneObject, RefState)>();
+                var missing = new List<string>();
+                foreach (var c in changes.EnumerateArray())
+                {
+                    var id = Str(c, "ref_id");
+                    if (Key(app, id) is not { } key || app.RenderWindow.ObjectOf(key) is not { } obj) { missing.Add(id ?? "?"); continue; }
+                    var s = obj.State;
+                    if (Vec(c, "position") is { } p) s = s with { Position = p };
+                    if (Vec(c, "offset") is { } d) s = s with { Position = s.Position + d };
+                    if (Vec(c, "rotation_deg") is { } r) s = s with { Rotation = r * (MathF.PI / 180) };
+                    if (Vec(c, "add_rotation_deg") is { } t) s = s with { Rotation = s.Rotation + t * (MathF.PI / 180) };
+                    if (Num(c, "scale") is { } sc) s = s with { Scale = Math.Clamp(sc, 0.01f, 10f) };
+                    if (Bool(c, "delete") == true) s = s with { Deleted = true };
+                    list.Add((obj, s));
+                }
+                if (list.Count == 0) return ToolResult.Text($"no loaded reference ({string.Join(", ", missing)})", true);
+                var proposal = app.RenderWindow.Propose(Str(a, "title") ?? "changes", list);
+                var wait = Math.Clamp(Num(a, "wait_seconds") ?? 0, 0, 600);
+                if (wait > 0) await Task.WhenAny(proposal.Decided.Task, Task.Delay(TimeSpan.FromSeconds(wait)));
+                return ToolResult.Json(new JsonObject
+                {
+                    ["proposal"] = proposal.Id, ["status"] = proposal.Status, ["objects"] = list.Count,
+                    ["not_loaded"] = missing.Count > 0 ? new JsonArray(missing.Select(m => (JsonNode)m).ToArray()) : null,
+                });
+            }),
+
+        new("proposal_status", "What the user did with a proposal (pending, applied, rejected); with wait_seconds waits for it.",
+            Schema(("proposal", "integer", "its number (default: the last one)", false), ("wait_seconds", "number", "at most 600", false)),
+            false, async (app, a) =>
+            {
+                var id = (int?)Num(a, "proposal");
+                var window = app.RenderWindow;
+                var proposal = window.PendingProposal is { } p && (id is null || p.Id == id) ? p : window.PastProposals.FirstOrDefault(x => id is null || x.Id == id);
+                if (proposal is null) return ToolResult.Text("no such proposal", true);
+                var wait = Math.Clamp(Num(a, "wait_seconds") ?? 0, 0, 600);
+                if (wait > 0 && proposal.Status == "pending") await Task.WhenAny(proposal.Decided.Task, Task.Delay(TimeSpan.FromSeconds(wait)));
+                return ToolResult.Json(new JsonObject { ["proposal"] = proposal.Id, ["title"] = proposal.Title, ["status"] = proposal.Status });
+            }),
+
+        new("get_journal", "The editor's recent log (warnings and errors first), the undo history and the newest crash report — what happened in this session.",
+            Schema(("lines", "integer", "log lines (default 60)", false), ("errors_only", "boolean", "only warnings and errors", false)),
+            false, (app, a) =>
+            {
+                var count = Math.Clamp((int)(Num(a, "lines") ?? 60), 1, 400);
+                var errorsOnly = Bool(a, "errors_only") == true;
+                var lines = Log.Lines.Where(l => !errorsOnly || l.Level != LogLevel.Info).TakeLast(count)
+                    .Select(l => (JsonNode)$"{l.Time:HH:mm:ss} [{l.Level}] {l.Text}").ToArray();
+                var undo = app.Document.History.Entries.TakeLast(30).Select(e => (JsonNode)e.Name).ToArray();
+                string? crash = null;
+                try
+                {
+                    var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "crashes");
+                    if (Directory.Exists(folder) && new DirectoryInfo(folder).GetFiles("*.txt").OrderByDescending(f => f.LastWriteTime).FirstOrDefault() is { } newest)
+                        crash = $"{newest.Name} ({newest.LastWriteTime:yyyy-MM-dd HH:mm}):\n" + string.Join("\n", File.ReadLines(newest.FullName).Take(40));
+                }
+                catch { }
+                return Ok(new JsonObject { ["log"] = new JsonArray(lines), ["undo_history"] = new JsonArray(undo), ["unsaved_changes"] = app.Document.PendingCount, ["newest_crash"] = crash });
+            }),
+
+        new("run_script", "Runs a C# script as the editor's Scripts window does (globals: Records<T>(), Get, Find, Edit<T>(record, change), Print, Selected, Plugins); its record edits become one undoable step.",
+            Schema(("code", "string", "C# script body (Mutagen getter types, e.g. foreach (var w in Records<IWeaponGetter>()) Print(w.EditorID);)", true)),
+            true, async (app, a) =>
+            {
+                if (Str(a, "code") is not { Length: > 0 } code) return ToolResult.Text("code is required", true);
+                var session = app.Session!;
+                var selected = app.RenderWindow.SelectedObjects.Select(o => o.Reference).ToList();
+                if (app.Selected is { } picked && !selected.Contains(picked)) selected.Add(picked);
+                var outcome = await Task.Run(() => ScriptHost.Run(code, session, app.Document, selected, CancellationToken.None));
+                if (outcome.Error is { } error) return ToolResult.Text((outcome.Output.Length > 0 ? outcome.Output + "\n\n" : "") + "error: " + error, true);
+                var committed = await ClaudeBridge.OnUi(app, editor =>
+                {
+                    var edits = outcome.Edits.Select(r => (r, RecordPlace.TopLevel, (RefContext?)null)).ToList();
+                    if (edits.Count > 0) editor.Document.CommitEdits("Claude: script", edits);
+                    return edits.Count;
+                });
+                return ToolResult.Text((outcome.Output.Length > 0 ? outcome.Output.TrimEnd() + "\n\n" : "") + $"done in {outcome.Time.TotalSeconds:0.0} s; {committed} record(s) changed (one undo step, not saved)");
+            }),
     ];
 
     // ------------------------------------------------------------------ bodies

@@ -43,6 +43,10 @@ public sealed class RenderOptions
     /// <summary>References hidden by hand (key 1 on the selection, second press): only in the view, never saved.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenByHand { get; } = [];
 
+    /// <summary>Objects moved by a change Claude proposes (not applied yet): tinted.</summary>
+    public HashSet<SceneObject> Proposed { get; } = [];
+    public static readonly System.Numerics.Vector4 ProposedTint = new(0.85f, 0.45f, 1f, 0.32f);
+
     /// <summary>Objects drawn as something else (Base Object Swapper preview): another model and place, tinted.</summary>
     public Dictionary<SceneObject, SceneSwap> Swaps { get; } = [];
     public static readonly System.Numerics.Vector4 SwapTint = new(0.3f, 0.95f, 0.9f, 0.22f);
@@ -610,6 +614,7 @@ public sealed unsafe class SceneRenderer : IDisposable
             var highlight = obj.IsModified ? new Vector4(1f, 0.85f, 0.35f, 0.12f)
                 : obj.InitiallyDisabled ? new Vector4(0.6f, 0.2f, 0.9f, 0.25f)
                 : obj.Kind == SceneObjectKind.Actor && Options.HighlightActors ? RenderOptions.ActorTint : Vector4.Zero;
+            if (Options.Proposed.Count > 0 && Options.Proposed.Contains(obj)) highlight = RenderOptions.ProposedTint;
             var instance = new InstanceData { World = obj.World, Highlight = highlight };
 
             // Base Object Swapper preview: the swap's model at the swap's place.

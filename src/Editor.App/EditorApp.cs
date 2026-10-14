@@ -328,6 +328,7 @@ internal sealed class EditorApp : IDisposable
         RunFilteredDialogueAutotest();
         RunDialogueGraphAutotest();
         RunFrameworksAutotest();
+        RunFindPlacedAutotest();
         RunFaceAutotest();
         RunLayersAutotest();
         RunStoryManagerAutotest();
@@ -1904,6 +1905,21 @@ internal sealed class EditorApp : IDisposable
                 _fwStage = 9;
                 break;
         }
+    }
+
+    private bool _findPlacedDone;
+
+    /// <summary>--autotest-findplaced &lt;text&gt; [worldspace EditorID, default Tamriel]: Cell View «Find placed objects», rows logged.</summary>
+    private void RunFindPlacedAutotest()
+    {
+        var cli = Environment.GetCommandLineArgs();
+        var arg = Array.IndexOf(cli, "--autotest-findplaced");
+        if (arg < 0 || arg + 1 >= cli.Length || Session is not { } session || Loader is not null || _findPlacedDone) return;
+        _findPlacedDone = true;
+        var worldName = arg + 2 < cli.Length && !cli[arg + 2].StartsWith("--", StringComparison.Ordinal) ? cli[arg + 2] : "Tamriel";
+        var world = session.ByEditorId(worldName);
+        var cellView = _panels.OfType<CellViewPanel>().First();
+        Log.Info($"autotest-findplaced: {cli[arg + 1]} in {worldName}: {cellView.FindForTest(this, cli[arg + 1], world)}");
     }
 
     private int _graphStage, _graphFrames;

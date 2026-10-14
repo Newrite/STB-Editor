@@ -218,7 +218,8 @@ internal sealed partial class RenderWindow
     {
         var active = _tool == tool;
         if (active) ImGui.PushStyleColor(ImGuiCol.Button, Ui.Theme.ButtonActive);
-        if (ImGui.Button(label)) _tool = tool;
+        // The tool in the ID: «Navmesh» / «Land» are also the names of view toggles on the row above.
+        if (ImGui.Button($"{label}###tool{tool}")) _tool = tool;
         if (active) ImGui.PopStyleColor();
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(tooltip);
         ImGui.SameLine();

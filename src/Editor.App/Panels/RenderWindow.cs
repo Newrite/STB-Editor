@@ -60,6 +60,15 @@ internal sealed partial class RenderWindow : Panel
     /// <summary>The cell the view was opened on (interior, or the exterior centre cell).</summary>
     public FormKey? LoadedCell => _cell;
 
+    /// <summary>Where the camera is (world units).</summary>
+    public Vector3 CameraPosition => _camera.Position;
+
+    /// <summary>Outdoors: the exterior grid cell the camera is over; null indoors or before a scene.</summary>
+    public (FormKey World, int X, int Y)? CameraCell =>
+        _scene is { IsInterior: false, Worldspace: { } world }
+            ? (world, (int)MathF.Floor(_camera.Position.X / TerrainCell.CellSize), (int)MathF.Floor(_camera.Position.Y / TerrainCell.CellSize))
+            : null;
+
     public bool IsSelected(SceneObject obj) => _selection.Contains(obj);
 
     public IReadOnlyCollection<SceneObject> SelectedObjects => _selection;
@@ -154,6 +163,7 @@ internal sealed partial class RenderWindow : Panel
         _renderer = new SceneRenderer(device, app.Graphics.Context, new MeshCache(device, assets), new TextureCache(device, assets));
         _renderer.Options.HighlightActors = app.Settings.HighlightActors;
         _camera.Speed = app.Settings.FlySpeed;
+        if (app.Settings.LastView is { } last) ApplyView(app, last);
         _target ??= new ViewportTarget(device);
     }
 
@@ -629,6 +639,7 @@ internal sealed partial class RenderWindow : Panel
     {
         var options = _renderer!.Options;
 
+        DrawPresets(app);
         ImGui.SetNextItemWidth(ImGui.GetFontSize() * 7);
         var shading = (int)options.Shading;
         if (ImGui.Combo("##shading", ref shading, T("Lit\0Unlit\0Normals\0Untextured\0"))) options.Shading = (ShadingMode)shading;
@@ -680,7 +691,7 @@ internal sealed partial class RenderWindow : Panel
     {
         var value = get();
         if (value) ImGui.PushStyleColor(ImGuiCol.Button, Theme.ButtonActive);
-        if (ImGui.Button(label)) set(!value);
+        if (ImGui.Button($"{label}###show{label}")) set(!value);
         if (value) ImGui.PopStyleColor();
         if (tooltip is not null && ImGui.IsItemHovered()) ImGui.SetTooltip(tooltip);
         ImGui.SameLine();

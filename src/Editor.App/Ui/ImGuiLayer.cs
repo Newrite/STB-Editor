@@ -30,6 +30,10 @@ internal sealed unsafe class ImGuiLayer : IDisposable
 
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard | ImGuiConfigFlags.DockingEnable;
+#if !DEBUG
+        // Users get no red «conflicting ID» box; Debug builds keep it to catch the cause.
+        io.ConfigDebugHighlightIdConflicts = false;
+#endif
         io.ConfigWindowsMoveFromTitleBarOnly = true;
 
         Directory.CreateDirectory(Path.GetDirectoryName(iniFile)!);

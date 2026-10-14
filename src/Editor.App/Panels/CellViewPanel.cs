@@ -50,7 +50,19 @@ internal sealed class CellViewPanel : Panel
         _baseWorlds = [.. _worlds];
         _draftCount = -1;
         _dirty = true;
+        _byGrid = cells.Where(c => c.Winner.Cell is { IsInterior: false, IsPersistentCell: false, Worldspace: not null })
+            .GroupBy(c => (c.Winner.Cell!.Worldspace!.Value, (int)c.Winner.Cell.GridX, (int)c.Winner.Cell.GridY))
+            .ToDictionary(g => g.Key, g => g.First());
+        _found = [];
+        _foundFor = default;
     }
+
+    /// <summary>Exterior cells by worldspace and grid (where the camera is).</summary>
+    private Dictionary<(FormKey, int, int), CatalogRecord> _byGrid = [];
+    private bool _follow = true;
+    private bool _scrollToCamera;
+    private (FormKey, int, int)? _lastCameraCell;
+    private int _mode;
 
     /// <summary>Worldspaces created in this session join the list (marked new); their cells show above the rest.</summary>
     private void SyncDrafts(EditorApp app)
@@ -181,6 +193,32 @@ internal sealed class CellViewPanel : Panel
     {
         var ws = app.Session!.Workspace;
 
+        // Where the camera is: the exterior cell under it, highlighted in the list (and followed, if asked).
+        var camera = app.RenderWindow.CameraCell;
+        CatalogRecord? cameraCell = null;
+        if (camera is { } c)
+        {
+            cameraCell = _byGrid.GetValueOrDefault((c.World, c.X, c.Y));
+            var label = cameraCell?.EditorId ?? T("(wilderness)");
+            ImGui.TextColored(Theme.Accent, TF($"Camera: {label} [{c.X}, {c.Y}]"));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("The exterior cell the camera is over now (the Render Window loads the cells around it)"));
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Show in the list"))) ShowCameraCell(c.World);
+            ImGui.SameLine();
+            ImGui.Checkbox(T("Follow") + "##followcamera", ref _follow);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Scroll the list to the camera's cell whenever it changes"));
+            if (_follow && _lastCameraCell != (c.World, c.X, c.Y) && _worlds.Count > 0 && _worlds[_worldIndex].Key == c.World) _scrollToCamera = true;
+            _lastCameraCell = (c.World, c.X, c.Y);
+        }
+        else if (app.RenderWindow.Scene is { IsInterior: true } && app.RenderWindow.LoadedCell is { } inside)
+        {
+            ImGui.TextColored(Theme.Accent, TF($"Loaded: {app.Session.Catalog.Get(inside)?.EditorId ?? ws.FormIdText(inside)}"));
+        }
+        if (ImGui.RadioButton(T("Cells"), _mode == 0)) _mode = 0;
+        ImGui.SameLine();
+        if (ImGui.RadioButton(T("Find placed objects"), _mode == 1)) _mode = 1;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Every placed copy of a base object in the chosen worldspace (or in the interiors), whatever cell it is in"));
+
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X * 0.45f);
         var current = _worlds.Count > 0 ? _worlds[_worldIndex] : default;
         if (ImGui.BeginCombo("##world", $"{current.Label} ({current.Count:N0})", ImGuiComboFlags.HeightLarge))
@@ -198,6 +236,12 @@ internal sealed class CellViewPanel : Panel
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(-1);
+        if (_mode == 1)
+        {
+            ImGui.InputTextWithHint("##findplaced", T("Base EditorID, name or FormID"), ref _find, 256);
+            DrawFound(app, current.Key);
+            return;
+        }
         if (ImGui.InputTextWithHint("##cellfilter", T("Filter cells"), ref _filter, 256)) _dirty = true;
 
         if (_dirty) Rebuild(app);
@@ -238,6 +282,13 @@ internal sealed class CellViewPanel : Panel
             ImGui.TextColored(Theme.Warning, "new");
         }
 
+        if (_scrollToCamera && cameraCell is not null)
+        {
+            _scrollToCamera = false;
+            var at = _rows.IndexOf(cameraCell);
+            var row = ImGui.GetTextLineHeight() + ImGui.GetStyle().CellPadding.Y * 2;
+            if (at >= 0) ImGui.SetScrollY(Math.Max(0, at * row - ImGui.GetWindowHeight() / 2));
+        }
         var clipper = new ImGuiListClipper();
         clipper.Begin(_rows.Count);
         while (clipper.Step())
@@ -247,6 +298,7 @@ internal sealed class CellViewPanel : Panel
                 var cell = _rows[i];
                 var placement = cell.Winner.Cell!;
                 ImGui.TableNextRow();
+                if (ReferenceEquals(cell, cameraCell)) ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg1, ImGui.GetColorU32(Theme.Alpha(Theme.Accent, 0.28f)));
                 ImGui.TableNextColumn();
 
                 ImGui.PushID(i);
@@ -278,6 +330,116 @@ internal sealed class CellViewPanel : Panel
         }
         clipper.End();
         ImGui.EndTable();
+    }
+
+    /// <summary>Switches the list to the camera's worldspace, clears the filter and scrolls to its cell.</summary>
+    private void ShowCameraCell(FormKey world)
+    {
+        var index = _worlds.FindIndex(w => w.Key == world);
+        if (index >= 0 && index != _worldIndex) { _worldIndex = index; _dirty = true; }
+        if (_filter.Length > 0) { _filter = string.Empty; _dirty = true; }
+        _mode = 0;
+        _scrollToCamera = true;
+    }
+
+    private string _find = string.Empty;
+    private readonly record struct Placed(FormKey Reference, string BaseLabel, string Signature, FormKey Cell, string CellLabel);
+    private List<Placed> _found = [];
+    private (string, FormKey?) _foundFor;
+    private int _foundBases;
+    private const int MaxBases = 300;
+    private const int MaxPlaced = 5000;
+
+    /// <summary>
+    /// «Find placed objects»: base records whose EditorID, name or FormID matches, and every reference to them standing in the
+    /// chosen worldspace (its grid cells and its persistent cell) or, for «Interiors», in interior cells — from the Use Info index.
+    /// Double-click goes there (loads the cell and selects the reference).
+    /// </summary>
+    private void DrawFound(EditorApp app, FormKey? world)
+    {
+        var session = app.Session!;
+        var text = _find.Trim();
+        if (text.Length < 2) { ImGui.TextColored(Theme.TextDim, T("Type at least two letters of the base object's EditorID or name (or its FormID).")); return; }
+        var uses = session.Uses;
+        if (!uses.IsCompleted) { ImGui.TextColored(Theme.Warning, T("building the Use Info index…")); return; }
+        if (!uses.IsCompletedSuccessfully) { ImGui.TextColored(Theme.Error, uses.Exception?.GetBaseException().Message ?? "?"); return; }
+        if (_foundFor != (text, world)) Search(session, uses.Result, text, world);
+        DrawFoundTable(app, session);
+    }
+
+    private void Search(StbEditor.App.Services.EditorSession session, StbEditor.Data.UseIndex uses, string text, FormKey? world)
+    {
+        {
+            _foundFor = (text, world);
+            var catalog = session.Catalog;
+            var bases = catalog.ByKey.Values.Where(r => RecordTypes.IsPlaceable(r.Signature)
+                    && ((r.EditorId?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false) || (r.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
+                        || session.Workspace.FormIdText(r.FormKey).Equals(text, StringComparison.OrdinalIgnoreCase)))
+                .Take(MaxBases + 1).ToList();
+            _foundBases = bases.Count;
+            _found = [];
+            foreach (var b in bases.Take(MaxBases))
+            {
+                foreach (var use in uses.UsesOf(b.FormKey))
+                {
+                    if (!use.IsPlaced || use.Parent is not { } cell || catalog.Get(cell) is not { Winner.Cell: { } placement } cellRecord) continue;
+                    if (world is null ? !placement.IsInterior : placement.IsInterior || placement.Worldspace != world) continue;
+                    var cellLabel = placement.IsInterior ? cellRecord.EditorId ?? session.Workspace.FormIdText(cell)
+                        : placement.IsPersistentCell ? "<persistent>" : $"{cellRecord.EditorId ?? T("(wilderness)")} [{placement.GridX}, {placement.GridY}]";
+                    _found.Add(new Placed(use.Source, b.EditorId ?? session.Workspace.FormIdText(b.FormKey), b.Signature, cell, cellLabel));
+                }
+                if (_found.Count >= MaxPlaced) break;
+            }
+            _found = _found.DistinctBy(f => f.Reference).OrderBy(f => f.BaseLabel, StringComparer.OrdinalIgnoreCase).ThenBy(f => f.CellLabel).ToList();
+        }
+    }
+
+    private void DrawFoundTable(EditorApp app, StbEditor.App.Services.EditorSession session)
+    {
+        ImGui.TextColored(Theme.TextDim, TF($"{_found.Count:N0} placed, of {Math.Min(_foundBases, MaxBases)} matching base object(s)")
+            + (_foundBases > MaxBases ? "  " + TF($"(only the first {MaxBases} bases: type more)") : "") + "   " + T("Double-click: go there"));
+        var flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingFixedFit;
+        if (!ImGui.BeginTable("##found", 4, flags)) return;
+        ImGui.TableSetupScrollFreeze(0, 1);
+        ImGui.TableSetupColumn(T("Base"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableSetupColumn(T("Type"));
+        ImGui.TableSetupColumn(T("Ref ID"));
+        ImGui.TableSetupColumn(T("Cell"), ImGuiTableColumnFlags.WidthStretch, 1.2f);
+        ImGui.TableHeadersRow();
+        var clipper = new ImGuiListClipper();
+        clipper.Begin(_found.Count);
+        while (clipper.Step())
+            for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+            {
+                var f = _found[i];
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+                ImGui.PushID(i);
+                if (ImGui.Selectable(f.BaseLabel, false, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick)
+                    && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    app.RenderWindow.GoToReference(app, f.Reference, f.Cell);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Double-click: go there"));
+                ImGui.PopID();
+                ImGui.TableNextColumn();
+                ImGui.TextColored(Theme.TextDim, f.Signature);
+                ImGui.TableNextColumn();
+                ImGui.TextColored(Theme.TextDim, session.Workspace.FormIdText(f.Reference));
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(f.CellLabel);
+            }
+        clipper.End();
+        ImGui.EndTable();
+    }
+
+    /// <summary>Autotests: the «Find placed objects» rows for a text in a worldspace (null: interiors), once the Use Info index is built.</summary>
+    public string FindForTest(EditorApp app, string text, FormKey? world)
+    {
+        _find = text;
+        _mode = 1;
+        var index = _worlds.FindIndex(w => w.Key == world);
+        if (index >= 0) _worldIndex = index;
+        Search(app.Session!, app.Session!.Uses.GetAwaiter().GetResult(), text, world);
+        return $"{_found.Count} placed of {_foundBases} base(s): " + string.Join(", ", _found.Take(5).Select(f => $"{f.BaseLabel} {app.Session.Workspace.FormIdText(f.Reference)} in {f.CellLabel}"));
     }
 
     private void Rebuild(EditorApp app)

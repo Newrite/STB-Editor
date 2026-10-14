@@ -139,6 +139,12 @@ internal sealed class Settings
     /// <summary>PapyrusCompiler.exe; null: the game's "Papyrus Compiler" folder.</summary>
     public string? PapyrusCompiler { get; set; }
 
+    /// <summary>View presets saved by the user (Render Window: Preset).</summary>
+    public List<StbEditor.App.Panels.ViewPreset> ViewPresets { get; set; } = [];
+
+    /// <summary>The Render Window's view when the editor was closed (restored on start).</summary>
+    public StbEditor.App.Panels.ViewPreset? LastView { get; set; }
+
     /// <summary>Interface language: "en" or "ru".</summary>
     public string Language { get; set; } = "en";
 

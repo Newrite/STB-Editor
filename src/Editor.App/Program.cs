@@ -121,6 +121,9 @@ internal static class Program
                 MainWindow.WaitForInput(editor.IdleWaitMilliseconds);
         }
 
+        // Autotests and screenshots do not leave their view behind for the user.
+        if (options.Screenshot is null && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--autotest", StringComparison.Ordinal)))
+            editor.RenderWindow.RememberView(editor);
         settings.Save();
         Log.Info("exit");
         return 0;

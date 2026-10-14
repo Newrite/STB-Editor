@@ -25,6 +25,7 @@ internal sealed class ViewPreset
     public bool Collision { get; set; }
     public bool Borders { get; set; }
     public bool Navmesh { get; set; }
+    public bool Bos { get; set; }
     public bool Particles { get; set; } = true;
     public bool Animate { get; set; } = true;
     public bool HighlightActors { get; set; } = true;
@@ -57,7 +58,7 @@ internal sealed partial class RenderWindow
         {
             Name = name, Shading = o.Shading, Wireframe = o.Wireframe, Markers = o.ShowMarkers, Disabled = o.ShowInitiallyDisabled,
             Water = o.ShowWater, Land = o.ShowTerrain, Grass = o.ShowGrass, Fog = o.Fog, Collision = o.ShowCollision, Borders = o.CellBorders,
-            Navmesh = o.ShowNavmesh, Particles = o.ShowParticles, Animate = o.Animate, HighlightActors = o.HighlightActors,
+            Navmesh = o.ShowNavmesh, Bos = _showBos, Particles = o.ShowParticles, Animate = o.Animate, HighlightActors = o.HighlightActors,
             Brightness = o.Brightness, HiddenGroups = [.. o.HiddenGroups], CurrentCellOnly = o.CurrentCellOnly,
             FlySpeed = _camera.Speed, GridRadius = _gridRadius,
         };
@@ -78,6 +79,7 @@ internal sealed partial class RenderWindow
         o.ShowCollision = p.Collision;
         o.CellBorders = p.Borders;
         o.ShowNavmesh = p.Navmesh;
+        _showBos = p.Bos;
         o.ShowParticles = p.Particles;
         o.Animate = p.Animate;
         o.HighlightActors = app.Settings.HighlightActors = p.HighlightActors;

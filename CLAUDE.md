@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.69.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.70.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -157,6 +157,10 @@ Translations can make two English labels the same Russian text — give buttons 
 v0.69.0: key 1 cycles see-through → hidden → shown (`RenderOptions.FadedByHand`: every shape of the object goes to the blended pass with
 `Blended.Fade` 0.5 — opacity and the alpha-test threshold scaled, shader flag F_FADE takes alpha from the fade alone for materials
 without alpha). `docs/ROADMAP.md` is the short what-is-there / what-is-planned page for testers — keep it current too.
+v0.70.0: BOS preview (`Core/BosRules.cs` from the BOS FrameworkRefs grouped by line; `RenderOptions.Swaps` SceneObject → SceneSwap
+model + world, drawn tinted in `CollectObjects`; `Panels/RenderWindow.Bos.cs` builds them with `SceneBuilder.CreatePlaced` of the swap base)
+and OAR / DAR on an NPC (`Core/AnimReplacers.cs` parse + Pass / Fail / Unknown evaluation, `EditorSession.AnimReplacers`,
+`Panels/AnimReplacersView.cs` «Animations» tab added by `RecordForm`, replacers filtered by the race skeleton folder).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

@@ -44,7 +44,7 @@ public sealed class FrameworkIndex
         return null;
     }
 
-    private static readonly Regex TildeForm = new(@"0x([0-9A-Fa-f]{1,8})\s*~\s*([^|,\s""\]\)]+\.(?:esp|esm|esl))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TildeForm = new(@"(?:0x)?([0-9A-Fa-f]{1,8})\s*~\s*([^|,\s""\]\)]+\.(?:esp|esm|esl))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PipeForm = new(@"([^\s|,""'(\[]+\.(?:esp|esm|esl))\s*\|\s*(?:0x)?([0-9A-Fa-f]{1,8})\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex OarForm = new(@"""pluginName""\s*:\s*""([^""]+)""\s*,\s*""formID""\s*:\s*""([0-9A-Fa-f]+)""", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DarForm = new(@"""([^""]+\.(?:esp|esm|esl))""\s*\|\s*0x([0-9A-Fa-f]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -137,7 +137,7 @@ public sealed class FrameworkIndex
                 {
                     var fields = line.Split('|').Select(f => f.Trim()).ToList();
                     if (fields.Count < 2) continue;
-                    var transforms = section.Equals("Transforms", StringComparison.OrdinalIgnoreCase);
+                    var transforms = section.StartsWith("Transforms", StringComparison.OrdinalIgnoreCase);
                     foreach (var key in FieldForms(fields[0], resolve)) Add(key, transforms ? "transformed" : "swapped out", section, fields);
                     if (!transforms)
                         foreach (var key in FieldForms(fields[1], resolve)) Add(key, "swapped in", section, fields);

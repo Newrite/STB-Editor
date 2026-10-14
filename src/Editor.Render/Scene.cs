@@ -141,6 +141,9 @@ public sealed class TerrainCell
     public float HeightAt(int vx, int vy) => Heights[vy * Size + vx];
 }
 
+/// <summary>What a placed object is drawn as instead of its own model (Base Object Swapper preview): the swap's model and place.</summary>
+public sealed record SceneSwap(string? Model, System.Numerics.Matrix4x4 World);
+
 /// <summary>A texture on a quadrant. <see cref="Opacity"/> is null for the base layer (opaque).</summary>
 public sealed record TerrainLayer(string TexturePath, float[]? Opacity);
 

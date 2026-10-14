@@ -1887,6 +1887,7 @@ internal sealed class EditorApp : IDisposable
                     // An NPC: its form (with --inspector-tab "Spells and perks" the SPID section shows) and what SPID gives it.
                     FormWindows.Open(npcKey);
                     Log.Info($"autotest-frameworks: {name} gets {Panels.FrameworksView.GiftsForTest(session, npc)}");
+                    Log.Info($"autotest-frameworks: {name} animations {Panels.AnimReplacersView.ForTest(session, npc)}");
                 }
                 else if (key is { } k)
                 {

@@ -164,6 +164,8 @@ internal sealed partial class RenderWindow : Panel
         _renderer.Options.HighlightActors = app.Settings.HighlightActors;
         _camera.Speed = app.Settings.FlySpeed;
         if (app.Settings.LastView is { } last) ApplyView(app, last);
+        // Checks: --bos turns the Base Object Swapper preview on.
+        if (Environment.GetCommandLineArgs().Contains("--bos")) _showBos = true;
         _target ??= new ViewportTarget(device);
     }
 
@@ -488,6 +490,7 @@ internal sealed partial class RenderWindow : Panel
         RegionOverlay(app);
         CollisionOverlay();
         ApplySky(app);
+        UpdateBos(app);
         var background = _scene?.IsInterior == true ? new Vector4(0.05f, 0.05f, 0.06f, 1) : _skyColour ?? new Vector4(0.50f, 0.60f, 0.72f, 1);
         try
         {
@@ -508,7 +511,7 @@ internal sealed partial class RenderWindow : Panel
 
         DrawGizmo(origin, size);
         DrawDoorQuestion(app);
-        DrawOverlay(drawList, origin, size);
+        DrawOverlay(app, drawList, origin, size);
         AcceptDrop(app, origin, size);
     }
 
@@ -664,6 +667,7 @@ internal sealed partial class RenderWindow : Panel
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
         Toggle(T("Collision"), () => options.ShowCollision, v => options.ShowCollision = v, T("Havok collision of the objects near the camera (CK: F4)"));
         DrawSky(app);
+        Toggle("BOS", () => _showBos, v => _showBos = v, T("Base Object Swapper preview: objects its _SWAP.ini files swap are drawn as the swap (tinted), moved by its properties; the first swap of a random set"));
         Toggle(T("Borders"), () => options.CellBorders, v => options.CellBorders = v, T("Cell borders (CK: B)"));
         Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes (N edits them)"));
         Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, T("Particles: fire, smoke, dust, sparks"));
@@ -735,7 +739,7 @@ internal sealed partial class RenderWindow : Panel
         _camera.Frame(center, radius);
     }
 
-    private void DrawOverlay(ImDrawListPtr drawList, Vector2 origin, Vector2 size)
+    private void DrawOverlay(EditorApp app, ImDrawListPtr drawList, Vector2 origin, Vector2 size)
     {
         var stats = _renderer!.Stats;
         var lines = new List<string>();
@@ -765,6 +769,7 @@ internal sealed partial class RenderWindow : Panel
         {
             lines.Add(TF($"selected: {_selection.Count} objects"));
         }
+        lines.AddRange(BosLines(app));
 
         if (_document is { PendingCount: > 0 } doc)
             lines.Add(TF($"{doc.PendingCount} unsaved change(s) — Ctrl+S saves into the active file"));

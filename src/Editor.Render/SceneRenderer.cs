@@ -43,6 +43,10 @@ public sealed class RenderOptions
     /// <summary>References hidden by hand (key 1 on the selection, second press): only in the view, never saved.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> HiddenByHand { get; } = [];
 
+    /// <summary>Objects drawn as something else (Base Object Swapper preview): another model and place, tinted.</summary>
+    public Dictionary<SceneObject, SceneSwap> Swaps { get; } = [];
+    public static readonly System.Numerics.Vector4 SwapTint = new(0.3f, 0.95f, 0.9f, 0.22f);
+
     /// <summary>References faded by hand (key 1, first press): drawn at half opacity, still picked.</summary>
     public HashSet<Mutagen.Bethesda.Plugins.FormKey> FadedByHand { get; } = [];
 
@@ -608,15 +612,30 @@ public sealed unsafe class SceneRenderer : IDisposable
                 : obj.Kind == SceneObjectKind.Actor && Options.HighlightActors ? RenderOptions.ActorTint : Vector4.Zero;
             var instance = new InstanceData { World = obj.World, Highlight = highlight };
 
+            // Base Object Swapper preview: the swap's model at the swap's place.
+            var swapped = false;
+            GpuModel? swapModel = null;
+            if (Options.Swaps.Count > 0 && Options.Swaps.TryGetValue(obj, out var swap))
+            {
+                swapped = true;
+                instance = instance with { World = swap.World, Highlight = RenderOptions.SwapTint };
+                if (swap.Model is { } swapPath)
+                {
+                    var loaded = _meshes.Get(swapPath, out var swapState);
+                    if (swapState == LoadState.Ready) swapModel = loaded;
+                    else if (swapState != LoadState.Failed) HasAnimation = true;
+                }
+            }
+
             // Actors whose look could not be put together stay boxes.
-            if (obj.Kind == SceneObjectKind.Actor && obj.Model is not { Shapes.Count: > 0 })
+            if (!swapped && obj.Kind == SceneObjectKind.Actor && obj.Model is not { Shapes.Count: > 0 })
             {
                 _actors.Add(instance with { Highlight = new Vector4(0.25f, 0.75f, 0.35f, 1f) });
                 if (selected) _selectedShapes.Add((_actorCapsule.Shapes[0], instance));
                 continue;
             }
 
-            var model2 = obj.Model;
+            var model2 = swapped ? swapModel : obj.Model;
             var drewSomething = false;
             if (model2 is not null)
             {

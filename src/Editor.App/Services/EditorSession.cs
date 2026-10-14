@@ -62,6 +62,29 @@ internal sealed class EditorSession : IDisposable
         return index;
     }, _closing.Token);
 
+    private Task<List<AnimReplacer>>? _animReplacers;
+
+    /// <summary>Open / Dynamic Animation Replacer folders of the load order with their conditions and how many animations each has.</summary>
+    public Task<List<AnimReplacer>> AnimReplacers => _animReplacers ??= System.Threading.Tasks.Task.Run(() =>
+    {
+        var clock = Stopwatch.StartNew();
+        string? Read(string p) => Assets.ReadAllBytes(p) is { } b ? System.Text.Encoding.UTF8.GetString(b).TrimStart('﻿') : null;
+        var files = Assets.Enumerate(@"meshes\actors\", ".json")
+            .Where(p => p.Contains(@"\openanimationreplacer\", StringComparison.OrdinalIgnoreCase)
+                && (p.EndsWith(@"\config.json", StringComparison.OrdinalIgnoreCase) || p.EndsWith(@"\user.json", StringComparison.OrdinalIgnoreCase)))
+            .Concat(Assets.Enumerate(@"meshes\actors\", ".txt").Where(p => p.EndsWith(@"\_conditions.txt", StringComparison.OrdinalIgnoreCase)
+                && p.Contains(@"\_customconditions\", StringComparison.OrdinalIgnoreCase)))
+            .Select(p => (p, Assets.Find(p)?.Container ?? "?", (Func<string?>)(() => Read(p))))
+            .ToList();
+        // Animations per folder, once: a replacer counts those in its folder and below.
+        var byFolder = Assets.Enumerate(@"meshes\actors\", ".hkx").GroupBy(p => p[..(p.LastIndexOf('\\') + 1)], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        int Count(string folder) => byFolder.Where(f => f.Key.StartsWith(folder, StringComparison.OrdinalIgnoreCase)).Sum(f => f.Value);
+        var list = StbEditor.Core.AnimReplacers.Build(files, Count);
+        Log.Info($"animation replacers: {list.Count(r => r.Framework == "OAR")} OAR submods, {list.Count(r => r.Framework == "DAR")} DAR folders, {clock.Elapsed.TotalSeconds:0.0} s");
+        return list;
+    }, _closing.Token);
+
     private Task<UseIndex>? _uses;
     private readonly CancellationTokenSource _closing = new();
 

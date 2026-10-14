@@ -173,6 +173,10 @@ internal sealed class RecordForm
                 Body(() => FormView.DrawTab(app, current, tab, target));
             }
 
+            // Which animation replacers (OAR / DAR) would play on this NPC.
+            if (current is Mutagen.Bethesda.Skyrim.INpcGetter animated && Batch is not { Count: > 1 } && Tab(T("Animations") + "###animations"))
+                Body(() => AnimReplacersView.Draw(app, animated));
+
             if (current is Mutagen.Bethesda.Skyrim.IQuestGetter quest && Batch is not { Count: > 1 } && Tab(T("Dialogue") + "###dialogue"))
                 Body(() => DialogueEditor.Draw(app, quest, editable));
 

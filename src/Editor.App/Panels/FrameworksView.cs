@@ -110,7 +110,7 @@ internal static class FrameworksView
                     ImGui.TableNextRow();
                     ImGui.TableNextColumn();
                     if (ImGui.Selectable($"{r.Framework}##fw{i}", ReferenceEquals(_shown, r), ImGuiSelectableFlags.SpanAllColumns)) _shown = r;
-                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && session.Catalog.Get(r.Form) is not null) app.FormWindows.Open(r.Form);
+                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) app.ConfigFile.Open(app, r.File, r.Line);
                     if (showRecord)
                     {
                         ImGui.TableNextColumn();
@@ -127,7 +127,7 @@ internal static class FrameworksView
             ImGui.EndTable();
         }
         if (_shown is { } shown && refs.Contains(shown)) DrawDetails(app, session, shown);
-        else ImGui.TextColored(Theme.TextDim, T("Click a line for its details (for SPID and KID: who gets it); double-click opens the record."));
+        else ImGui.TextColored(Theme.TextDim, T("Click a line for its details (for SPID and KID: who gets it); double-click opens the config file at that line."));
     }
 
     private static void DrawDetails(EditorApp app, EditorSession session, FrameworkRef r)
@@ -135,6 +135,12 @@ internal static class FrameworksView
         ImGui.SeparatorText($"{r.Framework}: {session.Catalog.Get(r.Form)?.EditorId ?? r.Form.ToString()}");
         ImGui.TextWrapped(r.Text);
         ImGui.TextColored(Theme.TextDim, TF($"{r.Mod} · {r.File}, line {r.Line}"));
+        if (ImGui.SmallButton(T("Open the config file"))) app.ConfigFile.Open(app, r.File, r.Line);
+        if (session.Catalog.Get(r.Form) is not null)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton(T("Open the record") + "##fwrecord")) app.FormWindows.Open(r.Form);
+        }
         var reaches = (r.Framework == "SPID" && r.Role == "gives") || (r.Framework == "KID" && r.Role == "keyword");
         if (r.Framework == "SPID" && r.Role == "gives") ImGui.TextWrapped(TF($"Who: {SpidFilters(r)}"));
         if (!reaches) return;

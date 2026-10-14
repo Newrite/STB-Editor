@@ -1769,7 +1769,6 @@ internal static class LangRu
         ["What"] = "Что",
         ["Line"] = "Строка",
         ["Mod / file"] = "Мод / файл",
-        ["Click a line for its details (for SPID and KID: who gets it); double-click opens the record."] = "Клик по строке — подробности (для SPID и KID — кому достаётся); двойной клик открывает запись.",
         ["{0} · {1}, line {2}"] = "{0} · {1}, строка {2}",
         ["Who: {0}"] = "Кому: {0}",
         ["working out who gets it…"] = "вычисляется, кому достаётся…",
@@ -1911,6 +1910,19 @@ internal static class LangRu
         ["Claude is working…"] = "Claude работает…",
         ["Send"] = "Отправить",
         ["New conversation"] = "Новый разговор",
+
+        // ---- Frameworks
+        ["(the file could not be read)"] = "(файл не прочитать)",
+        ["{0}, in {1}"] = "{0}, в {1}",
+        ["Config file"] = "Файл конфига",
+        ["{0} · line {1}"] = "{0} · строка {1}",
+        ["Open in the default program"] = "Открыть в программе по умолчанию",
+        ["Show in Explorer"] = "Показать в проводнике",
+        ["The file is inside an archive (BSA)"] = "Файл внутри архива (BSA)",
+        ["Copy path"] = "Копировать путь",
+        ["Click a line for its details (for SPID and KID: who gets it); double-click opens the config file at that line."] = "Клик по строке — подробности (для SPID и KID — кому достаётся); двойной клик открывает файл конфига на этой строке.",
+        ["Open the config file"] = "Открыть файл конфига",
+        ["Open the record"] = "Открыть запись",
 
         // ---- main menu
         ["File"] = "Файл",

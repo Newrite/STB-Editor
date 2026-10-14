@@ -47,6 +47,8 @@ public sealed class FrameworkIndex
     private static readonly Regex TildeForm = new(@"(?:0x)?([0-9A-Fa-f]{1,8})\s*~\s*([^|,\s""\]\)]+\.(?:esp|esm|esl))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PipeForm = new(@"([^\s|,""'(\[]+\.(?:esp|esm|esl))\s*\|\s*(?:0x)?([0-9A-Fa-f]{1,8})\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex OarForm = new(@"""pluginName""\s*:\s*""([^""]+)""\s*,\s*""formID""\s*:\s*""([0-9A-Fa-f]+)""", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OarName = new(@"""name""\s*:\s*""([^""]*)""", RegexOptions.Compiled);
+    private static readonly Regex OarCondition = new(@"\G""condition""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
     private static readonly Regex DarForm = new(@"""([^""]+\.(?:esp|esm|esl))""\s*\|\s*0x([0-9A-Fa-f]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <param name="resolve">An EditorID or a form text (0x123~Plugin.esp) to a FormKey, or null.</param>
@@ -166,7 +168,19 @@ public sealed class FrameworkIndex
         // OAR's pairs can run over lines: matched in the whole text, the line from the offset.
         if (framework == "OAR")
         {
-            foreach (Match m in OarForm.Matches(text)) Add(Make(m.Groups[1].Value, m.Groups[2].Value), LineOf(text, m.Index));
+            // The line itself only holds "pluginName": the condition around it and the submod name say what it is.
+            var submod = OarName.Match(text) is { Success: true } n ? n.Groups[1].Value : Path.GetFileName(Path.GetDirectoryName(path) ?? "");
+            foreach (Match m in OarForm.Matches(text))
+            {
+                if (Make(m.Groups[1].Value, m.Groups[2].Value) is not { } k) continue;
+                var line = LineOf(text, m.Index);
+                if (!seen.Add((k, line))) continue;
+                var before = text[..m.Index];
+                var at = before.LastIndexOf("\"condition\"", StringComparison.Ordinal);
+                var condition = at >= 0 && OarCondition.Match(before, at) is { Success: true } c ? c.Groups[1].Value : "?";
+                var negated = at >= 0 && before[at..].Contains("\"negated\": true", StringComparison.Ordinal);
+                index.All.Add(new FrameworkRef(framework, path, mod, line + 1, $"{(negated ? "NOT " : "")}{condition} — {submod}", k, "used", submod, []));
+            }
             return;
         }
         for (var n = 0; n < lines.Length; n++)

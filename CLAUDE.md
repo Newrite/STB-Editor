@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.72.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.72.1, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -169,6 +169,8 @@ v0.72.0: proposals (`Panels/RenderWindow.Proposals.cs`: objects moved live but u
 the Claude window decide, one Commit on apply), «Ask Claude» (`Services/ClaudeChat.cs`: `claude -p` with a temp `--mcp-config`,
 `--strict-mcp-config --allowedTools mcp__stb-editor`, stream-json read for text / tool_use / session_id, `--resume`), tools get_journal,
 run_script (`ClaudeBridge.OnUi` brings worker results back to the UI thread), proposal_status.
+v0.72.1: framework rows open their config (`Panels/ConfigFileWindow.cs`, loose path via `AssetSource.LoosePath`); OAR refs named by the
+enclosing "condition" and the submod "name" (`FrameworkIndex.ReadScan`).
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

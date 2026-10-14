@@ -52,6 +52,9 @@ internal sealed class EditorApp : IDisposable
     public Services.ClaudeBridge Bridge { get; } = new();
     public Panels.ClaudeWindow ClaudeWindow { get; } = new();
 
+    /// <summary>Framework config files opened from Use Info / Framework configs.</summary>
+    public Panels.ConfigFileWindow ConfigFile { get; } = new();
+
     /// <summary>Papyrus source windows (Scripts tab: Source / New script).</summary>
     public Panels.ScriptSourceWindows ScriptSources { get; } = new();
 
@@ -382,6 +385,7 @@ internal sealed class EditorApp : IDisposable
         _help.Draw(this);
         _settingsWindow.Draw(this);
         ClaudeWindow.Draw(this);
+        ConfigFile.Draw(this);
         Bridge.Apply(_settings);
         Bridge.Pump(this);
         _mastersWindow.Draw(this);

@@ -1870,6 +1870,29 @@ internal static class LangRu
         ["(with conditions the editor does not check)"] = "(с условиями, которые редактор не проверяет)",
         ["Base Object Swapper preview: objects its _SWAP.ini files swap are drawn as the swap (tinted), moved by its properties; the first swap of a random set"] = "Превью Base Object Swapper: объекты, которые заменяют его _SWAP.ini, показаны заменой (подсвечены) и сдвинуты по его свойствам; из случайного набора — первая замена",
 
+        // ---- Claude
+        ["Claude..."] = "Claude...",
+        ["Let Claude Code work with the editor (local MCP server)"] = "Разрешить Claude Code работать с редактором (локальный MCP-сервер)",
+        ["Claude Code on this computer can look at the Render Window, move the camera, list, select and edit objects, read and change record fields, search and leave notes on the view. Only programs on this computer can connect."] = "Claude Code на этом компьютере сможет смотреть в окно рендера, двигать камеру, перечислять, выделять и править объекты, читать и менять поля записей, искать и оставлять пометки в окне. Подключиться могут только программы этого компьютера.",
+        ["Claude may change things (each change can be undone; Claude never saves)"] = "Claude может вносить изменения (каждое отменяется; сам Claude ничего не сохраняет)",
+        ["Port"] = "Порт",
+        ["Listening: {0}"] = "Работает: {0}",
+        ["Off"] = "Выключено",
+        ["Connect Claude Code once (in a terminal):"] = "Подключите Claude Code один раз (в терминале):",
+        ["Claude"] = "Claude",
+        ["Marks for Claude ({0})"] = "Метки для Claude ({0})",
+        ["K over the Render Window marks the point under the cursor; write what you want there. Claude reads them with get_user_marks."] = "K над окном рендера ставит метку в точку под курсором; напишите, что там сделать. Claude читает их через get_user_marks.",
+        ["what to do here"] = "что здесь сделать",
+        ["Remove all marks"] = "Убрать все метки",
+        ["Claude's notes on the view ({0})"] = "Пометки Claude в окне ({0})",
+        ["Clear the notes"] = "Убрать пометки",
+        ["What Claude did"] = "Что делал Claude",
+        ["Mark the point under the cursor for Claude (Claude window: notes, delete)"] = "Метка для Claude в точке под курсором (окно Claude: заметки, удаление)",
+        ["Claude window..."] = "Окно Claude...",
+
+        // ---- Claude
+        ["With the Claude bridge on (View - Settings): mark the point under the cursor for Claude; notes in View - Claude"] = "С включённым мостом Claude (Вид - Настройки): метка для Claude в точке под курсором; заметки — Вид - Claude",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",

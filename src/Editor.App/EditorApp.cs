@@ -42,10 +42,15 @@ internal sealed class EditorApp : IDisposable
     public int SelectionVersion { get; private set; }
 
     public bool IsBusy => Loader?.IsRunning == true || RenderWindow.NeedsRedraw || PreviewPanel.NeedsRedraw || Panels.FaceEditor.IsBusy || ObjectWindow.IsScanning || UseInfo.IsBusy
-        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy || FilteredDialogueWindow.IsBusy;
+        || Thumbnails?.HasPending == true || Saver.IsBusy || Panels.QuestEditor.IsCompiling || Panels.DialogueEditor.IsCompiling || ScriptSources.IsBusy || PluginCheck.IsBusy || Archive.IsBusy || FindText.IsBusy || VoiceFilesWindow.IsBusy || ScriptsWindow.IsBusy || ExportDataWindow.IsBusy || PluginAssetsWindow.IsBusy || FilteredDialogueWindow.IsBusy
+        || Bridge.HasWork || RenderWindow.HasCaptures;
 
     /// <summary>Cell and worldspace property windows.</summary>
     public Panels.PlacePropertiesWindows PlaceProperties { get; } = new();
+
+    /// <summary>The Claude bridge (local MCP server; off unless the user turns it on) and its window.</summary>
+    public Services.ClaudeBridge Bridge { get; } = new();
+    public Panels.ClaudeWindow ClaudeWindow { get; } = new();
 
     /// <summary>Papyrus source windows (Scripts tab: Source / New script).</summary>
     public Panels.ScriptSourceWindows ScriptSources { get; } = new();
@@ -376,6 +381,9 @@ internal sealed class EditorApp : IDisposable
         }
         _help.Draw(this);
         _settingsWindow.Draw(this);
+        ClaudeWindow.Draw(this);
+        Bridge.Apply(_settings);
+        Bridge.Pump(this);
         _mastersWindow.Draw(this);
         PluginCheck.Draw(this);
         Archive.Draw(this);
@@ -3842,6 +3850,7 @@ internal sealed class EditorApp : IDisposable
             }
             ImGui.Separator();
             if (ImGui.MenuItem(T("Settings..."))) _settingsWindow.Show();
+            if (ImGui.MenuItem(T("Claude..."))) ClaudeWindow.Show();
             if (ImGui.MenuItem(T("Spreadsheets..."), (string?)null, false, Session is not null)) Spreadsheets.Show();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Weapons, armor, ammunition and other items as sortable tables, edited in place (as xEdit's spreadsheets)"));
             if (ImGui.BeginMenu(T("Frame limit")))
@@ -3925,6 +3934,7 @@ internal sealed class EditorApp : IDisposable
 
     public void Dispose()
     {
+        Bridge.Dispose();
         Thumbnails?.Dispose();
         Preview?.Dispose();
         PreviewPanel.Shutdown();

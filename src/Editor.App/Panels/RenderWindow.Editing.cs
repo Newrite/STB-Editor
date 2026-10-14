@@ -408,6 +408,7 @@ internal sealed partial class RenderWindow
                 if (ImGui.IsKeyPressed(ImGuiKey.M, false)) _renderer!.Options.ShowMarkers ^= true;
                 if (ImGui.IsKeyPressed(ImGuiKey.F4, false) && !io.KeyCtrl) _renderer!.Options.ShowCollision ^= true;
                 if (ImGui.IsKeyPressed(ImGuiKey.B, false)) _renderer!.Options.CellBorders ^= true;
+                if (ImGui.IsKeyPressed(ImGuiKey.K, false) && app.Settings.ClaudeBridge) PlaceMark(app, mouse, size);
                 if (ImGui.IsKeyPressed(ImGuiKey.Key1, false) && !io.KeyAlt) HideSelection();
                 if (ImGui.IsKeyPressed(ImGuiKey.Key1, false) && io.KeyAlt) ShowHidden();
             }

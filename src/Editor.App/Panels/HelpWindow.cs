@@ -41,6 +41,7 @@ internal sealed class HelpWindow
             ("G", "Snap to the grid (step next to it in the toolbar); Angle: snap rotation"),
             ("F", "Drop to the ground"),
             ("Del", "Delete the selection"),
+            ("K", "With the Claude bridge on (View - Settings): mark the point under the cursor for Claude; notes in View - Claude"),
             ("1 / Alt+1", "On the selection, in turn: see-through (what is under it shows), hidden, shown again; Alt+1 shows all (only in the view, not saved)"),
             ("Ctrl+D", "Duplicate the selection"),
             ("Ctrl+C / Ctrl+X", "Copy / cut the selected objects (with their properties)"),

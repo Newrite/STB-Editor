@@ -63,6 +63,7 @@ internal sealed unsafe class MainWindow
 
         if (Handle == 0)
             throw new InvalidOperationException($"CreateWindowEx failed: {Marshal.GetLastWin32Error()}");
+        Main = Handle;
 
         GetClientRect(Handle, out var rect);
         ClientWidth = rect.Width;
@@ -92,6 +93,15 @@ internal sealed unsafe class MainWindow
 
     /// <summary>Sleeps until input arrives or the timeout passes — keeps an idle editor off the CPU.</summary>
     public static void WaitForInput(uint milliseconds) => MsgWaitForMultipleObjects(0, 0, false, milliseconds, QS_ALLINPUT);
+
+    /// <summary>The main window (for <see cref="Wake"/>).</summary>
+    public static nint Main { get; private set; }
+
+    /// <summary>Ends an idle wait from another thread (a request from the Claude bridge): posts WM_NULL to the main window.</summary>
+    public static void Wake()
+    {
+        if (Main != 0) PostMessage(Main, 0, 0, 0);
+    }
 
     private nint Procedure(nint hwnd, uint msg, nint wParam, nint lParam)
     {

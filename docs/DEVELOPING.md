@@ -108,6 +108,7 @@ src/
 | `--autotest-vcolor` (с `--cell <внешняя ячейка>`) | один мазок кисти цвета вершин (красный, радиус 1500) в фокусе вида; цвет под ним в лог; ничего не сохраняет |
 | `--autotest-face [FormID NPC]` (с `--inspector-tab Appearance`; по умолчанию Оргнар) | форма NPC на редакторе лица; два ползунка «отпущены» на 1, второй пресет первого тинта с пресетами; превью пересобрано (`%TEMP%\stbeditor_face_before.bmp` / `_after.bmp`), запись изменена, два Ctrl+Z; ничего не сохраняет |
 | `--autotest-dialoguegraph [квест]` (с `--inspector-tab Dialogue`; по умолчанию MQ101) | форма квеста на графе диалогов — для кадра |
+| мост Claude | см. [CLAUDE-BRIDGE.md](CLAUDE-BRIDGE.md): включить в settings.json (`ClaudeBridge: true`), запросы curl на `127.0.0.1:47110/mcp` (вернуть settings.json после) |
 | `--bos` | включить превью Base Object Swapper (для снимков; в логе снимка `BOS N swapped`) |
 | `--fade-picked [2]` (с `--pick fx,fy`) | клавиша `1` на выбранном один раз (полупрозрачно) или два (скрыто), в логе `fade-picked` |
 | `--autotest-findplaced <текст> [мир]` (по умолчанию Tamriel) | «Ячейки» → «Найти объекты в мире»: сколько расставлено и первые строки в логе |

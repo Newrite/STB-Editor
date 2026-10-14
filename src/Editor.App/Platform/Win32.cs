@@ -164,6 +164,10 @@ internal static unsafe partial class Win32
 
     public const uint QS_ALLINPUT = 0x04FF;
 
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(nint hwnd, uint msg, nint wParam, nint lParam);
+
     [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial int MessageBox(nint hwnd, string text, string caption, uint type);
 

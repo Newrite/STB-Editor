@@ -90,6 +90,9 @@ internal static class Program
             editor.RenderScene();
             imgui.Render();
 
+            // Claude bridge pictures with the overlay: cut from the finished frame.
+            editor.RenderWindow.ServeWindowShots(graphics.ReadBackBuffer, graphics.Width, graphics.Height);
+
             // An autotest's extra frame (before / after pictures), taken without stopping.
             if (editor.ShotRequest is { } extra)
             {

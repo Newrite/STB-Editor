@@ -38,6 +38,10 @@ internal sealed class SettingsWindow
             var actors = settings.HighlightActors;
             if (ImGui.Checkbox(T("Tint NPCs and creatures so they are easy to find"), ref actors)) app.RenderWindow.SetHighlightActors(app, actors);
 
+            ImGui.SeparatorText("Claude");
+            ClaudeWindow.DrawSwitches(app);
+            if (ImGui.SmallButton(T("Claude window..."))) app.ClaudeWindow.Show();
+
             ImGui.SeparatorText(T("Performance"));
             ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
             var limits = new[] { 30, 60, 120, 0 };

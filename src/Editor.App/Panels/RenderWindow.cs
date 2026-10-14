@@ -496,6 +496,7 @@ internal sealed partial class RenderWindow : Panel
         {
             _renderer.Render(_scene, _camera, _target, _selection, background);
             if (_scene is not null) _framesRendered++;
+            ServeCaptures(app);
         }
         catch (Exception ex)
         {
@@ -512,6 +513,7 @@ internal sealed partial class RenderWindow : Panel
         DrawGizmo(origin, size);
         DrawDoorQuestion(app);
         DrawOverlay(app, drawList, origin, size);
+        DrawClaudeOverlay(drawList, origin, size);
         AcceptDrop(app, origin, size);
     }
 

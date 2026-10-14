@@ -5,7 +5,7 @@
 STB Editor — a standalone replacement for the Skyrim Creation Kit (placement, cells, landscape,
 navmesh, record editing, script properties without compiling). Plan and reasoning:
 `docs/PLAN.md`, teardown of the SkyrimMapEditor concept and of CK: `docs/ANALYSIS.md`.
-Status (v0.70.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
+Status (v0.71.0, 2026-10-14) — the table in `README.md` is the source of truth. Done: data, NIF,
 D3D11 view incl. particles/billboards/shader animation, NPCs from race/outfit/FaceGen in bind pose;
 ref edits with undo (`Core/EditDocument`), CK-style drags + ImGuizmo (`Panels/RenderWindow.Editing.cs`),
 lossless saving into an active plugin (`Core/PluginWriter` + `Data/Raw/RawSplice`,
@@ -161,6 +161,10 @@ v0.70.0: BOS preview (`Core/BosRules.cs` from the BOS FrameworkRefs grouped by l
 model + world, drawn tinted in `CollectObjects`; `Panels/RenderWindow.Bos.cs` builds them with `SceneBuilder.CreatePlaced` of the swap base)
 and OAR / DAR on an NPC (`Core/AnimReplacers.cs` parse + Pass / Fail / Unknown evaluation, `EditorSession.AnimReplacers`,
 `Panels/AnimReplacersView.cs` «Animations» tab added by `RecordForm`, replacers filtered by the race skeleton folder).
+v0.71.0: Claude bridge (docs/CLAUDE-BRIDGE.md; `Services/ClaudeBridge.cs` MCP over HTTP on 127.0.0.1 — JSON responses, no SSE, Origin
+checked; tool calls queued and run on the UI thread in `Pump`, `MainWindow.Wake` ends the idle wait; `Services/ClaudeTools.cs` tools;
+`Panels/RenderWindow.Claude.cs` capture (with overlay = back buffer cut to the view, `ServeWindowShots` in Program), notes, K marks,
+edits through `Commit`; `Panels/ClaudeWindow.cs`). Off by default (`Settings.ClaudeBridge`); Claude never saves.
 Next: what is still missing against CK and xEdit, with priorities and order — `docs/GAPS.md` (update it when a gap closes).
 Developer docs: `docs/DEVELOPING.md`, `docs/RENDERING.md`, history in `CHANGELOG.md` —
 **keep them, README and this file current with every feature** (several people work on this repo,

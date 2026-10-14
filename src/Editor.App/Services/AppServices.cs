@@ -139,6 +139,15 @@ internal sealed class Settings
     /// <summary>PapyrusCompiler.exe; null: the game's "Papyrus Compiler" folder.</summary>
     public string? PapyrusCompiler { get; set; }
 
+    /// <summary>The Claude bridge (a local MCP server for Claude Code) runs; off by default.</summary>
+    public bool ClaudeBridge { get; set; }
+
+    /// <summary>Port of the Claude bridge on 127.0.0.1.</summary>
+    public int ClaudeBridgePort { get; set; } = 47110;
+
+    /// <summary>Claude may change things through the bridge (undoable, never saved by Claude).</summary>
+    public bool ClaudeBridgeEdits { get; set; } = true;
+
     /// <summary>View presets saved by the user (Render Window: Preset).</summary>
     public List<StbEditor.App.Panels.ViewPreset> ViewPresets { get; set; } = [];
 

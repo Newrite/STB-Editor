@@ -665,14 +665,14 @@ internal sealed partial class RenderWindow : Panel
         Toggle(T("Disabled"), () => options.ShowInitiallyDisabled, v => options.ShowInitiallyDisabled = v, T("Initially disabled references (tinted purple)"));
         DrawShowHide(options);
         Toggle(T("Water"), () => options.ShowWater, v => options.ShowWater = v, null);
-        Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, null);
+        Toggle(T("Land"), () => options.ShowTerrain, v => options.ShowTerrain = v, T("Show the landscape — only shows it; the «Edit land» tool on the row below (H) sculpts and paints it"));
         Toggle(T("Grass"), () => options.ShowGrass, v => options.ShowGrass = v, T("Grass on the land: the grass types of its landscape textures, placed like the game does (step iMinGrassSize, distance fGrassStartFadeDistance from the INI)"));
         Toggle(T("Fog"), () => options.Fog, v => options.Fog = v, null);
         Toggle(T("Collision"), () => options.ShowCollision, v => options.ShowCollision = v, T("Havok collision of the objects near the camera (CK: F4)"));
         DrawSky(app);
         Toggle("BOS", () => _showBos, v => _showBos = v, T("Base Object Swapper preview: objects its _SWAP.ini files swap are drawn as the swap (tinted), moved by its properties; the first swap of a random set"));
         Toggle(T("Borders"), () => options.CellBorders, v => options.CellBorders = v, T("Cell borders (CK: B)"));
-        Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes (N edits them)"));
+        Toggle(T("Navmesh"), () => options.ShowNavmesh, v => options.ShowNavmesh = v, T("Show navmeshes — only shows them; the «Edit navmesh» tool on the row below (N) edits them and turns this on"));
         Toggle("FX", () => options.ShowParticles, v => options.ShowParticles = v, T("Particles: fire, smoke, dust, sparks"));
         Toggle(T("Anim"), () => options.Animate, v => options.Animate = v, T("Play flames, scrolling water and particles (off: frozen frame, idle CPU)"));
         Toggle("NPC", () => options.HighlightActors, v => options.HighlightActors = app.Settings.HighlightActors = v, T("Tint NPCs and creatures so they are easy to spot in dark places"));

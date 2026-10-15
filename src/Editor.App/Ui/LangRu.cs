@@ -1924,6 +1924,12 @@ internal static class LangRu
         ["Open the config file"] = "Открыть файл конфига",
         ["Open the record"] = "Открыть запись",
 
+        // ---- Render window
+        ["Edit navmesh"] = "Правка навмеша",
+        ["Edit land"] = "Правка земли",
+        ["Show navmeshes — only shows them; the «Edit navmesh» tool on the row below (N) edits them and turns this on"] = "Показать навмеши — только показ; правит их инструмент «Правка навмеша» рядом ниже (N), он и включает показ",
+        ["Show the landscape — only shows it; the «Edit land» tool on the row below (H) sculpts and paints it"] = "Показать ландшафт — только показ; лепит и красит его инструмент «Правка земли» рядом ниже (H)",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",
@@ -2353,7 +2359,6 @@ internal static class LangRu
         ["Fog"] = "Туман",
         ["Borders"] = "Границы",
         ["Cell borders (CK: B)"] = "Границы ячеек (в CK: B)",
-        ["Show navmeshes (N edits them)"] = "Показать навмеши (N — правка)",
         ["Particles: fire, smoke, dust, sparks"] = "Частицы: огонь, дым, пыль, искры",
         ["Anim"] = "Анимация",
         ["Play flames, scrolling water and particles (off: frozen frame, idle CPU)"] = "Огонь, течение воды и частицы в движении (выкл.: стоп-кадр, процессор отдыхает)",

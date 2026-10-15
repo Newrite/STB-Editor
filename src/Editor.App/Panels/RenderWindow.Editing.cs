@@ -140,8 +140,8 @@ internal sealed partial class RenderWindow
         ToolButton(T("Move"), EditTool.Move, T("W — move gizmo (LMB drag on the object works with any tool)"));
         ToolButton(T("Rotate"), EditTool.Rotate, T("E — rotate gizmo"));
         ToolButton(T("Scale"), EditTool.Scale, T("R — uniform scale gizmo"));
-        ToolButton(T("Navmesh"), EditTool.Navmesh, T("N — navmesh editing: click vertex/triangle (Ctrl adds), drag moves (Z height), Shift+click adds a vertex (with 2 selected: a triangle), Del deletes, F drops to ground; more in the Navmesh panel"));
-        ToolButton(T("Land"), EditTool.Land, T("H — landscape editing: brush settings and textures in the Landscape panel; LMB drag sculpts/paints, Shift inverts raise/lower"));
+        ToolButton(T("Edit navmesh"), EditTool.Navmesh, T("N — navmesh editing: click vertex/triangle (Ctrl adds), drag moves (Z height), Shift+click adds a vertex (with 2 selected: a triangle), Del deletes, F drops to ground; more in the Navmesh panel"));
+        ToolButton(T("Edit land"), EditTool.Land, T("H — landscape editing: brush settings and textures in the Landscape panel; LMB drag sculpts/paints, Shift inverts raise/lower"));
 
         Toggle(_localSpace ? T("Local") : T("World"), () => _localSpace, v => _localSpace = v, T("L — gizmo axes: world or the object's own"));
         Toggle(T("Grid"), () => _gridSnap, v => _gridSnap = v, T("G — snap positions to the grid step"));
@@ -218,7 +218,7 @@ internal sealed partial class RenderWindow
     {
         var active = _tool == tool;
         if (active) ImGui.PushStyleColor(ImGuiCol.Button, Ui.Theme.ButtonActive);
-        // The tool in the ID: «Navmesh» / «Land» are also the names of view toggles on the row above.
+        // The tool in the ID: labels may repeat the view toggles on the row above in a translation.
         if (ImGui.Button($"{label}###tool{tool}")) _tool = tool;
         if (active) ImGui.PopStyleColor();
         if (ImGui.IsItemHovered()) ImGui.SetTooltip(tooltip);

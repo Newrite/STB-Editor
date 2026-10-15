@@ -104,6 +104,9 @@ public sealed class RenderOptions
     /// <summary>Navmesh overlay (CK: the navmesh view of the render window).</summary>
     public bool ShowNavmesh { get; set; }
 
+    /// <summary>Navmesh parts under floor clutter, rugs or bumpy rock (up to ~48 units) drawn faint instead of not at all.</summary>
+    public bool NavmeshThrough { get; set; } = true;
+
     /// <summary>Multiplier on ambient + directional light (CK users raise interiors to work in them).</summary>
     public float Brightness { get; set; } = 1.6f;
 
@@ -271,6 +274,8 @@ public sealed unsafe class SceneRenderer : IDisposable
     private readonly ID3D11PixelShader _terrainPs;
     private readonly ID3D11InputLayout _terrainLayout;
     private readonly ID3D11VertexShader _lineVs;
+    private readonly ID3D11VertexShader _navNearVs;
+    private readonly ID3D11VertexShader _navFarVs;
     private readonly ID3D11PixelShader _linePs;
     private readonly ID3D11InputLayout _lineLayout;
     private readonly ID3D11VertexShader _particleVs;
@@ -387,6 +392,8 @@ public sealed unsafe class SceneRenderer : IDisposable
             new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
             new InputElementDescription("COLOR", 0, Format.R8G8B8A8_UNorm, 12, 0),
         ]);
+        _navNearVs = device.CreateVertexShader(Compile(Shaders.Lines, "VSNavNear", "vs_5_0", "lines").Span);
+        _navFarVs = device.CreateVertexShader(Compile(Shaders.Lines, "VSNavFar", "vs_5_0", "lines").Span);
 
         _frameBuffer = device.CreateBuffer(new BufferDescription((uint)sizeof(FrameConstants), BindFlags.ConstantBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write));
         _materialBuffer = device.CreateBuffer(new BufferDescription((uint)sizeof(MaterialConstants), BindFlags.ConstantBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write));
@@ -520,8 +527,9 @@ public sealed unsafe class SceneRenderer : IDisposable
         if (Options.ShowGrass && Options.ShowTerrain && scene.Grasses is { } grassOf) CollectGrass(scene, camera, frustum, grassOf);
         if (Options.DrawOpaquePass) DrawOpaque();
         if (Options.ShowWater) DrawWater(scene);
-        if (Options.ShowNavmesh) DrawNavmeshes(scene);
         if (Options.DrawBlendedPass) DrawBlended();
+        // After the blended pass: low mist cards (FXMistLow…) lie over the floors and covered it in dark patches.
+        if (Options.ShowNavmesh) DrawNavmeshes(scene);
         if (Options.ShowMarkers) DrawPrimitives(scene, frustum);
         if (Options.DrawMarkerPass) DrawMarkers();
         DrawSelection(selection);
@@ -1375,7 +1383,16 @@ public sealed unsafe class SceneRenderer : IDisposable
 
     private ID3D11Buffer? _navFillBuffer;
     private ID3D11Buffer? _navEdgeBuffer;
+    private ID3D11Buffer? _navFillFaint;
+    private ID3D11Buffer? _navEdgeFaint;
     private bool _navUploaded;
+
+    /// <summary>The same vertices with a third of their opacity, for the parts behind geometry.</summary>
+    private ID3D11Buffer Faint(List<LineVertex> source)
+    {
+        var faint = source.Select(v => new LineVertex(v.Position, (v.Color & 0x00FFFFFFu) | (((v.Color >> 24) / 3) << 24))).ToArray();
+        return _device.CreateBuffer(faint.AsSpan(), BindFlags.VertexBuffer, ResourceUsage.Immutable);
+    }
 
     private void SubmitNavmesh()
     {
@@ -1386,30 +1403,41 @@ public sealed unsafe class SceneRenderer : IDisposable
             // Static until the next change: immutable buffers, no per-frame upload.
             _navFillBuffer?.Dispose();
             _navEdgeBuffer?.Dispose();
+            _navFillFaint?.Dispose();
+            _navEdgeFaint?.Dispose();
             _navFillBuffer = _device.CreateBuffer(CollectionsMarshal.AsSpan(_navFill), BindFlags.VertexBuffer, ResourceUsage.Immutable);
             _navEdgeBuffer = _navEdges.Count > 0 ? _device.CreateBuffer(CollectionsMarshal.AsSpan(_navEdges), BindFlags.VertexBuffer, ResourceUsage.Immutable) : null;
+            _navFillFaint = Faint(_navFill);
+            _navEdgeFaint = _navEdges.Count > 0 ? Faint(_navEdges) : null;
             _navUploaded = true;
         }
 
         ctx.IASetInputLayout(_lineLayout);
-        ctx.VSSetShader(_lineVs);
         ctx.PSSetShader(_linePs);
         ctx.RSSetState(_cullNone);
-        ctx.OMSetDepthStencilState(_depthRead);
-
-        ctx.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         ctx.OMSetBlendState(_alphaBlend);
-        ctx.IASetVertexBuffers(0, 1, [_navFillBuffer!], [(uint)sizeof(LineVertex)], [0u]);
-        ctx.Draw((uint)_navFill.Count, 0);
-
-        if (_navEdgeBuffer is not null)
-        {
-            ctx.IASetPrimitiveTopology(PrimitiveTopology.LineList);
-            ctx.IASetVertexBuffers(0, 1, [_navEdgeBuffer], [(uint)sizeof(LineVertex)], [0u]);
-            ctx.Draw((uint)_navEdges.Count, 0);
-        }
+        ctx.OMSetDepthStencilState(_depthRead);
+        // The game's navmesh lies near the floor, not on it: under rubble, rugs or bumpy rock it would be hidden. A faint
+        // copy pulled far toward the camera shows those parts (walls still cover it), then the navmesh itself.
+        if (Options.NavmeshThrough) Pass(_navFarVs, _navFillFaint!, _navEdgeFaint);
+        Pass(_navNearVs, _navFillBuffer!, _navEdgeBuffer);
+        ctx.VSSetShader(_lineVs);
         ctx.OMSetBlendState(_opaque);
-        Stats.DrawCalls += 2;
+
+        void Pass(ID3D11VertexShader vs, ID3D11Buffer fill, ID3D11Buffer? edges)
+        {
+            ctx.VSSetShader(vs);
+            ctx.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+            ctx.IASetVertexBuffers(0, 1, [fill], [(uint)sizeof(LineVertex)], [0u]);
+            ctx.Draw((uint)_navFill.Count, 0);
+            if (edges is not null)
+            {
+                ctx.IASetPrimitiveTopology(PrimitiveTopology.LineList);
+                ctx.IASetVertexBuffers(0, 1, [edges], [(uint)sizeof(LineVertex)], [0u]);
+                ctx.Draw((uint)_navEdges.Count, 0);
+            }
+            Stats.DrawCalls += 2;
+        }
     }
 
     // ------------------------------------------------------------------ lines
@@ -1525,8 +1553,8 @@ public sealed unsafe class SceneRenderer : IDisposable
         _actorCapsule.Dispose();
         _meshVs.Dispose(); _meshPs.Dispose(); _meshLayout.Dispose();
         _terrainVs.Dispose(); _terrainPs.Dispose(); _terrainLayout.Dispose();
-        _lineVs.Dispose(); _linePs.Dispose(); _lineLayout.Dispose();
-        _navFillBuffer?.Dispose(); _navEdgeBuffer?.Dispose();
+        _lineVs.Dispose(); _linePs.Dispose(); _lineLayout.Dispose(); _navNearVs.Dispose(); _navFarVs.Dispose();
+        _navFillBuffer?.Dispose(); _navEdgeBuffer?.Dispose(); _navFillFaint?.Dispose(); _navEdgeFaint?.Dispose();
         _particleVs.Dispose(); _particleLayout.Dispose(); _particleBuffer?.Dispose(); _particleIndices?.Dispose();
         _frameBuffer.Dispose(); _materialBuffer.Dispose(); _instanceBuffer.Dispose(); _lineBuffer.Dispose(); _terrainIndices.Dispose();
         _cullBack.Dispose(); _cullNone.Dispose(); _wireframe.Dispose(); _overlayWire.Dispose();

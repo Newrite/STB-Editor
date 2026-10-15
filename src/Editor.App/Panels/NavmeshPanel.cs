@@ -44,6 +44,12 @@ internal sealed class NavmeshPanel : Panel
             return;
         }
 
+        if (window.RenderOptions is { } options)
+        {
+            var through = options.NavmeshThrough;
+            if (ImGui.Checkbox(T("Faint where hidden"), ref through)) options.NavmeshThrough = through;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(T("Parts of the navmesh under rubble, rugs or bumpy rock (up to about 48 units above it) are drawn faint; walls still cover it. The game's navmesh lies near the ground, not exactly on it (CK hides those parts); actors walk on the collision, the navmesh only tells them where."));
+        }
         ImGui.TextColored(Theme.TextDim, TF($"{scene.Navmeshes.Count} navmesh(es) loaded, {scene.Navmeshes.Sum(n => n.Record.Data?.Triangles.Count ?? 0):N0} triangles"));
         ImGui.TextWrapped(T("Click: vertex or triangle (Ctrl adds). Drag: move (hold Z for height). Shift+click on the ground: new vertex — with 2 selected it also makes the triangle. Del deletes, F drops to the ground."));
         if (ImGui.Button(T("Finalize edited"))) _summary = window.FinalizeNavmeshes(app, true) ?? _summary;

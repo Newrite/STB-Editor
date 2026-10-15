@@ -138,6 +138,7 @@ internal sealed partial class RenderWindow : Panel
                 case "shading": o.Shading = (ShadingMode)int.Parse(kv[1]); break;
                 case "particles": o.ShowParticles = on; break;
                 case "navmesh": o.ShowNavmesh = on; break;
+                case "navthrough": o.NavmeshThrough = on; break;
                 case "psys": o.ParticleFilter = kv[1]; break;
                 case "animate": o.Animate = on; break;
                 case "logblended": _renderer.DebugLog = Log.Info; break;
@@ -639,9 +640,11 @@ internal sealed partial class RenderWindow : Panel
 
         if (_loading.IsCompletedSuccessfully && PendingCameraPose is { } pose)
         {
-            // --camera x,y,z,yawDeg,pitchDeg (z relative to the scene focus) for automated checks.
-            var v = pose.Split(',').Select(t => float.Parse(t, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
-            _camera.Position = new Vector3(_scene!.Focus.X + v[0], _scene.Focus.Y + v[1], _scene.Focus.Z + v[2]);
+            // --camera x,y,z,yawDeg,pitchDeg (relative to the scene focus; "=x,y,z,…" in world units) for automated checks.
+            var absolute = pose.StartsWith('=');
+            var v = pose.TrimStart('=').Split(',').Select(t => float.Parse(t, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            var origin = absolute ? Vector3.Zero : _scene!.Focus;
+            _camera.Position = new Vector3(origin.X + v[0], origin.Y + v[1], origin.Z + v[2]);
             _camera.Yaw = v[3] * MathF.PI / 180f;
             _camera.Pitch = v[4] * MathF.PI / 180f;
             PendingCameraPose = null;

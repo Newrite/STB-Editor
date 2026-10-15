@@ -375,5 +375,20 @@ internal static class Shaders
         }
 
         float4 PSMain(PSIn i) : SV_Target { return i.Color; }
+
+        // Navmesh: each vertex pulled toward the camera along its view ray — same place on screen, nearer in depth, so the
+        // navmesh shows over floor clutter and bumps up to that far above it but stays behind walls.
+        PSIn Pulled(VSIn i, float pull)
+        {
+            float3 toEye = CameraPos.xyz - i.Position;
+            float distance = length(toEye);
+            PSIn o;
+            o.Position = mul(float4(i.Position + toEye / max(distance, 1e-3) * min(pull, distance * 0.5), 1), ViewProj);
+            o.Color = i.Color;
+            return o;
+        }
+
+        PSIn VSNavNear(VSIn i) { return Pulled(i, 8); }
+        PSIn VSNavFar(VSIn i) { return Pulled(i, 48); }
         """;
 }

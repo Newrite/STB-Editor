@@ -385,6 +385,82 @@ internal static class FaceGenTests
         }
     }
 
+    /// <summary>
+    /// navcover &lt;game&gt; &lt;cell&gt;: how far drawn geometry lies above the cell's navmesh (triangle centres covered by a mesh
+    /// face 2..80 units higher) — the places where an editor depth-tested overlay disappears under rubble, rugs or rock.
+    /// </summary>
+    public static void NavCover(Workspace ws, string[] args)
+    {
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "STBEditor", "cache", "catalog");
+        var catalog = RecordCatalog.Build(ws, cacheDir);
+        var vfs = AssetFileSystem.Build(ws);
+        var cell = catalog.BySignature["CELL"].First(c => string.Equals(c.EditorId, args[2], StringComparison.OrdinalIgnoreCase));
+        var scene = new SceneBuilder(ws, catalog).BuildInterior(cell.FormKey);
+        var models = new Dictionary<string, NifModel?>(StringComparer.OrdinalIgnoreCase);
+        const float bucket = 128;
+        var grid = new Dictionary<(int, int), List<(Vector3 A, Vector3 B, Vector3 C, string Who)>>();
+        foreach (var o in scene.Objects.Where(o => o.Kind == SceneObjectKind.Mesh && o.ModelPath is not null))
+        {
+            if (!models.TryGetValue(o.ModelPath!, out var model))
+            {
+                try { model = vfs.ReadAllBytes(o.ModelPath!) is { } bytes ? NifFile.Load(bytes, o.ModelPath!) : null; } catch { model = null; }
+                models[o.ModelPath!] = model;
+            }
+            if (model is null) continue;
+            foreach (var shape in model.Shapes.Where(s => !s.IsHidden && !s.IsEditorMarker && s.Billboard is null && !s.Material.AlphaBlend))
+                for (var i = 0; i + 2 < shape.Indices.Length; i += 3)
+                {
+                    var t = (Vector3.Transform(shape.Positions[(int)shape.Indices[i]], o.World), Vector3.Transform(shape.Positions[(int)shape.Indices[i + 1]], o.World),
+                        Vector3.Transform(shape.Positions[(int)shape.Indices[i + 2]], o.World), $"{o.BaseEditorId} {o.ModelPath}");
+                    var lo = Vector3.Min(t.Item1, Vector3.Min(t.Item2, t.Item3));
+                    var hi = Vector3.Max(t.Item1, Vector3.Max(t.Item2, t.Item3));
+                    for (var x = (int)MathF.Floor(lo.X / bucket); x <= (int)MathF.Floor(hi.X / bucket); x++)
+                        for (var y = (int)MathF.Floor(lo.Y / bucket); y <= (int)MathF.Floor(hi.Y / bucket); y++)
+                        {
+                            if (!grid.TryGetValue((x, y), out var list)) grid[(x, y)] = list = [];
+                            list.Add(t);
+                        }
+                }
+        }
+        var gaps = new List<(float Gap, Vector3 At, string Who)>();
+        var total = 0;
+        foreach (var view in scene.Navmeshes)
+        {
+            if (view.Record.Data is not { } data) continue;
+            foreach (var tri in data.Triangles)
+            {
+                var v = tri.Vertices;
+                if (v.X >= data.Vertices.Count || v.Y >= data.Vertices.Count || v.Z >= data.Vertices.Count) continue;
+                Vector3 P(int i) => new(data.Vertices[i].X, data.Vertices[i].Y, data.Vertices[i].Z);
+                var at = (P(v.X) + P(v.Y) + P(v.Z)) / 3;
+                total++;
+                if (!grid.TryGetValue(((int)MathF.Floor(at.X / bucket), (int)MathF.Floor(at.Y / bucket)), out var list)) continue;
+                var best = (Gap: 0f, Who: "");
+                foreach (var t in list)
+                    if (Inside(at, (t.A, t.B, t.C), out var z) && z - at.Z is > 2 and <= 80 && z - at.Z > best.Gap) best = (z - at.Z, t.Who);
+                if (best.Gap > 0) gaps.Add((best.Gap, at, best.Who));
+            }
+        }
+        Console.WriteLine($"{total} navmesh triangles; covered by geometry above them: {gaps.Count}");
+        foreach (var limit in new[] { 3f, 8f, 16f, 32f, 48f, 64f, 80f })
+            Console.WriteLine($"  gap <= {limit,2}: {gaps.Count(g => g.Gap <= limit)}");
+        foreach (var g in gaps.OrderByDescending(g => g.Gap).Take(int.TryParse(args.ElementAtOrDefault(3), out var n) ? n : 15))
+            Console.WriteLine($"  {g.Gap,5:0} above at {g.At.X:0},{g.At.Y:0},{g.At.Z:0}  {g.Who}");
+
+        static bool Inside(Vector3 p, (Vector3 A, Vector3 B, Vector3 C) t, out float z)
+        {
+            z = 0;
+            var d = (t.B.Y - t.C.Y) * (t.A.X - t.C.X) + (t.C.X - t.B.X) * (t.A.Y - t.C.Y);
+            if (MathF.Abs(d) < 1e-6f) return false;
+            var a = ((t.B.Y - t.C.Y) * (p.X - t.C.X) + (t.C.X - t.B.X) * (p.Y - t.C.Y)) / d;
+            var b = ((t.C.Y - t.A.Y) * (p.X - t.C.X) + (t.A.X - t.C.X) * (p.Y - t.C.Y)) / d;
+            var c = 1 - a - b;
+            if (a < -0.01f || b < -0.01f || c < -0.01f) return false;
+            z = a * t.A.Z + b * t.B.Z + c * t.C.Z;
+            return true;
+        }
+    }
+
     /// <summary>Least-squares weights of <paramref name="morphs"/> that best give <paramref name="target"/>.</summary>
     public static Dictionary<string, double> Fit(List<(string Name, Vector3[] D)> morphs, Vector3[] target)
     {

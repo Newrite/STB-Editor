@@ -1029,6 +1029,9 @@ switch (command)
     case "navgen":
         FaceGenTests.NavGen(ws, args);
         break;
+    case "navcover":
+        FaceGenTests.NavCover(ws, args);
+        break;
     case "facegensliders":
         FaceGenTests.Sliders(ws, args);
         break;

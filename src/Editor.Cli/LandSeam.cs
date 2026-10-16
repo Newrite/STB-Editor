@@ -67,6 +67,20 @@ internal static class LandSeam
         }
 
         foreach (var ((gx, gy), d) in cells) if (d is not null) Inner($"{gx},{gy}", d);
+        // --dump: the north edge of the point's cell, vertex by vertex — raw layers on both sides.
+        if (args.Contains("--dump") && cells.TryGetValue(((int)MathF.Floor(px / 4096), (int)MathF.Floor(py / 4096)), out var south) && south is not null
+            && cells.TryGetValue(((int)MathF.Floor(px / 4096), (int)MathF.Floor(py / 4096) + 1), out var north) && north is not null)
+        {
+            Console.WriteLine("north edge of the point's cell, by column (south side | north side):");
+            for (var col = 0; col < 33; col++)
+            {
+                string Side(LandscapeData d, int row) => string.Join(" / ", QuadrantsOf(col, row).Select(q =>
+                    $"q{q} base {Diffuse(d.Quadrants[q].BaseTexture)}: " + string.Join(" ", d.Quadrants[q].Layers.Select((l, n) => (l, n))
+                        .Where(t => t.l.Opacity[(row - (q >> 1) * 16) * 17 + (col - (q & 1) * 16)] > 0.01f)
+                        .Select(t => $"{t.n}:{Diffuse(t.l.Texture)} {t.l.Opacity[(row - (q >> 1) * 16) * 17 + (col - (q & 1) * 16)]:0.00}"))));
+                Console.WriteLine($"  col {col,2} (x {MathF.Floor(px / 4096) * 4096 + col * 128:0}): {Side(south, 32)}  ||  {Side(north, 0)}");
+            }
+        }
         // Each LAND version's normals against the winners next to it: which plugin's normals stop matching the neighbours.
         Console.WriteLine("normals of every LAND version against the neighbours' winners (max degrees on each shared edge):");
         foreach (var ((gx, gy), _) in cells)

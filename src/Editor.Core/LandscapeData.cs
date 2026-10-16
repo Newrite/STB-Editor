@@ -60,6 +60,12 @@ public sealed class LandscapeData
     /// <summary>Heights changed: normals are recomputed on save (else the stored ones are kept).</summary>
     public bool HeightsEdited { get; set; }
 
+    /// <summary>
+    /// The record's VNML bytes as read: written back unchanged while the heights are not edited. Normalising and re-encoding them
+    /// moved normals by up to a step (~0.4°) — a new lighting seam against neighbours outside the plugin.
+    /// </summary>
+    public P3UInt8[]? StoredNormals { get; private set; }
+
     public LandscapeData Clone() => new()
     {
         Heights = (float[])Heights.Clone(),
@@ -68,6 +74,7 @@ public sealed class LandscapeData
         Quadrants = Quadrants.Select(q => q.Clone()).ToArray(),
         OriginalFlags = OriginalFlags,
         HeightsEdited = HeightsEdited,
+        StoredNormals = StoredNormals,
     };
 
     public static LandscapeData Flat(float height)
@@ -100,6 +107,11 @@ public sealed class LandscapeData
 
         if (land.VertexNormals is { } normals)
         {
+            var stored = new P3UInt8[Size * Size];
+            for (var y = 0; y < Size; y++)
+                for (var x = 0; x < Size; x++)
+                    stored[y * Size + x] = normals[x, y];
+            data.StoredNormals = stored;
             for (var y = 0; y < Size; y++)
                 for (var x = 0; x < Size; x++)
                 {
@@ -220,7 +232,7 @@ public sealed class LandscapeData
             {
                 heightMap[new P2Int(x, y)] = steps[x, y];
                 var n = Normals[y * Size + x];
-                normals[new P2Int(x, y)] = new P3UInt8(Signed(n.X), Signed(n.Y), Signed(n.Z));
+                normals[new P2Int(x, y)] = !HeightsEdited && StoredNormals is { } stored ? stored[y * Size + x] : new P3UInt8(Signed(n.X), Signed(n.Y), Signed(n.Z));
             }
 
         land.VertexHeightMap = new LandscapeVertexHeightMap { Offset = offset, HeightMap = heightMap };

@@ -1029,6 +1029,9 @@ switch (command)
     case "navgen":
         FaceGenTests.NavGen(ws, args);
         break;
+    case "landseamfix":
+        StbEditor.Cli.LandSeamFix.Run(ws, game, args);
+        break;
     case "landseam":
         StbEditor.Cli.LandSeam.Run(ws, args);
         break;

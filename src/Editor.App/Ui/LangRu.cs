@@ -1924,6 +1924,16 @@ internal static class LangRu
         ["Open the config file"] = "Открыть файл конфига",
         ["Open the record"] = "Открыть запись",
 
+        // ---- Render window
+        ["Edit navmesh"] = "Правка навмеша",
+        ["Edit land"] = "Правка земли",
+        ["Show navmeshes — only shows them; the «Edit navmesh» tool on the row below (N) edits them and turns this on"] = "Показать навмеши — только показ; правит их инструмент «Правка навмеша» рядом ниже (N), он и включает показ",
+        ["Show the landscape — only shows it; the «Edit land» tool on the row below (H) sculpts and paints it"] = "Показать ландшафт — только показ; лепит и красит его инструмент «Правка земли» рядом ниже (H)",
+
+        // ---- Navmesh
+        ["Faint where hidden"] = "Бледно там, где скрыт",
+        ["Parts of the navmesh under rubble, rugs or bumpy rock (up to about 48 units above it) are drawn faint; walls still cover it. The game's navmesh lies near the ground, not exactly on it (CK hides those parts); actors walk on the collision, the navmesh only tells them where."] = "Части навмеша под камнями, коврами и неровной скалой (до ~48 единиц над ним) рисуются бледно; стены его по-прежнему закрывают. Навмеш в игре лежит возле земли, а не точно на ней (в CK эти части скрыты); ходят актёры по коллизии, навмеш только говорит им куда.",
+
         // ---- main menu
         ["File"] = "Файл",
         ["Data..."] = "Данные...",
@@ -2353,7 +2363,6 @@ internal static class LangRu
         ["Fog"] = "Туман",
         ["Borders"] = "Границы",
         ["Cell borders (CK: B)"] = "Границы ячеек (в CK: B)",
-        ["Show navmeshes (N edits them)"] = "Показать навмеши (N — правка)",
         ["Particles: fire, smoke, dust, sparks"] = "Частицы: огонь, дым, пыль, искры",
         ["Anim"] = "Анимация",
         ["Play flames, scrolling water and particles (off: frozen frame, idle CPU)"] = "Огонь, течение воды и частицы в движении (выкл.: стоп-кадр, процессор отдыхает)",
